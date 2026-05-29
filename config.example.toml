@@ -1,0 +1,19 @@
+[wecom]
+bot_id = "your-bot-id"
+secret = "your-secret"
+
+[ai]
+api_key = "your-api-key"
+api_url = "https://api.openai.com/v1/chat/completions"
+model = "gpt-4o-mini"
+system_prompt = "你是一个有用的助手，用中文回复。"
+
+[schedule]
+daily_report_chat_id = ""                    # 目标群的 chat_id
+daily_report_cron = "0 0 9 * * *"            # 每天早上 9:00
+daily_report_prompt = "请根据今天的对话生成一份简洁的日报摘要。"
+
+[[groups]]
+chat_id = "group-chat-id-1"
+enabled = true
+name = "技术群"
