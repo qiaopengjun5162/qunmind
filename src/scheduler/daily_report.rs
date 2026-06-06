@@ -6,12 +6,14 @@ use crate::ai::{AiClient, ChatMessage};
 use crate::channel::Channel;
 use crate::config::ScheduleConfig;
 use crate::error::Result;
+use crate::source::{PublicNewsItem, PublicNewsSource};
 use crate::storage::{MessageStore, StoredMessage};
 
 pub struct DailyReportScheduler {
     channel: Arc<dyn Channel>,
     ai: Arc<dyn AiClient>,
     message_store: Arc<dyn MessageStore>,
+    public_news_source: Option<Arc<dyn PublicNewsSource>>,
     config: ScheduleConfig,
 }
 
@@ -26,8 +28,14 @@ impl DailyReportScheduler {
             channel,
             ai,
             message_store,
+            public_news_source: None,
             config,
         }
+    }
+
+    pub fn with_public_news_source(mut self, source: Arc<dyn PublicNewsSource>) -> Self {
+        self.public_news_source = Some(source);
+        self
     }
 
     pub async fn start(self) -> Result<()> {
@@ -88,14 +96,8 @@ impl DailyReportScheduler {
         };
 
         if messages.is_empty() {
-            let text = format!("过去 {} 小时没有可总结的群消息。", lookback_hours);
-            if let Err(e) = self
-                .channel
-                .send_text(&self.config.daily_report_chat_id, &text)
-                .await
-            {
-                error!("发送空日报失败: {}", e);
-            }
+            self.send_empty_report_fallback(lookback_hours, since, until)
+                .await;
             return;
         }
 
@@ -117,6 +119,64 @@ impl DailyReportScheduler {
             error!("发送日报失败: {}", e);
         } else {
             info!(chat_id = %chat_id, "日报发送成功");
+        }
+    }
+
+    async fn send_empty_report_fallback(
+        &self,
+        lookback_hours: i64,
+        since: chrono::DateTime<chrono::Utc>,
+        until: chrono::DateTime<chrono::Utc>,
+    ) {
+        let Some(source) = &self.public_news_source else {
+            self.send_empty_report_notice(lookback_hours).await;
+            return;
+        };
+
+        let items = match source.fetch_top_items().await {
+            Ok(items) => items,
+            Err(e) => {
+                error!("读取公共日报素材失败: {}", e);
+                self.send_empty_report_notice(lookback_hours).await;
+                return;
+            }
+        };
+
+        if items.is_empty() {
+            self.send_empty_report_notice(lookback_hours).await;
+            return;
+        }
+
+        let messages = vec![ChatMessage {
+            role: "user".to_string(),
+            content: build_public_report_prompt(&self.config, &items, since, until),
+        }];
+
+        let report = match self.ai.chat(&messages).await {
+            Ok(report) => report,
+            Err(e) => {
+                error!("生成公共信息日报失败: {}", e);
+                return;
+            }
+        };
+
+        if let Err(e) = self
+            .channel
+            .send_text(&self.config.daily_report_chat_id, &report)
+            .await
+        {
+            error!("发送公共信息日报失败: {}", e);
+        }
+    }
+
+    async fn send_empty_report_notice(&self, lookback_hours: i64) {
+        let text = format!("过去 {} 小时没有可总结的群消息。", lookback_hours);
+        if let Err(e) = self
+            .channel
+            .send_text(&self.config.daily_report_chat_id, &text)
+            .await
+        {
+            error!("发送空日报失败: {}", e);
         }
     }
 }
@@ -152,6 +212,41 @@ fn build_report_prompt(
     prompt
 }
 
+fn build_public_report_prompt(
+    config: &ScheduleConfig,
+    items: &[PublicNewsItem],
+    since: chrono::DateTime<chrono::Utc>,
+    until: chrono::DateTime<chrono::Utc>,
+) -> String {
+    let mut prompt = format!(
+        "{}\n\n时间范围: {} 到 {}\n群内在该时间范围没有可总结消息。请根据以下公共信息源条目生成一份供群成员参考的日报，标明这不是群内讨论总结。\n公共信息源:\n",
+        config.daily_report_prompt,
+        since.to_rfc3339(),
+        until.to_rfc3339()
+    );
+
+    for item in items {
+        let score = item
+            .score
+            .map(|score| score.to_string())
+            .unwrap_or_else(|| "unknown".to_string());
+        let comments = item
+            .comments
+            .map(|comments| comments.to_string())
+            .unwrap_or_else(|| "unknown".to_string());
+        prompt.push_str(&format!(
+            "- [{}] {} (score: {}, comments: {}) {}\n",
+            item.source,
+            item.title.replace('\n', " "),
+            score,
+            comments,
+            item.url
+        ));
+    }
+
+    prompt
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -162,6 +257,7 @@ mod tests {
     use crate::channel::MessageHandler;
     use crate::channel::MsgType;
     use crate::error::QunMindError;
+    use crate::source::PublicNewsSource;
     use crate::storage::NewMessage;
 
     #[derive(Default)]
@@ -254,6 +350,26 @@ mod tests {
         }
     }
 
+    struct StaticNewsSource {
+        items: Vec<PublicNewsItem>,
+    }
+
+    #[async_trait]
+    impl PublicNewsSource for StaticNewsSource {
+        async fn fetch_top_items(&self) -> Result<Vec<PublicNewsItem>> {
+            Ok(self.items.clone())
+        }
+    }
+
+    struct FailingNewsSource;
+
+    #[async_trait]
+    impl PublicNewsSource for FailingNewsSource {
+        async fn fetch_top_items(&self) -> Result<Vec<PublicNewsItem>> {
+            Err(QunMindError::Channel("news down".to_string()))
+        }
+    }
+
     #[test]
     fn builds_report_prompt_from_stored_messages() {
         let config = ScheduleConfig {
@@ -297,6 +413,37 @@ mod tests {
         );
         assert!(prompt.contains("- [2026-06-06T00:00:00+00:00] alice: 第一行 第二行"));
         assert!(prompt.contains("- [2026-06-06T01:00:00+00:00] unknown: 无发送者"));
+    }
+
+    #[test]
+    fn builds_public_report_prompt_from_news_items() {
+        let config = ScheduleConfig {
+            daily_report_prompt: "请总结".to_string(),
+            ..Default::default()
+        };
+        let since = chrono::DateTime::parse_from_rfc3339("2026-06-06T00:00:00Z")
+            .expect("since")
+            .with_timezone(&chrono::Utc);
+        let until = chrono::DateTime::parse_from_rfc3339("2026-06-06T01:00:00Z")
+            .expect("until")
+            .with_timezone(&chrono::Utc);
+
+        let prompt = build_public_report_prompt(
+            &config,
+            &[PublicNewsItem {
+                source: "Hacker News".to_string(),
+                title: "AI\nNews".to_string(),
+                url: "https://example.com/ai".to_string(),
+                score: Some(10),
+                comments: Some(2),
+            }],
+            since,
+            until,
+        );
+
+        assert!(prompt.contains("群内在该时间范围没有可总结消息"));
+        assert!(prompt.contains("[Hacker News] AI News (score: 10, comments: 2)"));
+        assert!(prompt.contains("https://example.com/ai"));
     }
 
     #[tokio::test]
@@ -352,6 +499,68 @@ mod tests {
                 "过去 1 小时没有可总结的群消息。".to_string()
             )]
         );
+    }
+
+    #[tokio::test]
+    async fn send_report_uses_public_news_when_group_messages_are_empty() {
+        let channel = Arc::new(RecordingChannel::default());
+        let ai = Arc::new(RecordingAi::new("公共信息日报"));
+        let scheduler = DailyReportScheduler::new(
+            channel.clone(),
+            ai.clone(),
+            Arc::new(StaticStore { messages: vec![] }),
+            ScheduleConfig {
+                daily_report_chat_id: "group-1".to_string(),
+                ..Default::default()
+            },
+        )
+        .with_public_news_source(Arc::new(StaticNewsSource {
+            items: vec![PublicNewsItem {
+                source: "Hacker News".to_string(),
+                title: "Rust release".to_string(),
+                url: "https://example.com/rust".to_string(),
+                score: Some(100),
+                comments: Some(20),
+            }],
+        }));
+
+        scheduler.send_report().await;
+
+        assert_eq!(
+            *channel.sent.lock().await,
+            vec![("group-1".to_string(), "公共信息日报".to_string())]
+        );
+        let requests = ai.requests.lock().await;
+        assert_eq!(requests.len(), 1);
+        assert!(requests[0][0].content.contains("这不是群内讨论总结"));
+        assert!(requests[0][0].content.contains("Rust release"));
+    }
+
+    #[tokio::test]
+    async fn send_report_sends_empty_notice_when_public_news_fails() {
+        let channel = Arc::new(RecordingChannel::default());
+        let ai = Arc::new(RecordingAi::new("公共信息日报"));
+        let scheduler = DailyReportScheduler::new(
+            channel.clone(),
+            ai.clone(),
+            Arc::new(StaticStore { messages: vec![] }),
+            ScheduleConfig {
+                daily_report_chat_id: "group-1".to_string(),
+                ..Default::default()
+            },
+        )
+        .with_public_news_source(Arc::new(FailingNewsSource));
+
+        scheduler.send_report().await;
+
+        assert_eq!(
+            *channel.sent.lock().await,
+            vec![(
+                "group-1".to_string(),
+                "过去 24 小时没有可总结的群消息。".to_string()
+            )]
+        );
+        assert!(ai.requests.lock().await.is_empty());
     }
 
     #[tokio::test]

@@ -18,6 +18,7 @@ The project currently supports:
 - PostgreSQL message persistence.
 - Cron-based daily reports.
 - Daily reports generated from recently stored group messages.
+- Optional Hacker News fallback reports when a report group has no messages.
 
 ## Status
 
@@ -43,6 +44,18 @@ cargo run -- wx-cli send --chat-id "room@chatroom" --text "QunMind diagnostic me
 ```
 
 These commands only read `[wx_cli]` config and do not initialize PostgreSQL, AI clients, or the main bot loop.
+
+## Public Source Fallback
+
+By default, QunMind sends an empty-report notice when the report group has no messages in the lookback window. Enable Hacker News fallback material with:
+
+```toml
+[public_sources]
+hacker_news_enabled = true
+hacker_news_max_items = 10
+```
+
+The prompt asks the model to mark this as public-source context, not a summary of group discussion.
 
 ## Development
 

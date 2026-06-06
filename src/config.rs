@@ -21,6 +21,8 @@ pub struct Config {
     #[serde(default)]
     pub storage: StorageConfig,
     #[serde(default)]
+    pub public_sources: PublicSourcesConfig,
+    #[serde(default)]
     pub groups: Vec<GroupConfig>,
 }
 
@@ -129,6 +131,18 @@ pub struct StorageConfig {
 }
 
 #[derive(Debug, Deserialize)]
+pub struct PublicSourcesConfig {
+    #[serde(default)]
+    pub hacker_news_enabled: bool,
+    #[serde(default = "default_hacker_news_base_url")]
+    pub hacker_news_base_url: String,
+    #[serde(default = "default_hacker_news_max_items")]
+    pub hacker_news_max_items: usize,
+    #[serde(default = "default_hacker_news_timeout_secs")]
+    pub hacker_news_timeout_secs: u64,
+}
+
+#[derive(Debug, Deserialize)]
 pub struct GroupConfig {
     pub chat_id: String,
     pub name: String,
@@ -196,6 +210,18 @@ fn default_storage_database_url() -> String {
     "postgres://postgres:postgres@localhost:5432/qunmind".to_string()
 }
 
+fn default_hacker_news_base_url() -> String {
+    "https://hacker-news.firebaseio.com/v0".to_string()
+}
+
+fn default_hacker_news_max_items() -> usize {
+    10
+}
+
+fn default_hacker_news_timeout_secs() -> u64 {
+    10
+}
+
 fn default_true() -> bool {
     true
 }
@@ -251,6 +277,17 @@ impl Default for StorageConfig {
     }
 }
 
+impl Default for PublicSourcesConfig {
+    fn default() -> Self {
+        Self {
+            hacker_news_enabled: false,
+            hacker_news_base_url: default_hacker_news_base_url(),
+            hacker_news_max_items: default_hacker_news_max_items(),
+            hacker_news_timeout_secs: default_hacker_news_timeout_secs(),
+        }
+    }
+}
+
 impl Config {
     pub fn load(path: &Path) -> Result<Self> {
         let content = std::fs::read_to_string(path).map_err(|e| {
@@ -294,6 +331,13 @@ mod tests {
             config.storage.database_url,
             "postgres://postgres:postgres@localhost:5432/qunmind"
         );
+        assert!(!config.public_sources.hacker_news_enabled);
+        assert_eq!(
+            config.public_sources.hacker_news_base_url,
+            "https://hacker-news.firebaseio.com/v0"
+        );
+        assert_eq!(config.public_sources.hacker_news_max_items, 10);
+        assert_eq!(config.public_sources.hacker_news_timeout_secs, 10);
         assert!(config.bot.mention_names.is_empty());
         assert!(config.groups.is_empty());
     }
@@ -350,6 +394,11 @@ mod tests {
             [storage]
             database_url = "postgres://user:pass@localhost/qunmind_test"
 
+            [public_sources]
+            hacker_news_enabled = true
+            hacker_news_max_items = 5
+            hacker_news_timeout_secs = 3
+
             [[groups]]
             chat_id = "group-1"
             name = "技术群"
@@ -370,6 +419,9 @@ mod tests {
             config.storage.database_url,
             "postgres://user:pass@localhost/qunmind_test"
         );
+        assert!(config.public_sources.hacker_news_enabled);
+        assert_eq!(config.public_sources.hacker_news_max_items, 5);
+        assert_eq!(config.public_sources.hacker_news_timeout_secs, 3);
         assert_eq!(config.groups.len(), 1);
         assert!(config.groups[0].enabled);
     }

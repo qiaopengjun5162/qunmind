@@ -6,7 +6,7 @@
 
 `Channel` -> `BotHandler` -> `AiClient` -> `Channel::send_text`
 
-当前已有 PostgreSQL 消息持久化。`BotHandler` 会在 mention 过滤前保存入站消息；`scheduler` 的日报会按 `schedule.daily_report_lookback_hours` 和 `schedule.daily_report_max_messages` 读取已保存群消息后再调用模型生成。当前还没有对话上下文或前端 UI。
+当前已有 PostgreSQL 消息持久化。`BotHandler` 会在 mention 过滤前保存入站消息；`scheduler` 的日报会按 `schedule.daily_report_lookback_hours` 和 `schedule.daily_report_max_messages` 读取已保存群消息后再调用模型生成。`[public_sources].hacker_news_enabled = true` 且群消息为空时，会读取 Hacker News top stories 作为公共信息参考日报素材。当前还没有对话上下文或前端 UI。
 
 `channel.kind = "wx_cli"` 时通过 `wx_cli.bin + wx_cli.poll_args` 轮询 JSON 消息，通过 `wx_cli.send_args` 模板发送文本。`ai.provider = "hermes"` 时调用 `[hermes]` 中的 HTTP API，适合先对接爱马仕/小龙虾一类 Agent 平台。
 

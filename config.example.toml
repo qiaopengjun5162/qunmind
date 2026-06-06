@@ -38,6 +38,12 @@ daily_report_prompt = "请根据今天的对话生成一份简洁的日报摘要
 [storage]
 database_url = "postgres://postgres:postgres@localhost:5432/qunmind"
 
+[public_sources]
+hacker_news_base_url = "https://hacker-news.firebaseio.com/v0"
+hacker_news_enabled = false
+hacker_news_max_items = 10
+hacker_news_timeout_secs = 10
+
 [[groups]]
 chat_id = "group-chat-id-1"
 enabled = true

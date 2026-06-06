@@ -12,6 +12,8 @@ use qunmind::cli::{Args, CliCommand, WxCliCommand};
 use qunmind::config::{AiProvider, ChannelKind, Config};
 use qunmind::error::QunMindError;
 use qunmind::scheduler::daily_report::DailyReportScheduler;
+use qunmind::source::PublicNewsSource;
+use qunmind::source::hacker_news::HackerNewsSource;
 use qunmind::storage::MessageStore;
 use qunmind::storage::postgres::PostgresMessageStore;
 use tracing::{error, info};
@@ -71,12 +73,18 @@ async fn main() -> anyhow::Result<()> {
         Arc::clone(&message_store),
     ));
 
-    let scheduler = DailyReportScheduler::new(
+    let mut scheduler = DailyReportScheduler::new(
         Arc::clone(&channel),
         Arc::clone(&ai_client),
         Arc::clone(&message_store),
         config.schedule,
     );
+    if config.public_sources.hacker_news_enabled {
+        let source: Arc<dyn PublicNewsSource> =
+            Arc::new(HackerNewsSource::new(&config.public_sources)?);
+        scheduler = scheduler.with_public_news_source(source);
+        info!("Hacker News 公共日报素材源已启用");
+    }
     tokio::spawn(async move {
         if let Err(e) = scheduler.start().await {
             error!("定时日报任务异常: {}", e);
