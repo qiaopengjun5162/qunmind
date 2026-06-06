@@ -33,6 +33,17 @@ cargo run
 
 `config.toml` is intentionally ignored by git because it contains local secrets.
 
+## wx-cli Diagnostics
+
+Before connecting a normal WeChat / external group bot loop, validate the local wx-cli commands in isolation:
+
+```bash
+cargo run -- wx-cli poll
+cargo run -- wx-cli send --chat-id "room@chatroom" --text "QunMind diagnostic message"
+```
+
+These commands only read `[wx_cli]` config and do not initialize PostgreSQL, AI clients, or the main bot loop.
+
 ## Development
 
 ```bash

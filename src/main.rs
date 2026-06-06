@@ -1,4 +1,3 @@
-use std::path::PathBuf;
 use std::sync::Arc;
 
 use clap::Parser;
@@ -9,6 +8,7 @@ use qunmind::bot::handler::BotHandler;
 use qunmind::channel::Channel;
 use qunmind::channel::wecom::WeComChannel;
 use qunmind::channel::wx_cli::WxCliChannel;
+use qunmind::cli::{Args, CliCommand, WxCliCommand};
 use qunmind::config::{AiProvider, ChannelKind, Config};
 use qunmind::error::QunMindError;
 use qunmind::scheduler::daily_report::DailyReportScheduler;
@@ -16,14 +16,6 @@ use qunmind::storage::MessageStore;
 use qunmind::storage::postgres::PostgresMessageStore;
 use tracing::{error, info};
 use tracing_subscriber::EnvFilter;
-
-#[derive(Parser)]
-#[command(name = "qunmind", about = "微信群 AI 群智中枢")]
-struct Args {
-    /// 配置文件路径
-    #[arg(short, long, default_value = "config.toml")]
-    config: PathBuf,
-}
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -35,6 +27,10 @@ async fn main() -> anyhow::Result<()> {
     info!(config = %args.config.display(), "加载配置...");
 
     let config = Config::load(&args.config)?;
+
+    if let Some(command) = args.command {
+        return run_diagnostic_command(command, &config).await;
+    }
 
     let message_store: Arc<dyn MessageStore> =
         Arc::new(PostgresMessageStore::connect(&config.storage).await?);
@@ -89,6 +85,35 @@ async fn main() -> anyhow::Result<()> {
 
     info!(channel = channel.name(), "QunMind 启动，等待消息...");
     channel.start(handler).await?;
+
+    Ok(())
+}
+
+async fn run_diagnostic_command(command: CliCommand, config: &Config) -> anyhow::Result<()> {
+    match command {
+        CliCommand::WxCli { command } => run_wx_cli_command(command, config).await,
+    }
+}
+
+async fn run_wx_cli_command(command: WxCliCommand, config: &Config) -> anyhow::Result<()> {
+    let channel = WxCliChannel::new(&config.wx_cli);
+
+    match command {
+        WxCliCommand::Poll => {
+            let messages = channel.poll_once().await?;
+            println!("{}", serde_json::to_string_pretty(&messages)?);
+        }
+        WxCliCommand::Send { chat_id, text } => {
+            channel.send_text(&chat_id, &text).await?;
+            println!(
+                "{}",
+                serde_json::json!({
+                    "ok": true,
+                    "chat_id": chat_id
+                })
+            );
+        }
+    }
 
     Ok(())
 }

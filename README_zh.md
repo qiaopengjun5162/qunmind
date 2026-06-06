@@ -33,6 +33,17 @@ cargo run
 
 `config.toml` 包含本地凭据，已被 `.gitignore` 忽略。
 
+## wx-cli 诊断
+
+真实连接普通微信 / 外部群前，可以先只验证本地 wx-cli 收发命令：
+
+```bash
+cargo run -- wx-cli poll
+cargo run -- wx-cli send --chat-id "room@chatroom" --text "QunMind 诊断消息"
+```
+
+这两个命令只读取 `[wx_cli]` 配置，不会初始化 PostgreSQL、AI 客户端或机器人主循环。
+
 ## 开发命令
 
 ```bash

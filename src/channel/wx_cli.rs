@@ -40,6 +40,15 @@ impl WxCliChannel {
         }
     }
 
+    pub async fn poll_once(&self) -> Result<Vec<IncomingMessage>> {
+        Ok(self
+            .poll_messages()
+            .await?
+            .into_iter()
+            .map(Into::into)
+            .collect())
+    }
+
     async fn poll_messages(&self) -> Result<Vec<WxCliMessage>> {
         let output = Command::new(&self.bin)
             .args(&self.poll_args)
@@ -70,6 +79,19 @@ impl WxCliChannel {
     }
 }
 
+impl From<WxCliMessage> for IncomingMessage {
+    fn from(msg: WxCliMessage) -> Self {
+        Self {
+            message_id: msg.id,
+            from: msg.from,
+            chat_id: msg.chat_id,
+            is_group: msg.is_group,
+            text: Some(msg.text),
+            msg_type: MsgType::Text,
+        }
+    }
+}
+
 #[async_trait]
 impl Channel for WxCliChannel {
     fn name(&self) -> &str {
@@ -93,14 +115,7 @@ impl Channel for WxCliChannel {
                         }
                         drop(seen);
 
-                        let incoming = IncomingMessage {
-                            message_id: msg.id,
-                            from: msg.from,
-                            chat_id: msg.chat_id,
-                            is_group: msg.is_group,
-                            text: Some(msg.text),
-                            msg_type: MsgType::Text,
-                        };
+                        let incoming = IncomingMessage::from(msg);
 
                         let handler = Arc::clone(&handler);
                         tokio::spawn(async move {

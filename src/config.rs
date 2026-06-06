@@ -10,6 +10,7 @@ pub struct Config {
     pub wecom: Option<WecomConfig>,
     #[serde(default)]
     pub wx_cli: WxCliConfig,
+    #[serde(default)]
     pub ai: AiConfig,
     #[serde(default)]
     pub hermes: HermesConfig,
@@ -295,6 +296,30 @@ mod tests {
         );
         assert!(config.bot.mention_names.is_empty());
         assert!(config.groups.is_empty());
+    }
+
+    #[test]
+    fn allows_minimal_wx_cli_diagnostic_config() {
+        let config: Config = toml::from_str(
+            r#"
+            [channel]
+            kind = "wx_cli"
+
+            [wx_cli]
+            bin = "wx-local"
+            poll_args = ["poll", "--json"]
+            "#,
+        )
+        .expect("config");
+
+        assert_eq!(config.channel.kind, ChannelKind::WxCli);
+        assert_eq!(config.ai.provider, AiProvider::OpenAi);
+        assert!(config.ai.api_key.is_empty());
+        assert_eq!(config.wx_cli.bin, "wx-local");
+        assert_eq!(
+            config.wx_cli.poll_args,
+            vec!["poll".to_string(), "--json".to_string()]
+        );
     }
 
     #[test]

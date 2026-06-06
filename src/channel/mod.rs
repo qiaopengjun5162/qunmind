@@ -2,12 +2,13 @@ pub mod wecom;
 pub mod wx_cli;
 
 use async_trait::async_trait;
+use serde::Serialize;
 use std::sync::Arc;
 
 use crate::error::Result;
 
 /// 收到的消息
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct IncomingMessage {
     /// 消息 ID
     pub message_id: String,
@@ -23,7 +24,8 @@ pub struct IncomingMessage {
     pub msg_type: MsgType,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
 pub enum MsgType {
     Text,
     Image,
