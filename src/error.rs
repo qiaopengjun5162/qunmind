@@ -1,7 +1,7 @@
 use thiserror::Error;
 
 #[derive(Error, Debug)]
-pub enum MurmurError {
+pub enum QunMindError {
     #[error("配置错误: {0}")]
     Config(String),
 
@@ -11,8 +11,14 @@ pub enum MurmurError {
     #[error("AI 调用失败: {0}")]
     Ai(String),
 
+    #[error("存储错误: {0}")]
+    Storage(String),
+
     #[error("HTTP 请求失败: {0}")]
     Http(#[from] reqwest::Error),
+
+    #[error("数据库错误: {0}")]
+    Database(#[from] sqlx::Error),
 
     #[error("JSON 解析失败: {0}")]
     Json(#[from] serde_json::Error),
@@ -27,4 +33,4 @@ pub enum MurmurError {
     Other(#[from] anyhow::Error),
 }
 
-pub type Result<T> = std::result::Result<T, MurmurError>;
+pub type Result<T> = std::result::Result<T, QunMindError>;

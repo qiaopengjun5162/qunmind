@@ -1,0 +1,23 @@
+repos:
+  - repo: local
+    hooks:
+      - id: cargo-fmt
+        name: cargo fmt
+        entry: cargo fmt --all -- --check
+        language: system
+        pass_filenames: false
+      - id: taplo-fmt
+        name: taplo fmt
+        entry: taplo fmt --check --option reorder_keys=true Cargo.toml config.example.toml
+        language: system
+        pass_filenames: false
+      - id: cargo-clippy
+        name: cargo clippy
+        entry: cargo clippy --all-targets --all-features --tests --benches -- -D warnings
+        language: system
+        pass_filenames: false
+      - id: cargo-nextest
+        name: cargo nextest
+        entry: cargo nextest run --all-features
+        language: system
+        pass_filenames: false

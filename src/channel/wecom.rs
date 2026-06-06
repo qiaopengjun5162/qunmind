@@ -7,7 +7,7 @@ use wecom_aibot_rust_sdk::types::{WSClientOptions, WsFrame};
 
 use super::{Channel, IncomingMessage, MessageHandler, MsgType};
 use crate::config::WecomConfig;
-use crate::error::{MurmurError, Result};
+use crate::error::{QunMindError, Result};
 
 pub struct WeComChannel {
     bot_id: String,
@@ -112,7 +112,7 @@ impl Channel for WeComChannel {
         ws_client
             .connect()
             .await
-            .map_err(|e| MurmurError::Channel(format!("连接企业微信失败: {}", e)))?;
+            .map_err(|e| QunMindError::Channel(format!("连接企业微信失败: {}", e)))?;
 
         info!("企业微信通道已启动");
         *self.client.lock().await = Some(ws_client);
@@ -127,7 +127,7 @@ impl Channel for WeComChannel {
         let guard = self.client.lock().await;
         let client = guard
             .as_ref()
-            .ok_or_else(|| MurmurError::Channel("企业微信通道未启动".to_string()))?;
+            .ok_or_else(|| QunMindError::Channel("企业微信通道未启动".to_string()))?;
 
         let body = serde_json::json!({
             "msgtype": "markdown",
@@ -139,7 +139,7 @@ impl Channel for WeComChannel {
         client
             .send_message(chat_id, body)
             .await
-            .map_err(|e| MurmurError::Channel(format!("发送消息失败: {}", e)))?;
+            .map_err(|e| QunMindError::Channel(format!("发送消息失败: {}", e)))?;
 
         Ok(())
     }

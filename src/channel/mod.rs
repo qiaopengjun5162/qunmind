@@ -1,4 +1,5 @@
 pub mod wecom;
+pub mod wx_cli;
 
 use async_trait::async_trait;
 use std::sync::Arc;
@@ -7,7 +8,6 @@ use crate::error::Result;
 
 /// 收到的消息
 #[derive(Debug, Clone)]
-#[expect(dead_code, reason = "预留字段，后续功能使用")]
 pub struct IncomingMessage {
     /// 消息 ID
     pub message_id: String,
@@ -23,8 +23,7 @@ pub struct IncomingMessage {
     pub msg_type: MsgType,
 }
 
-#[derive(Debug, Clone, PartialEq)]
-#[expect(dead_code, reason = "预留变体，后续消息类型扩展使用")]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MsgType {
     Text,
     Image,
@@ -43,10 +42,8 @@ pub trait MessageHandler: Send + Sync {
 /// 通道抽象
 #[async_trait]
 pub trait Channel: Send + Sync {
-    #[expect(dead_code, reason = "预留方法，后续多通道管理使用")]
     fn name(&self) -> &str;
     async fn start(&self, handler: Arc<dyn MessageHandler>) -> Result<()>;
     async fn send_text(&self, chat_id: &str, text: &str) -> Result<()>;
-    #[expect(dead_code, reason = "预留方法，后续优雅关闭使用")]
     async fn shutdown(&self) -> Result<()>;
 }

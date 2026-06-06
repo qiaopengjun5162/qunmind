@@ -1,3 +1,6 @@
+[channel]
+kind = "wecom" # 可选: "wecom" 企业微信内部群, "wx_cli" 普通微信/外部群本地通道
+
 [wecom]
 bot_id = "your-bot-id"
 secret = "your-secret"
@@ -6,12 +9,34 @@ secret = "your-secret"
 api_key = "your-api-key"
 api_url = "https://api.openai.com/v1/chat/completions"
 model = "gpt-4o-mini"
+provider = "open_ai"                                   # 可选: "open_ai", "hermes"
 system_prompt = "你是一个有用的助手，用中文回复。"
+
+[hermes]
+agent_id = "your-hermes-agent-id"
+api_key = "your-hermes-api-key"
+api_url = "http://127.0.0.1:8000/v1/chat"
+timeout_secs = 60
+
+[wx_cli]
+bin = "wx"
+group_chat_id = ""                                              # wx-cli 输出不包含 chat_id 时的兜底群 ID
+poll_args = ["new-messages", "--json"]                          # 按本地 wx-cli/插件实际命令调整
+poll_interval_secs = 5
+send_args = ["send", "--chat", "{chat_id}", "--text", "{text}"]
+
+[bot]
+mention_names = [] # wx-cli 群机器人建议配置为 ["@AI助手"]；留空则回复所有文本消息
 
 [schedule]
 daily_report_chat_id = ""                    # 目标群的 chat_id
 daily_report_cron = "0 0 9 * * *"            # 每天早上 9:00
+daily_report_lookback_hours = 24             # 日报读取最近多少小时的已保存群消息
+daily_report_max_messages = 200              # 日报最多纳入多少条消息
 daily_report_prompt = "请根据今天的对话生成一份简洁的日报摘要。"
+
+[storage]
+database_url = "postgres://postgres:postgres@localhost:5432/qunmind"
 
 [[groups]]
 chat_id = "group-chat-id-1"

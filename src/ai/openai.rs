@@ -5,7 +5,7 @@ use tracing::debug;
 
 use super::{AiClient, ChatMessage};
 use crate::config::AiConfig;
-use crate::error::{MurmurError, Result};
+use crate::error::{QunMindError, Result};
 
 pub struct OpenAiClient {
     client: Client,
@@ -91,18 +91,72 @@ impl AiClient for OpenAiClient {
         if !resp.status().is_success() {
             let status = resp.status();
             let body = resp.text().await.unwrap_or_default();
-            return Err(MurmurError::Ai(format!(
+            return Err(QunMindError::Ai(format!(
                 "API 返回错误 {}: {}",
                 status, body
             )));
         }
 
         let chat_resp: ChatResponse = resp.json().await?;
+        extract_reply(chat_resp)
+    }
+}
 
-        chat_resp
-            .choices
-            .first()
-            .map(|c| c.message.content.clone())
-            .ok_or_else(|| MurmurError::Ai("AI 返回空响应".to_string()))
+fn extract_reply(response: ChatResponse) -> Result<String> {
+    response
+        .choices
+        .first()
+        .map(|c| c.message.content.clone())
+        .ok_or_else(|| QunMindError::Ai("AI 返回空响应".to_string()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn extracts_first_choice_content() {
+        let response: ChatResponse = serde_json::from_value(serde_json::json!({
+            "choices": [
+                { "message": { "content": "hello" } },
+                { "message": { "content": "ignored" } }
+            ]
+        }))
+        .expect("response");
+
+        assert_eq!(extract_reply(response).expect("reply"), "hello");
+    }
+
+    #[test]
+    fn rejects_empty_choices() {
+        let response: ChatResponse =
+            serde_json::from_value(serde_json::json!({ "choices": [] })).expect("response");
+
+        let err = extract_reply(response).expect_err("empty choices");
+
+        assert!(err.to_string().contains("AI 返回空响应"));
+    }
+
+    #[test]
+    fn prepends_system_prompt_to_chat_request() {
+        let config = AiConfig {
+            api_key: "token".to_string(),
+            system_prompt: "system".to_string(),
+            ..Default::default()
+        };
+        let client = OpenAiClient::new(&config);
+        let mut req_messages = vec![ChatMessageReq {
+            role: "system".to_string(),
+            content: client.system_prompt.clone(),
+        }];
+        req_messages.push(ChatMessageReq {
+            role: "user".to_string(),
+            content: "hello".to_string(),
+        });
+
+        assert_eq!(req_messages[0].role, "system");
+        assert_eq!(req_messages[0].content, "system");
+        assert_eq!(req_messages[1].role, "user");
+        assert_eq!(req_messages[1].content, "hello");
     }
 }

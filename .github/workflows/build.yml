@@ -1,0 +1,36 @@
+name: build
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@nextest
+
+      - name: Install taplo
+        uses: taiki-e/install-action@taplo-cli
+
+      - name: Check formatting
+        run: |
+          cargo fmt --all -- --check
+          taplo fmt --check --option reorder_keys=true Cargo.toml config.example.toml
+
+      - name: Clippy
+        run: cargo clippy --all-targets --all-features --tests --benches -- -D warnings
+
+      - name: Test
+        run: cargo nextest run --all-features

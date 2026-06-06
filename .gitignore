@@ -1,1 +1,16 @@
 /target
+
+# Local secrets and runtime state
+config.toml
+*.log
+*.db
+*.sqlite
+*.sqlite3
+
+# Coverage and generated reports
+/coverage
+/tarpaulin-report.html
+/lcov.info
+
+# macOS
+.DS_Store

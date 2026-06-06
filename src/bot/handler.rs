@@ -4,16 +4,40 @@ use tracing::{error, info};
 
 use crate::ai::{AiClient, ChatMessage};
 use crate::channel::{Channel, IncomingMessage, MessageHandler, MsgType};
+use crate::config::BotConfig;
 use crate::error::Result;
+use crate::storage::{MessageStore, NewMessage};
 
 pub struct BotHandler {
     ai: Arc<dyn AiClient>,
     channel: Arc<dyn Channel>,
+    config: BotConfig,
+    message_store: Arc<dyn MessageStore>,
 }
 
 impl BotHandler {
-    pub fn new(ai: Arc<dyn AiClient>, channel: Arc<dyn Channel>) -> Self {
-        Self { ai, channel }
+    pub fn new(
+        ai: Arc<dyn AiClient>,
+        channel: Arc<dyn Channel>,
+        config: BotConfig,
+        message_store: Arc<dyn MessageStore>,
+    ) -> Self {
+        Self {
+            ai,
+            channel,
+            config,
+            message_store,
+        }
+    }
+
+    fn should_reply(&self, msg: &IncomingMessage, text: &str) -> bool {
+        !msg.is_group
+            || self.config.mention_names.is_empty()
+            || self
+                .config
+                .mention_names
+                .iter()
+                .any(|name| text.contains(name))
     }
 }
 
@@ -37,6 +61,15 @@ impl MessageHandler for BotHandler {
             text = %text,
             "收到消息"
         );
+
+        self.message_store
+            .save(NewMessage::incoming(self.channel.name(), &msg))
+            .await?;
+
+        if !self.should_reply(&msg, &text) {
+            info!(chat_id = %msg.chat_id, "群消息未命中 mention_names，跳过回复");
+            return Ok(());
+        }
 
         let messages = vec![ChatMessage {
             role: "user".to_string(),

@@ -1,0 +1,36 @@
+[advisories]
+ignore = [
+  # Transitive dependency from wecom-aibot-rust-sdk -> reqwest 0.11.
+  # Remove this after replacing the SDK or upgrading its reqwest stack.
+  "RUSTSEC-2025-0134",
+]
+version = 2
+
+[bans]
+allow = []
+deny = []
+highlight = "all"
+multiple-versions = "warn"
+wildcards = "allow"
+workspace-default-features = "allow"
+
+[licenses]
+allow = [
+  "Apache-2.0",
+  "BSD-2-Clause",
+  "BSD-3-Clause",
+  "CDLA-Permissive-2.0",
+  "ISC",
+  "MIT",
+  "Unicode-3.0",
+  "Zlib",
+]
+confidence-threshold = 0.8
+exceptions = []
+version = 2
+
+[sources]
+allow-git = []
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+unknown-git = "deny"
+unknown-registry = "deny"
