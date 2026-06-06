@@ -12,8 +12,11 @@ use qunmind::cli::{Args, CliCommand, WxCliCommand};
 use qunmind::config::{AiProvider, ChannelKind, Config};
 use qunmind::error::QunMindError;
 use qunmind::scheduler::daily_report::DailyReportScheduler;
+use qunmind::source::CompositePublicNewsSource;
 use qunmind::source::PublicNewsSource;
+use qunmind::source::github_trending::GitHubTrendingSource;
 use qunmind::source::hacker_news::HackerNewsSource;
+use qunmind::source::slerf_blog::SlerfBlogSource;
 use qunmind::storage::MessageStore;
 use qunmind::storage::postgres::PostgresMessageStore;
 use tracing::{error, info};
@@ -73,17 +76,16 @@ async fn main() -> anyhow::Result<()> {
         Arc::clone(&message_store),
     ));
 
+    let public_news_source = build_public_news_source(&config)?;
     let mut scheduler = DailyReportScheduler::new(
         Arc::clone(&channel),
         Arc::clone(&ai_client),
         Arc::clone(&message_store),
         config.schedule,
     );
-    if config.public_sources.hacker_news_enabled {
-        let source: Arc<dyn PublicNewsSource> =
-            Arc::new(HackerNewsSource::new(&config.public_sources)?);
+    if let Some(source) = public_news_source {
         scheduler = scheduler.with_public_news_source(source);
-        info!("Hacker News 公共日报素材源已启用");
+        info!("公共日报素材源已启用");
     }
     tokio::spawn(async move {
         if let Err(e) = scheduler.start().await {
@@ -95,6 +97,31 @@ async fn main() -> anyhow::Result<()> {
     channel.start(handler).await?;
 
     Ok(())
+}
+
+fn build_public_news_source(config: &Config) -> anyhow::Result<Option<Arc<dyn PublicNewsSource>>> {
+    let public_sources = &config.public_sources;
+    let mut sources: Vec<Arc<dyn PublicNewsSource>> = Vec::new();
+
+    if public_sources.hacker_news_enabled {
+        sources.push(Arc::new(HackerNewsSource::new(public_sources)?));
+    }
+    if public_sources.github_trending_enabled {
+        sources.push(Arc::new(GitHubTrendingSource::new(public_sources)?));
+    }
+    if public_sources.slerf_blog_enabled {
+        sources.push(Arc::new(SlerfBlogSource::new(public_sources)?));
+    }
+
+    if sources.is_empty() {
+        return Ok(None);
+    }
+
+    Ok(Some(Arc::new(CompositePublicNewsSource::new(
+        sources,
+        public_sources.topic_keywords.clone(),
+        public_sources.max_items,
+    ))))
 }
 
 async fn run_diagnostic_command(command: CliCommand, config: &Config) -> anyhow::Result<()> {

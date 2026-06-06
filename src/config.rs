@@ -132,6 +132,10 @@ pub struct StorageConfig {
 
 #[derive(Debug, Deserialize)]
 pub struct PublicSourcesConfig {
+    #[serde(default = "default_public_source_topic_keywords")]
+    pub topic_keywords: Vec<String>,
+    #[serde(default = "default_public_source_max_items")]
+    pub max_items: usize,
     #[serde(default)]
     pub hacker_news_enabled: bool,
     #[serde(default = "default_hacker_news_base_url")]
@@ -140,6 +144,26 @@ pub struct PublicSourcesConfig {
     pub hacker_news_max_items: usize,
     #[serde(default = "default_hacker_news_timeout_secs")]
     pub hacker_news_timeout_secs: u64,
+    #[serde(default)]
+    pub github_trending_enabled: bool,
+    #[serde(default = "default_github_trending_base_url")]
+    pub github_trending_base_url: String,
+    #[serde(default = "default_github_trending_languages")]
+    pub github_trending_languages: Vec<String>,
+    #[serde(default = "default_github_trending_since")]
+    pub github_trending_since: String,
+    #[serde(default = "default_github_trending_max_items")]
+    pub github_trending_max_items: usize,
+    #[serde(default = "default_github_trending_timeout_secs")]
+    pub github_trending_timeout_secs: u64,
+    #[serde(default)]
+    pub slerf_blog_enabled: bool,
+    #[serde(default = "default_slerf_blog_urls")]
+    pub slerf_blog_urls: Vec<String>,
+    #[serde(default = "default_slerf_blog_max_items")]
+    pub slerf_blog_max_items: usize,
+    #[serde(default = "default_slerf_blog_timeout_secs")]
+    pub slerf_blog_timeout_secs: u64,
 }
 
 #[derive(Debug, Deserialize)]
@@ -210,6 +234,33 @@ fn default_storage_database_url() -> String {
     "postgres://postgres:postgres@localhost:5432/qunmind".to_string()
 }
 
+fn default_public_source_topic_keywords() -> Vec<String> {
+    [
+        "rust",
+        "wasm",
+        "webassembly",
+        "web3",
+        "crypto",
+        "blockchain",
+        "ethereum",
+        "solana",
+        "ai",
+        "llm",
+        "agent",
+        "zk",
+        "zkp",
+        "zero knowledge",
+        "zero-knowledge",
+    ]
+    .into_iter()
+    .map(str::to_string)
+    .collect()
+}
+
+fn default_public_source_max_items() -> usize {
+    12
+}
+
 fn default_hacker_news_base_url() -> String {
     "https://hacker-news.firebaseio.com/v0".to_string()
 }
@@ -219,6 +270,41 @@ fn default_hacker_news_max_items() -> usize {
 }
 
 fn default_hacker_news_timeout_secs() -> u64 {
+    10
+}
+
+fn default_github_trending_base_url() -> String {
+    "https://github.com/trending".to_string()
+}
+
+fn default_github_trending_languages() -> Vec<String> {
+    ["rust", "go", "python", "typescript"]
+        .into_iter()
+        .map(str::to_string)
+        .collect()
+}
+
+fn default_github_trending_since() -> String {
+    "daily".to_string()
+}
+
+fn default_github_trending_max_items() -> usize {
+    8
+}
+
+fn default_github_trending_timeout_secs() -> u64 {
+    10
+}
+
+fn default_slerf_blog_urls() -> Vec<String> {
+    vec!["https://blog.slerf.tools/".to_string()]
+}
+
+fn default_slerf_blog_max_items() -> usize {
+    8
+}
+
+fn default_slerf_blog_timeout_secs() -> u64 {
     10
 }
 
@@ -280,10 +366,22 @@ impl Default for StorageConfig {
 impl Default for PublicSourcesConfig {
     fn default() -> Self {
         Self {
+            topic_keywords: default_public_source_topic_keywords(),
+            max_items: default_public_source_max_items(),
             hacker_news_enabled: false,
             hacker_news_base_url: default_hacker_news_base_url(),
             hacker_news_max_items: default_hacker_news_max_items(),
             hacker_news_timeout_secs: default_hacker_news_timeout_secs(),
+            github_trending_enabled: false,
+            github_trending_base_url: default_github_trending_base_url(),
+            github_trending_languages: default_github_trending_languages(),
+            github_trending_since: default_github_trending_since(),
+            github_trending_max_items: default_github_trending_max_items(),
+            github_trending_timeout_secs: default_github_trending_timeout_secs(),
+            slerf_blog_enabled: false,
+            slerf_blog_urls: default_slerf_blog_urls(),
+            slerf_blog_max_items: default_slerf_blog_max_items(),
+            slerf_blog_timeout_secs: default_slerf_blog_timeout_secs(),
         }
     }
 }
@@ -332,12 +430,45 @@ mod tests {
             "postgres://postgres:postgres@localhost:5432/qunmind"
         );
         assert!(!config.public_sources.hacker_news_enabled);
+        assert_eq!(config.public_sources.max_items, 12);
+        assert!(
+            config
+                .public_sources
+                .topic_keywords
+                .contains(&"rust".to_string())
+        );
+        assert!(
+            config
+                .public_sources
+                .topic_keywords
+                .contains(&"zkp".to_string())
+        );
         assert_eq!(
             config.public_sources.hacker_news_base_url,
             "https://hacker-news.firebaseio.com/v0"
         );
         assert_eq!(config.public_sources.hacker_news_max_items, 10);
         assert_eq!(config.public_sources.hacker_news_timeout_secs, 10);
+        assert!(!config.public_sources.github_trending_enabled);
+        assert_eq!(
+            config.public_sources.github_trending_base_url,
+            "https://github.com/trending"
+        );
+        assert_eq!(
+            config.public_sources.github_trending_languages,
+            vec![
+                "rust".to_string(),
+                "go".to_string(),
+                "python".to_string(),
+                "typescript".to_string()
+            ]
+        );
+        assert_eq!(config.public_sources.github_trending_since, "daily");
+        assert!(!config.public_sources.slerf_blog_enabled);
+        assert_eq!(
+            config.public_sources.slerf_blog_urls,
+            vec!["https://blog.slerf.tools/".to_string()]
+        );
         assert!(config.bot.mention_names.is_empty());
         assert!(config.groups.is_empty());
     }
@@ -395,9 +526,18 @@ mod tests {
             database_url = "postgres://user:pass@localhost/qunmind_test"
 
             [public_sources]
+            topic_keywords = ["rust", "web3", "zkp"]
+            max_items = 7
             hacker_news_enabled = true
             hacker_news_max_items = 5
             hacker_news_timeout_secs = 3
+            github_trending_enabled = true
+            github_trending_languages = ["rust"]
+            github_trending_since = "weekly"
+            github_trending_max_items = 4
+            slerf_blog_enabled = true
+            slerf_blog_urls = ["https://blog.slerf.tools/"]
+            slerf_blog_max_items = 2
 
             [[groups]]
             chat_id = "group-1"
@@ -419,9 +559,23 @@ mod tests {
             config.storage.database_url,
             "postgres://user:pass@localhost/qunmind_test"
         );
+        assert_eq!(
+            config.public_sources.topic_keywords,
+            vec!["rust".to_string(), "web3".to_string(), "zkp".to_string()]
+        );
+        assert_eq!(config.public_sources.max_items, 7);
         assert!(config.public_sources.hacker_news_enabled);
         assert_eq!(config.public_sources.hacker_news_max_items, 5);
         assert_eq!(config.public_sources.hacker_news_timeout_secs, 3);
+        assert!(config.public_sources.github_trending_enabled);
+        assert_eq!(
+            config.public_sources.github_trending_languages,
+            vec!["rust".to_string()]
+        );
+        assert_eq!(config.public_sources.github_trending_since, "weekly");
+        assert_eq!(config.public_sources.github_trending_max_items, 4);
+        assert!(config.public_sources.slerf_blog_enabled);
+        assert_eq!(config.public_sources.slerf_blog_max_items, 2);
         assert_eq!(config.groups.len(), 1);
         assert!(config.groups[0].enabled);
     }

@@ -18,7 +18,7 @@ The project currently supports:
 - PostgreSQL message persistence.
 - Cron-based daily reports.
 - Daily reports generated from recently stored group messages.
-- Optional Hacker News fallback reports when a report group has no messages.
+- Optional Hacker News, GitHub Trending, and Slerf Blog fallback reports when a report group has no messages.
 
 ## Status
 
@@ -47,15 +47,19 @@ These commands only read `[wx_cli]` config and do not initialize PostgreSQL, AI 
 
 ## Public Source Fallback
 
-By default, QunMind sends an empty-report notice when the report group has no messages in the lookback window. Enable Hacker News fallback material with:
+By default, QunMind sends an empty-report notice when the report group has no messages in the lookback window. Enable selected public sources with:
 
 ```toml
 [public_sources]
 hacker_news_enabled = true
+github_trending_enabled = true
+slerf_blog_enabled = true
 hacker_news_max_items = 10
+github_trending_languages = ["rust", "go", "python", "typescript"]
+topic_keywords = ["rust", "web3", "ai", "llm", "agent", "zkp", "solana", "ethereum"]
 ```
 
-The prompt asks the model to mark this as public-source context, not a summary of group discussion.
+These sources are filtered toward programming technology, Rust, Web3, AI, and ZKP. The prompt asks the model to mark this as public-source context, not a summary of group discussion.
 
 ## Development
 

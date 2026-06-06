@@ -39,10 +39,38 @@ daily_report_prompt = "请根据今天的对话生成一份简洁的日报摘要
 database_url = "postgres://postgres:postgres@localhost:5432/qunmind"
 
 [public_sources]
+github_trending_base_url = "https://github.com/trending"
+github_trending_enabled = false
+github_trending_languages = ["rust", "go", "python", "typescript"]
+github_trending_max_items = 8
+github_trending_since = "daily"
+github_trending_timeout_secs = 10
 hacker_news_base_url = "https://hacker-news.firebaseio.com/v0"
 hacker_news_enabled = false
 hacker_news_max_items = 10
 hacker_news_timeout_secs = 10
+max_items = 12
+slerf_blog_enabled = false
+slerf_blog_max_items = 8
+slerf_blog_timeout_secs = 10
+slerf_blog_urls = ["https://blog.slerf.tools/"]
+topic_keywords = [
+  "rust",
+  "wasm",
+  "webassembly",
+  "web3",
+  "crypto",
+  "blockchain",
+  "ethereum",
+  "solana",
+  "ai",
+  "llm",
+  "agent",
+  "zk",
+  "zkp",
+  "zero knowledge",
+  "zero-knowledge",
+]
 
 [[groups]]
 chat_id = "group-chat-id-1"
