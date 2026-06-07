@@ -284,7 +284,7 @@ async fn skips_reply_for_disabled_group_after_persisting() {
         ai.clone(),
         channel.clone(),
         BotConfig::default(),
-        vec![group_config("group-1", false, None, None)],
+        vec![group_config("group-1", false, None, None, None)],
         store.clone(),
     );
 
@@ -322,6 +322,7 @@ async fn group_mention_names_override_global_mentions() {
             true,
             Some(vec!["@local".to_string()]),
             Some(0),
+            None,
         )],
         store,
     );
@@ -358,6 +359,45 @@ async fn group_mention_names_override_global_mentions() {
         *channel.sent.lock().await,
         vec![("group-1".to_string(), "group reply".to_string())]
     );
+}
+
+#[tokio::test]
+async fn group_system_prompt_is_sent_before_user_messages() {
+    let store = Arc::new(RecordingStore::default());
+    let channel = Arc::new(RecordingChannel::default());
+    let ai = Arc::new(StaticAi::reply("persona reply"));
+    let handler = BotHandler::new(
+        ai.clone(),
+        channel,
+        BotConfig::default(),
+        vec![group_config(
+            "group-1",
+            true,
+            None,
+            Some(0),
+            Some("你是 Web3 投研群助手。".to_string()),
+        )],
+        store,
+    );
+
+    handler
+        .on_message(IncomingMessage {
+            message_id: "m1".to_string(),
+            from: "alice".to_string(),
+            chat_id: "group-1".to_string(),
+            is_group: true,
+            text: Some("分析一下这个项目".to_string()),
+            msg_type: MsgType::Text,
+        })
+        .await
+        .expect("message");
+
+    let ai_messages = ai.messages.lock().await;
+    assert_eq!(ai_messages[0].len(), 2);
+    assert_eq!(ai_messages[0][0].role, "system");
+    assert_eq!(ai_messages[0][0].content, "你是 Web3 投研群助手。");
+    assert_eq!(ai_messages[0][1].role, "user");
+    assert_eq!(ai_messages[0][1].content, "分析一下这个项目");
 }
 
 #[tokio::test]
@@ -412,6 +452,7 @@ fn group_config(
     enabled: bool,
     mention_names: Option<Vec<String>>,
     context_messages: Option<usize>,
+    system_prompt: Option<String>,
 ) -> GroupConfig {
     GroupConfig {
         chat_id: chat_id.to_string(),
@@ -419,6 +460,7 @@ fn group_config(
         enabled,
         mention_names,
         context_messages,
+        system_prompt,
     }
 }
 

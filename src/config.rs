@@ -216,6 +216,8 @@ pub struct GroupConfig {
     pub mention_names: Option<Vec<String>>,
     #[serde(default)]
     pub context_messages: Option<usize>,
+    #[serde(default)]
+    pub system_prompt: Option<String>,
 }
 
 fn default_channel_kind() -> ChannelKind {
@@ -725,6 +727,7 @@ mod tests {
             enabled = false
             mention_names = ["@LocalMind"]
             context_messages = 2
+            system_prompt = "你是技术群 Rust 助手。"
             "#,
         )
         .expect("config");
@@ -799,5 +802,9 @@ mod tests {
             Some(vec!["@LocalMind".to_string()])
         );
         assert_eq!(config.groups[0].context_messages, Some(2));
+        assert_eq!(
+            config.groups[0].system_prompt.as_deref(),
+            Some("你是技术群 Rust 助手。")
+        );
     }
 }

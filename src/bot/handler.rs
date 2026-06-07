@@ -64,30 +64,42 @@ impl BotHandler {
             .unwrap_or(self.config.context_messages)
     }
 
+    fn system_prompt_for<'a>(&'a self, msg: &IncomingMessage) -> Option<&'a str> {
+        self.group_for(msg)
+            .and_then(|group| group.system_prompt.as_deref())
+            .filter(|prompt| !prompt.trim().is_empty())
+    }
+
     async fn chat_messages(&self, msg: &IncomingMessage, text: &str) -> Vec<ChatMessage> {
         let context_messages = self.context_messages_for(msg);
-        if context_messages == 0 {
-            return vec![user_message(text.to_string())];
-        }
-
-        let until = Utc::now() + Duration::seconds(1);
-        let since = until - Duration::hours(24);
-        let limit = i64::try_from(context_messages.saturating_add(1))
-            .unwrap_or(i64::MAX)
-            .max(1);
-        let recent = match self
-            .message_store
-            .text_messages(&msg.chat_id, since, until, limit)
-            .await
-        {
-            Ok(messages) => messages,
-            Err(err) => {
-                error!("读取对话上下文失败: {}", err);
-                return vec![user_message(text.to_string())];
+        let mut messages = if context_messages == 0 {
+            vec![user_message(text.to_string())]
+        } else {
+            let until = Utc::now() + Duration::seconds(1);
+            let since = until - Duration::hours(24);
+            let limit = i64::try_from(context_messages.saturating_add(1))
+                .unwrap_or(i64::MAX)
+                .max(1);
+            match self
+                .message_store
+                .text_messages(&msg.chat_id, since, until, limit)
+                .await
+            {
+                Ok(recent) => {
+                    build_chat_messages_from_context(&recent, msg, text, context_messages)
+                }
+                Err(err) => {
+                    error!("读取对话上下文失败: {}", err);
+                    vec![user_message(text.to_string())]
+                }
             }
         };
 
-        build_chat_messages_from_context(&recent, msg, text, context_messages)
+        if let Some(prompt) = self.system_prompt_for(msg) {
+            messages.insert(0, system_message(prompt.to_string()));
+        }
+
+        messages
     }
 }
 
@@ -132,6 +144,13 @@ fn context_message(message: &StoredMessage) -> Option<ChatMessage> {
 fn user_message(content: String) -> ChatMessage {
     ChatMessage {
         role: "user".to_string(),
+        content,
+    }
+}
+
+fn system_message(content: String) -> ChatMessage {
+    ChatMessage {
+        role: "system".to_string(),
         content,
     }
 }

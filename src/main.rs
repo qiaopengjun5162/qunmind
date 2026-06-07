@@ -274,6 +274,7 @@ fn wx_cli_dry_run_item(config: &Config, msg: &IncomingMessage) -> serde_json::Va
         "group_name": effective.group_name,
         "group_enabled": effective.enabled,
         "context_messages": effective.context_messages,
+        "system_prompt_preview": text_preview(effective.system_prompt.as_deref(), 80),
         "would_reply": would_reply,
         "reason": reason
     })
@@ -284,6 +285,7 @@ struct EffectiveBotConfig {
     group_name: Option<String>,
     mention_names: Vec<String>,
     context_messages: usize,
+    system_prompt: Option<String>,
 }
 
 fn effective_bot_config(config: &Config, msg: &IncomingMessage) -> EffectiveBotConfig {
@@ -298,6 +300,7 @@ fn effective_bot_config(config: &Config, msg: &IncomingMessage) -> EffectiveBotC
         context_messages: group
             .and_then(|group| group.context_messages)
             .unwrap_or(config.bot.context_messages),
+        system_prompt: group.and_then(|group| group.system_prompt.clone()),
     }
 }
 
@@ -576,6 +579,7 @@ mod tests {
             enabled = false
             mention_names = ["@local"]
             context_messages = 2
+            system_prompt = "你是本地群助手。"
             "#,
         );
         let msg = IncomingMessage {
@@ -595,6 +599,7 @@ mod tests {
         assert_eq!(item["group_enabled"], false);
         assert_eq!(item["matched_mentions"], serde_json::json!(["@local"]));
         assert_eq!(item["context_messages"], 2);
+        assert_eq!(item["system_prompt_preview"], "你是本地群助手。");
     }
 
     #[test]

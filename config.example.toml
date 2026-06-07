@@ -98,3 +98,4 @@ context_messages = 8
 enabled = true
 mention_names = ["@AI助手"]
 name = "技术群"
+system_prompt = "你是这个技术群的 AI 助手，优先关注 Rust、AI、Web3 和 ZKP，回答要简洁、具体。"
