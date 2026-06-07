@@ -5,7 +5,6 @@ use qunmind::ai;
 use qunmind::ai::hermes::HermesClient;
 use qunmind::ai::openai::OpenAiClient;
 use qunmind::bot::handler::BotHandler;
-use qunmind::bot::handler::should_reply_to_text;
 use qunmind::channel::Channel;
 use qunmind::channel::IncomingMessage;
 use qunmind::channel::MessageHandler;
@@ -14,7 +13,7 @@ use qunmind::channel::wecom::WeComChannel;
 use qunmind::channel::wx_cli::WxCliChannel;
 use qunmind::channel::wx_cli::parse_wx_cli_messages_from_str;
 use qunmind::cli::{Args, CliCommand, WxCliCommand};
-use qunmind::config::{AiProvider, ChannelKind, Config};
+use qunmind::config::{AiProvider, ChannelKind, Config, GroupConfig};
 use qunmind::error::QunMindError;
 use qunmind::scheduler::daily_report::DailyReportScheduler;
 use qunmind::source::CompositePublicNewsSource;
@@ -58,6 +57,7 @@ async fn main() -> anyhow::Result<()> {
         Arc::clone(&ai_client),
         Arc::clone(&channel),
         config.bot.clone(),
+        config.groups.clone(),
         Arc::clone(&message_store),
     ));
 
@@ -177,7 +177,7 @@ async fn run_wx_cli_command(command: WxCliCommand, config: &Config) -> anyhow::R
             let items: Vec<_> = messages
                 .iter()
                 .take(limit)
-                .map(|msg| wx_cli_dry_run_item(&config.bot, msg))
+                .map(|msg| wx_cli_dry_run_item(config, msg))
                 .collect();
             println!(
                 "{}",
@@ -198,6 +198,7 @@ async fn run_wx_cli_command(command: WxCliCommand, config: &Config) -> anyhow::R
                 Arc::clone(&ai_client),
                 Arc::clone(&channel),
                 config.bot.clone(),
+                config.groups.clone(),
                 message_store,
             );
             let messages = wx_channel.poll_once().await?;
@@ -246,16 +247,14 @@ async fn load_wx_cli_messages(
     Ok(channel.poll_once().await?)
 }
 
-fn wx_cli_dry_run_item(
-    config: &qunmind::config::BotConfig,
-    msg: &IncomingMessage,
-) -> serde_json::Value {
-    let (would_reply, reason) = wx_cli_dry_run_decision(config, msg);
+fn wx_cli_dry_run_item(config: &Config, msg: &IncomingMessage) -> serde_json::Value {
+    let effective = effective_bot_config(config, msg);
+    let (would_reply, reason) = wx_cli_dry_run_decision(&effective, msg);
     let matched_mentions = msg
         .text
         .as_deref()
         .map(|text| {
-            config
+            effective
                 .mention_names
                 .iter()
                 .filter(|name| text.contains(name.as_str()))
@@ -272,13 +271,46 @@ fn wx_cli_dry_run_item(
         "msg_type": &msg.msg_type,
         "text_preview": text_preview(msg.text.as_deref(), 120),
         "matched_mentions": matched_mentions,
+        "group_name": effective.group_name,
+        "group_enabled": effective.enabled,
+        "context_messages": effective.context_messages,
         "would_reply": would_reply,
         "reason": reason
     })
 }
 
+struct EffectiveBotConfig {
+    enabled: bool,
+    group_name: Option<String>,
+    mention_names: Vec<String>,
+    context_messages: usize,
+}
+
+fn effective_bot_config(config: &Config, msg: &IncomingMessage) -> EffectiveBotConfig {
+    let group = group_for(&config.groups, msg);
+
+    EffectiveBotConfig {
+        enabled: group.is_none_or(|group| group.enabled),
+        group_name: group.map(|group| group.name.clone()),
+        mention_names: group
+            .and_then(|group| group.mention_names.clone())
+            .unwrap_or_else(|| config.bot.mention_names.clone()),
+        context_messages: group
+            .and_then(|group| group.context_messages)
+            .unwrap_or(config.bot.context_messages),
+    }
+}
+
+fn group_for<'a>(groups: &'a [GroupConfig], msg: &IncomingMessage) -> Option<&'a GroupConfig> {
+    if !msg.is_group {
+        return None;
+    }
+
+    groups.iter().find(|group| group.chat_id == msg.chat_id)
+}
+
 fn wx_cli_dry_run_decision(
-    config: &qunmind::config::BotConfig,
+    config: &EffectiveBotConfig,
     msg: &IncomingMessage,
 ) -> (bool, &'static str) {
     if msg.msg_type != MsgType::Text {
@@ -289,7 +321,11 @@ fn wx_cli_dry_run_decision(
         return (false, "empty_text");
     };
 
-    if should_reply_to_text(config, msg, text) {
+    if !config.enabled {
+        return (false, "group_disabled");
+    }
+
+    if should_reply_to_mentions(&config.mention_names, msg, text) {
         if !msg.is_group {
             return (true, "direct_message");
         }
@@ -300,6 +336,12 @@ fn wx_cli_dry_run_decision(
     }
 
     (false, "mention_not_matched")
+}
+
+fn should_reply_to_mentions(mention_names: &[String], msg: &IncomingMessage, text: &str) -> bool {
+    !msg.is_group
+        || mention_names.is_empty()
+        || mention_names.iter().any(|name| text.contains(name))
 }
 
 fn text_preview(text: Option<&str>, max_chars: usize) -> Option<String> {
@@ -449,10 +491,12 @@ mod tests {
 
     #[test]
     fn wx_cli_dry_run_marks_group_mention_as_reply() {
-        let config = qunmind::config::BotConfig {
-            mention_names: vec!["@bot".to_string()],
-            ..Default::default()
-        };
+        let config = config_from(
+            r#"
+            [bot]
+            mention_names = ["@bot"]
+            "#,
+        );
         let msg = IncomingMessage {
             message_id: "m1".to_string(),
             from: "alice".to_string(),
@@ -467,14 +511,17 @@ mod tests {
         assert_eq!(item["would_reply"], true);
         assert_eq!(item["reason"], "mention_matched");
         assert_eq!(item["matched_mentions"], serde_json::json!(["@bot"]));
+        assert_eq!(item["context_messages"], 8);
     }
 
     #[test]
     fn wx_cli_dry_run_marks_unmentioned_group_message_as_skip() {
-        let config = qunmind::config::BotConfig {
-            mention_names: vec!["@bot".to_string()],
-            ..Default::default()
-        };
+        let config = config_from(
+            r#"
+            [bot]
+            mention_names = ["@bot"]
+            "#,
+        );
         let msg = IncomingMessage {
             message_id: "m1".to_string(),
             from: "alice".to_string(),
@@ -484,7 +531,8 @@ mod tests {
             msg_type: MsgType::Text,
         };
 
-        let (would_reply, reason) = wx_cli_dry_run_decision(&config, &msg);
+        let effective = effective_bot_config(&config, &msg);
+        let (would_reply, reason) = wx_cli_dry_run_decision(&effective, &msg);
 
         assert!(!would_reply);
         assert_eq!(reason, "mention_not_matched");
@@ -492,10 +540,12 @@ mod tests {
 
     #[test]
     fn wx_cli_dry_run_marks_direct_message_as_reply() {
-        let config = qunmind::config::BotConfig {
-            mention_names: vec!["@bot".to_string()],
-            ..Default::default()
-        };
+        let config = config_from(
+            r#"
+            [bot]
+            mention_names = ["@bot"]
+            "#,
+        );
         let msg = IncomingMessage {
             message_id: "m1".to_string(),
             from: "alice".to_string(),
@@ -505,10 +555,46 @@ mod tests {
             msg_type: MsgType::Text,
         };
 
-        let (would_reply, reason) = wx_cli_dry_run_decision(&config, &msg);
+        let effective = effective_bot_config(&config, &msg);
+        let (would_reply, reason) = wx_cli_dry_run_decision(&effective, &msg);
 
         assert!(would_reply);
         assert_eq!(reason, "direct_message");
+    }
+
+    #[test]
+    fn wx_cli_dry_run_uses_group_overrides() {
+        let config = config_from(
+            r#"
+            [bot]
+            mention_names = ["@global"]
+            context_messages = 8
+
+            [[groups]]
+            chat_id = "room@chatroom"
+            name = "本地测试群"
+            enabled = false
+            mention_names = ["@local"]
+            context_messages = 2
+            "#,
+        );
+        let msg = IncomingMessage {
+            message_id: "m1".to_string(),
+            from: "alice".to_string(),
+            chat_id: "room@chatroom".to_string(),
+            is_group: true,
+            text: Some("@local 帮我总结一下".to_string()),
+            msg_type: MsgType::Text,
+        };
+
+        let item = wx_cli_dry_run_item(&config, &msg);
+
+        assert_eq!(item["would_reply"], false);
+        assert_eq!(item["reason"], "group_disabled");
+        assert_eq!(item["group_name"], "本地测试群");
+        assert_eq!(item["group_enabled"], false);
+        assert_eq!(item["matched_mentions"], serde_json::json!(["@local"]));
+        assert_eq!(item["context_messages"], 2);
     }
 
     #[test]

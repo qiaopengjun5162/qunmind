@@ -15,6 +15,7 @@ The project currently supports:
 - OpenAI-compatible chat completions.
 - Hermes / Xiaolongxia style HTTP agent adapter.
 - Configurable group mention filtering.
+- Per-group enablement, mention name, and context window overrides.
 - PostgreSQL message persistence.
 - Basic conversation context from recently stored messages when replying.
 - Incoming message link extraction and deduplicated storage.
@@ -25,7 +26,7 @@ The project currently supports:
 
 ## Status
 
-This is an MVP foundation, not a production-ready bot yet. The next important step is real wx-cli group testing and per-group configuration on top of the stored message stream.
+This is an MVP foundation, not a production-ready bot yet. The next important step is real wx-cli group testing and richer per-group persona / report configuration on top of the stored message stream.
 
 ## Quick Start
 

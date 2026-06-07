@@ -206,12 +206,16 @@ pub struct PublicSourcesConfig {
     pub slerf_blog_timeout_secs: u64,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct GroupConfig {
     pub chat_id: String,
     pub name: String,
     #[serde(default = "default_true")]
     pub enabled: bool,
+    #[serde(default)]
+    pub mention_names: Option<Vec<String>>,
+    #[serde(default)]
+    pub context_messages: Option<usize>,
 }
 
 fn default_channel_kind() -> ChannelKind {
@@ -718,6 +722,9 @@ mod tests {
             [[groups]]
             chat_id = "group-1"
             name = "技术群"
+            enabled = false
+            mention_names = ["@LocalMind"]
+            context_messages = 2
             "#,
         )
         .expect("config");
@@ -785,6 +792,12 @@ mod tests {
         assert!(config.public_sources.slerf_blog_enabled);
         assert_eq!(config.public_sources.slerf_blog_max_items, 2);
         assert_eq!(config.groups.len(), 1);
-        assert!(config.groups[0].enabled);
+        assert!(!config.groups[0].enabled);
+        assert_eq!(config.groups[0].name, "技术群");
+        assert_eq!(
+            config.groups[0].mention_names,
+            Some(vec!["@LocalMind".to_string()])
+        );
+        assert_eq!(config.groups[0].context_messages, Some(2));
     }
 }

@@ -94,5 +94,7 @@ topic_keywords = [
 
 [[groups]]
 chat_id = "group-chat-id-1"
+context_messages = 8
 enabled = true
+mention_names = ["@AI助手"]
 name = "技术群"

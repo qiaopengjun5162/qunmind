@@ -5,7 +5,7 @@ use chrono::{DateTime, Utc};
 use qunmind::ai::{AiClient, ChatMessage};
 use qunmind::bot::handler::BotHandler;
 use qunmind::channel::{Channel, IncomingMessage, MessageHandler, MsgType};
-use qunmind::config::BotConfig;
+use qunmind::config::{BotConfig, GroupConfig};
 use qunmind::error::Result;
 use qunmind::storage::{MessageStore, NewMessage, StoredMessage};
 use tokio::sync::Mutex;
@@ -121,6 +121,7 @@ async fn persists_group_message_before_mention_filter() {
             mention_names: vec!["@bot".to_string()],
             ..Default::default()
         },
+        Vec::new(),
         store.clone(),
     );
 
@@ -155,6 +156,7 @@ async fn replies_to_direct_text_message() {
             mention_names: vec!["@bot".to_string()],
             ..Default::default()
         },
+        Vec::new(),
         store.clone(),
     );
 
@@ -192,6 +194,7 @@ async fn replies_to_group_message_when_mentioned() {
             mention_names: vec!["@bot".to_string()],
             ..Default::default()
         },
+        Vec::new(),
         store,
     );
 
@@ -244,6 +247,7 @@ async fn includes_recent_group_context_when_replying() {
             mention_names: vec!["@bot".to_string()],
             context_messages: 2,
         },
+        Vec::new(),
         store.clone(),
     );
 
@@ -272,6 +276,91 @@ async fn includes_recent_group_context_when_replying() {
 }
 
 #[tokio::test]
+async fn skips_reply_for_disabled_group_after_persisting() {
+    let store = Arc::new(RecordingStore::default());
+    let channel = Arc::new(RecordingChannel::default());
+    let ai = Arc::new(StaticAi::reply("reply"));
+    let handler = BotHandler::new(
+        ai.clone(),
+        channel.clone(),
+        BotConfig::default(),
+        vec![group_config("group-1", false, None, None)],
+        store.clone(),
+    );
+
+    handler
+        .on_message(IncomingMessage {
+            message_id: "m1".to_string(),
+            from: "alice".to_string(),
+            chat_id: "group-1".to_string(),
+            is_group: true,
+            text: Some("随便问问".to_string()),
+            msg_type: MsgType::Text,
+        })
+        .await
+        .expect("message");
+
+    assert_eq!(store.saved.lock().await.len(), 1);
+    assert!(ai.messages.lock().await.is_empty());
+    assert!(channel.sent.lock().await.is_empty());
+}
+
+#[tokio::test]
+async fn group_mention_names_override_global_mentions() {
+    let store = Arc::new(RecordingStore::default());
+    let channel = Arc::new(RecordingChannel::default());
+    let ai = Arc::new(StaticAi::reply("group reply"));
+    let handler = BotHandler::new(
+        ai.clone(),
+        channel.clone(),
+        BotConfig {
+            mention_names: vec!["@global".to_string()],
+            ..Default::default()
+        },
+        vec![group_config(
+            "group-1",
+            true,
+            Some(vec!["@local".to_string()]),
+            Some(0),
+        )],
+        store,
+    );
+
+    handler
+        .on_message(IncomingMessage {
+            message_id: "m1".to_string(),
+            from: "alice".to_string(),
+            chat_id: "group-1".to_string(),
+            is_group: true,
+            text: Some("@global 不应该触发".to_string()),
+            msg_type: MsgType::Text,
+        })
+        .await
+        .expect("message");
+
+    assert!(ai.messages.lock().await.is_empty());
+    assert!(channel.sent.lock().await.is_empty());
+
+    handler
+        .on_message(IncomingMessage {
+            message_id: "m2".to_string(),
+            from: "alice".to_string(),
+            chat_id: "group-1".to_string(),
+            is_group: true,
+            text: Some("@local 应该触发".to_string()),
+            msg_type: MsgType::Text,
+        })
+        .await
+        .expect("message");
+
+    assert_eq!(ai.messages.lock().await.len(), 1);
+    assert_eq!(
+        *channel.sent.lock().await,
+        vec![("group-1".to_string(), "group reply".to_string())]
+    );
+}
+
+#[tokio::test]
 async fn skips_context_when_disabled() {
     let store = Arc::new(RecordingStore::default());
     let channel = Arc::new(RecordingChannel::default());
@@ -283,6 +372,7 @@ async fn skips_context_when_disabled() {
             context_messages: 0,
             ..Default::default()
         },
+        Vec::new(),
         store.clone(),
     );
 
@@ -317,6 +407,21 @@ fn stored_text(message_id: &str, chat_id: &str, from: &str, text: &str) -> Store
     }
 }
 
+fn group_config(
+    chat_id: &str,
+    enabled: bool,
+    mention_names: Option<Vec<String>>,
+    context_messages: Option<usize>,
+) -> GroupConfig {
+    GroupConfig {
+        chat_id: chat_id.to_string(),
+        name: chat_id.to_string(),
+        enabled,
+        mention_names,
+        context_messages,
+    }
+}
+
 #[tokio::test]
 async fn sends_fallback_when_ai_fails() {
     let store = Arc::new(RecordingStore::default());
@@ -325,6 +430,7 @@ async fn sends_fallback_when_ai_fails() {
         Arc::new(StaticAi::fail()),
         channel.clone(),
         BotConfig::default(),
+        Vec::new(),
         store,
     );
 
