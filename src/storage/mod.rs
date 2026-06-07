@@ -30,6 +30,18 @@ pub struct StoredMessage {
     pub received_at: DateTime<Utc>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StoredLink {
+    pub message_id: String,
+    pub channel: String,
+    pub chat_id: String,
+    pub from: String,
+    pub url: String,
+    pub normalized_url: String,
+    pub title: Option<String>,
+    pub received_at: DateTime<Utc>,
+}
+
 impl NewMessage {
     pub fn incoming(channel: &str, msg: &IncomingMessage) -> Self {
         Self {
@@ -56,4 +68,14 @@ pub trait MessageStore: Send + Sync {
         until: DateTime<Utc>,
         limit: i64,
     ) -> Result<Vec<StoredMessage>>;
+
+    async fn recent_links(
+        &self,
+        _chat_id: &str,
+        _since: DateTime<Utc>,
+        _until: DateTime<Utc>,
+        _limit: i64,
+    ) -> Result<Vec<StoredLink>> {
+        Ok(Vec::new())
+    }
 }

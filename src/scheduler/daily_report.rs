@@ -7,7 +7,7 @@ use crate::channel::Channel;
 use crate::config::ScheduleConfig;
 use crate::error::Result;
 use crate::source::{PublicNewsItem, PublicNewsSource};
-use crate::storage::{MessageStore, StoredMessage};
+use crate::storage::{MessageStore, StoredLink, StoredMessage};
 
 pub struct DailyReportScheduler {
     channel: Arc<dyn Channel>,
@@ -76,6 +76,7 @@ impl DailyReportScheduler {
 
         let lookback_hours = self.config.daily_report_lookback_hours.max(1);
         let max_messages = self.config.daily_report_max_messages.max(1);
+        let max_links = self.config.daily_report_max_links.max(0);
         let until = chrono::Utc::now();
         let since = until - chrono::Duration::hours(lookback_hours);
         let messages = match self
@@ -94,6 +95,21 @@ impl DailyReportScheduler {
                 return;
             }
         };
+        let links = if max_links == 0 {
+            Vec::new()
+        } else {
+            match self
+                .message_store
+                .recent_links(&self.config.daily_report_chat_id, since, until, max_links)
+                .await
+            {
+                Ok(links) => links,
+                Err(e) => {
+                    error!("读取日报链接失败: {}", e);
+                    Vec::new()
+                }
+            }
+        };
 
         if messages.is_empty() {
             self.send_empty_report_fallback(lookback_hours, since, until)
@@ -103,7 +119,7 @@ impl DailyReportScheduler {
 
         let messages = vec![ChatMessage {
             role: "user".to_string(),
-            content: build_report_prompt(&self.config, &messages, since, until),
+            content: build_report_prompt(&self.config, &messages, &links, since, until),
         }];
 
         let report = match self.ai.chat(&messages).await {
@@ -184,6 +200,7 @@ impl DailyReportScheduler {
 fn build_report_prompt(
     config: &ScheduleConfig,
     messages: &[StoredMessage],
+    links: &[StoredLink],
     since: chrono::DateTime<chrono::Utc>,
     until: chrono::DateTime<chrono::Utc>,
 ) -> String {
@@ -207,6 +224,29 @@ fn build_report_prompt(
             sender,
             text
         ));
+    }
+
+    if !links.is_empty() {
+        prompt.push_str("\n链接情报:\n");
+        for link in links {
+            let sender = if link.from.is_empty() {
+                "unknown"
+            } else {
+                &link.from
+            };
+            let title = link
+                .title
+                .as_deref()
+                .filter(|title| !title.is_empty())
+                .unwrap_or("untitled");
+            prompt.push_str(&format!(
+                "- [{}] {}: {} ({})\n",
+                link.received_at.to_rfc3339(),
+                sender,
+                title,
+                link.url
+            ));
+        }
     }
 
     prompt
@@ -258,7 +298,7 @@ mod tests {
     use crate::channel::MsgType;
     use crate::error::QunMindError;
     use crate::source::PublicNewsSource;
-    use crate::storage::NewMessage;
+    use crate::storage::{NewMessage, StoredLink};
 
     #[derive(Default)]
     struct RecordingChannel {
@@ -312,6 +352,7 @@ mod tests {
 
     struct StaticStore {
         messages: Vec<StoredMessage>,
+        links: Vec<StoredLink>,
     }
 
     #[async_trait]
@@ -328,6 +369,16 @@ mod tests {
             _limit: i64,
         ) -> Result<Vec<StoredMessage>> {
             Ok(self.messages.clone())
+        }
+
+        async fn recent_links(
+            &self,
+            _chat_id: &str,
+            _since: chrono::DateTime<chrono::Utc>,
+            _until: chrono::DateTime<chrono::Utc>,
+            _limit: i64,
+        ) -> Result<Vec<StoredLink>> {
+            Ok(self.links.clone())
         }
     }
 
@@ -405,7 +456,18 @@ mod tests {
             },
         ];
 
-        let prompt = build_report_prompt(&config, &messages, since, until);
+        let links = vec![StoredLink {
+            message_id: "m1".to_string(),
+            channel: "wx_cli".to_string(),
+            chat_id: "group-1".to_string(),
+            from: "alice".to_string(),
+            url: "https://example.com/rust".to_string(),
+            normalized_url: "https://example.com/rust".to_string(),
+            title: Some("Rust Link".to_string()),
+            received_at: since,
+        }];
+
+        let prompt = build_report_prompt(&config, &messages, &links, since, until);
 
         assert!(prompt.contains("请总结"));
         assert!(
@@ -413,6 +475,8 @@ mod tests {
         );
         assert!(prompt.contains("- [2026-06-06T00:00:00+00:00] alice: 第一行 第二行"));
         assert!(prompt.contains("- [2026-06-06T01:00:00+00:00] unknown: 无发送者"));
+        assert!(prompt.contains("链接情报"));
+        assert!(prompt.contains("alice: Rust Link (https://example.com/rust)"));
     }
 
     #[test]
@@ -451,7 +515,10 @@ mod tests {
         let scheduler = DailyReportScheduler::new(
             Arc::new(RecordingChannel::default()),
             Arc::new(RecordingAi::new("report")),
-            Arc::new(StaticStore { messages: vec![] }),
+            Arc::new(StaticStore {
+                messages: vec![],
+                links: vec![],
+            }),
             ScheduleConfig::default(),
         );
 
@@ -463,7 +530,10 @@ mod tests {
         let scheduler = DailyReportScheduler::new(
             Arc::new(RecordingChannel::default()),
             Arc::new(RecordingAi::new("report")),
-            Arc::new(StaticStore { messages: vec![] }),
+            Arc::new(StaticStore {
+                messages: vec![],
+                links: vec![],
+            }),
             ScheduleConfig {
                 daily_report_chat_id: "group-1".to_string(),
                 daily_report_cron: "not a cron".to_string(),
@@ -482,7 +552,10 @@ mod tests {
         let scheduler = DailyReportScheduler::new(
             channel.clone(),
             Arc::new(RecordingAi::new("report")),
-            Arc::new(StaticStore { messages: vec![] }),
+            Arc::new(StaticStore {
+                messages: vec![],
+                links: vec![],
+            }),
             ScheduleConfig {
                 daily_report_chat_id: "group-1".to_string(),
                 daily_report_lookback_hours: 0,
@@ -508,7 +581,10 @@ mod tests {
         let scheduler = DailyReportScheduler::new(
             channel.clone(),
             ai.clone(),
-            Arc::new(StaticStore { messages: vec![] }),
+            Arc::new(StaticStore {
+                messages: vec![],
+                links: vec![],
+            }),
             ScheduleConfig {
                 daily_report_chat_id: "group-1".to_string(),
                 ..Default::default()
@@ -543,7 +619,10 @@ mod tests {
         let scheduler = DailyReportScheduler::new(
             channel.clone(),
             ai.clone(),
-            Arc::new(StaticStore { messages: vec![] }),
+            Arc::new(StaticStore {
+                messages: vec![],
+                links: vec![],
+            }),
             ScheduleConfig {
                 daily_report_chat_id: "group-1".to_string(),
                 ..Default::default()
@@ -581,6 +660,16 @@ mod tests {
                     text: Some("今天完成了 PG 存储".to_string()),
                     received_at: chrono::Utc::now(),
                 }],
+                links: vec![StoredLink {
+                    message_id: "m1".to_string(),
+                    channel: "wx_cli".to_string(),
+                    chat_id: "group-1".to_string(),
+                    from: "alice".to_string(),
+                    url: "https://example.com/rust".to_string(),
+                    normalized_url: "https://example.com/rust".to_string(),
+                    title: None,
+                    received_at: chrono::Utc::now(),
+                }],
             }),
             ScheduleConfig {
                 daily_report_chat_id: "group-1".to_string(),
@@ -599,6 +688,8 @@ mod tests {
         assert_eq!(requests.len(), 1);
         assert_eq!(requests[0][0].role, "user");
         assert!(requests[0][0].content.contains("今天完成了 PG 存储"));
+        assert!(requests[0][0].content.contains("链接情报"));
+        assert!(requests[0][0].content.contains("https://example.com/rust"));
     }
 
     #[tokio::test]

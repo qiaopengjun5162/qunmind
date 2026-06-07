@@ -16,8 +16,9 @@ The project currently supports:
 - Hermes / Xiaolongxia style HTTP agent adapter.
 - Configurable group mention filtering.
 - PostgreSQL message persistence.
+- Incoming message link extraction and deduplicated storage.
 - Cron-based daily reports.
-- Daily reports generated from recently stored group messages.
+- Daily reports generated from recently stored group messages and link intelligence.
 - Optional Hacker News, GitHub Trending, and Slerf Blog fallback reports when a report group has no messages.
 
 ## Status
@@ -60,6 +61,10 @@ topic_keywords = ["rust", "web3", "ai", "llm", "agent", "zkp", "solana", "ethere
 ```
 
 These sources are filtered toward programming technology, Rust, Web3, AI, and ZKP. The prompt asks the model to mark this as public-source context, not a summary of group discussion.
+
+## Link Intelligence
+
+QunMind extracts `http://` / `https://` links from incoming text messages and stores them in PostgreSQL `message_links`. Daily reports include recent deduplicated links up to `schedule.daily_report_max_links`, so article, tool, and repository resources stay visible instead of being buried in chat text.
 
 ## Development
 

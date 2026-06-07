@@ -122,6 +122,8 @@ pub struct ScheduleConfig {
     pub daily_report_lookback_hours: i64,
     #[serde(default = "default_daily_report_max_messages")]
     pub daily_report_max_messages: i64,
+    #[serde(default = "default_daily_report_max_links")]
+    pub daily_report_max_links: i64,
 }
 
 #[derive(Debug, Deserialize)]
@@ -228,6 +230,10 @@ fn default_daily_report_lookback_hours() -> i64 {
 
 fn default_daily_report_max_messages() -> i64 {
     200
+}
+
+fn default_daily_report_max_links() -> i64 {
+    20
 }
 
 fn default_storage_database_url() -> String {
@@ -351,6 +357,7 @@ impl Default for ScheduleConfig {
             daily_report_prompt: default_daily_report_prompt(),
             daily_report_lookback_hours: default_daily_report_lookback_hours(),
             daily_report_max_messages: default_daily_report_max_messages(),
+            daily_report_max_links: default_daily_report_max_links(),
         }
     }
 }
@@ -425,6 +432,7 @@ mod tests {
         );
         assert_eq!(config.schedule.daily_report_lookback_hours, 24);
         assert_eq!(config.schedule.daily_report_max_messages, 200);
+        assert_eq!(config.schedule.daily_report_max_links, 20);
         assert_eq!(
             config.storage.database_url,
             "postgres://postgres:postgres@localhost:5432/qunmind"
@@ -521,6 +529,7 @@ mod tests {
             daily_report_chat_id = "group-1"
             daily_report_lookback_hours = 8
             daily_report_max_messages = 50
+            daily_report_max_links = 6
 
             [storage]
             database_url = "postgres://user:pass@localhost/qunmind_test"
@@ -555,6 +564,7 @@ mod tests {
         assert_eq!(config.schedule.daily_report_chat_id, "group-1");
         assert_eq!(config.schedule.daily_report_lookback_hours, 8);
         assert_eq!(config.schedule.daily_report_max_messages, 50);
+        assert_eq!(config.schedule.daily_report_max_links, 6);
         assert_eq!(
             config.storage.database_url,
             "postgres://user:pass@localhost/qunmind_test"

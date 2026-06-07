@@ -32,6 +32,7 @@ mention_names = [] # wx-cli 群机器人建议配置为 ["@AI助手"]；留空�
 daily_report_chat_id = ""                    # 目标群的 chat_id
 daily_report_cron = "0 0 9 * * *"            # 每天早上 9:00
 daily_report_lookback_hours = 24             # 日报读取最近多少小时的已保存群消息
+daily_report_max_links = 20                  # 日报最多纳入多少条去重链接
 daily_report_max_messages = 200              # 日报最多纳入多少条消息
 daily_report_prompt = "请根据今天的对话生成一份简洁的日报摘要。"
 

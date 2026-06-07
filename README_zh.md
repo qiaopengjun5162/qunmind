@@ -16,8 +16,9 @@
 - Hermes / 爱马仕类 HTTP Agent 适配。
 - 群聊 @ 触发过滤。
 - PostgreSQL 消息持久化。
+- 入站消息链接抽取和去重存储。
 - Cron 定时日报。
-- 基于最近已保存群消息生成日报。
+- 基于最近已保存群消息和链接情报生成日报。
 - 群消息为空时可选使用 Hacker News、GitHub Trending、Slerf Blog 生成公共信息参考日报。
 
 ## 当前状态
@@ -60,6 +61,10 @@ topic_keywords = ["rust", "web3", "ai", "llm", "agent", "zkp", "solana", "ethere
 ```
 
 这些来源用于补充最新编程技术、Rust、Web3、AI 和 ZKP 等前沿技术信息。生成结果会明确要求模型标明“不是群内讨论总结”，避免把公共信息误当成群聊结论。
+
+## 链接情报
+
+QunMind 会在保存文本消息时抽取 `http://` / `https://` 链接，写入 PostgreSQL 的 `message_links` 表。日报会按 `schedule.daily_report_max_links` 纳入最近去重链接，帮助模型区分普通聊天内容和文章、工具、仓库等可追踪资源。
 
 ## 开发命令
 
