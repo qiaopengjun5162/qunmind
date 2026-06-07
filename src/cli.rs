@@ -42,6 +42,9 @@ pub enum WxCliCommand {
     },
     /// Poll once and pass normalized messages through the real bot pipeline.
     HandleOnce {
+        /// Parse a local wx-cli JSON file instead of invoking wx_cli.poll_args.
+        #[arg(long)]
+        input: Option<PathBuf>,
         /// Maximum number of messages to process; defaults low to avoid noisy real chats.
         #[arg(long, default_value_t = 1)]
         limit: usize,
@@ -128,8 +131,35 @@ mod tests {
 
         match args.command {
             Some(CliCommand::WxCli {
-                command: WxCliCommand::HandleOnce { limit },
+                command: WxCliCommand::HandleOnce { input: None, limit },
             }) => assert_eq!(limit, 3),
+            _ => panic!("wx-cli handle-once command should parse"),
+        }
+    }
+
+    #[test]
+    fn parses_wx_cli_handle_once_input_file_option() {
+        let args = parse_args(&[
+            "qunmind",
+            "wx-cli",
+            "handle-once",
+            "--input",
+            "wx-output.json",
+            "--limit",
+            "2",
+        ]);
+
+        match args.command {
+            Some(CliCommand::WxCli {
+                command:
+                    WxCliCommand::HandleOnce {
+                        input: Some(input),
+                        limit,
+                    },
+            }) => {
+                assert_eq!(input, PathBuf::from("wx-output.json"));
+                assert_eq!(limit, 2);
+            }
             _ => panic!("wx-cli handle-once command should parse"),
         }
     }

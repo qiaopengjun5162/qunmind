@@ -193,7 +193,7 @@ async fn run_wx_cli_command(command: WxCliCommand, config: &Config) -> anyhow::R
                 }))?
             );
         }
-        WxCliCommand::HandleOnce { limit } => {
+        WxCliCommand::HandleOnce { input, limit } => {
             // handle-once exercises the real reply pipeline, so the default limit stays low to avoid chat spam.
             let wx_channel = Arc::new(WxCliChannel::new(&config.wx_cli));
             let channel: Arc<dyn Channel> = wx_channel.clone();
@@ -206,7 +206,11 @@ async fn run_wx_cli_command(command: WxCliCommand, config: &Config) -> anyhow::R
                 config.groups.clone(),
                 message_store,
             );
-            let messages = wx_channel.poll_once().await?;
+            let messages = if input.is_some() {
+                load_wx_cli_messages(config, input.as_ref()).await?
+            } else {
+                wx_channel.poll_once().await?
+            };
             let limit = limit.max(1);
             let processed = messages.len().min(limit);
             for message in messages.into_iter().take(limit) {
