@@ -27,6 +27,12 @@ pub enum CliCommand {
 pub enum WxCliCommand {
     /// 执行一次 wx_cli.poll_args 并输出解析后的消息
     Poll,
+    /// 执行一次 poll，并把解析后的消息交给机器人链路处理
+    HandleOnce {
+        /// 本次最多处理多少条消息，默认只处理 1 条，避免联调时刷屏
+        #[arg(long, default_value_t = 1)]
+        limit: usize,
+    },
     /// 通过 wx_cli.send_args 向指定会话发送一条文本
     Send {
         #[arg(long)]
@@ -52,6 +58,19 @@ mod tests {
                 command: WxCliCommand::Poll
             })
         ));
+    }
+
+    #[test]
+    fn parses_wx_cli_handle_once_command() {
+        let args = Args::try_parse_from(["qunmind", "wx-cli", "handle-once", "--limit", "3"])
+            .expect("args");
+
+        match args.command {
+            Some(CliCommand::WxCli {
+                command: WxCliCommand::HandleOnce { limit },
+            }) => assert_eq!(limit, 3),
+            _ => panic!("expected wx-cli handle-once command"),
+        }
     }
 
     #[test]

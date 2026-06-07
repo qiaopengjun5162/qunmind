@@ -14,7 +14,7 @@
 
 `channel.kind = "wx_cli"` 时通过 `wx_cli.bin + wx_cli.poll_args` 轮询 JSON 消息，通过 `wx_cli.send_args` 模板发送文本。`ai.provider = "hermes"` 时调用 `[hermes]` 中的 HTTP API，适合先对接爱马仕/小龙虾一类 Agent 平台。
 
-可以用 `cargo run -- wx-cli poll` 和 `cargo run -- wx-cli send --chat-id "<chat_id>" --text "<text>"` 单独诊断 wx-cli 收发命令；这两个命令只读取配置，不会初始化 PG、AI、日报调度或进入机器人主循环。
+可以用 `cargo run -- wx-cli poll` 和 `cargo run -- wx-cli send --chat-id "<chat_id>" --text "<text>"` 单独诊断 wx-cli 收发命令；这两个命令只读取配置，不会初始化 PG、AI、日报调度或进入机器人主循环。需要测试“轮询消息 -> 保存 -> mention 过滤 -> AI -> 回复”真实链路时，用 `cargo run -- wx-cli handle-once --limit 1`；它会初始化 PostgreSQL 和 AI，并可能真的向群里发送回复。
 
 `bot.mention_names` 配置后，群聊只回复包含这些文本的消息；留空则保持兼容行为，回复所有文本消息。wx-cli 群机器人场景优先配置普通微信号在群里的 @ 展示名，避免刷屏。
 
@@ -31,6 +31,7 @@
 - `just check-all`：完整检查
 - `just run`：运行本地服务
 - `cargo run -- wx-cli poll`：执行一次 `[wx_cli].poll_args` 并输出解析后的消息
+- `cargo run -- wx-cli handle-once --limit 1`：执行一次 wx-cli 轮询并交给真实 `BotHandler` 链路处理
 - `cargo run -- wx-cli send --chat-id "<chat_id>" --text "<text>"`：通过 `[wx_cli].send_args` 发送一条诊断文本
 
 优先使用 `cargo nextest`，不要用 `cargo test` 替代项目测试命令。

@@ -42,10 +42,11 @@ cargo run
 
 ```bash
 cargo run -- wx-cli poll
+cargo run -- wx-cli handle-once --limit 1
 cargo run -- wx-cli send --chat-id "room@chatroom" --text "QunMind 诊断消息"
 ```
 
-这两个命令只读取 `[wx_cli]` 配置，不会初始化 PostgreSQL、AI 客户端或机器人主循环。
+`poll` 和 `send` 只读取 `[wx_cli]` 配置，不会初始化 PostgreSQL、AI 客户端或机器人主循环。`handle-once` 会轮询一次消息，写入 PostgreSQL，执行群聊 @ 过滤，在命中时调用已配置的 AI，并通过 `wx_cli.send_args` 回复。第一次真实群测建议保持 `--limit 1`，避免误刷屏。
 
 ## 公共信息日报
 
