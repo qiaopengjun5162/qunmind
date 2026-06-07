@@ -188,10 +188,31 @@ fn collect_candidate_arrays<'a>(value: &'a Value, arrays: &mut Vec<&'a Vec<Value
 }
 
 fn parse_message(value: &Value, fallback_chat_id: &str) -> Option<WxCliMessage> {
-    let text = first_string(value, &["content", "text", "message", "body"])?;
+    let text = first_string(
+        value,
+        &[
+            "content",
+            "text",
+            "message",
+            "body",
+            "msg",
+            "msg_content",
+            "plain_text",
+        ],
+    )?;
     let chat_id = first_string(
         value,
-        &["chat_id", "room_id", "roomid", "session", "talker", "chat"],
+        &[
+            "chat_id",
+            "room_id",
+            "roomid",
+            "room_name",
+            "session",
+            "talker",
+            "chat",
+            "conversation_id",
+            "peer",
+        ],
     )
     .unwrap_or_else(|| fallback_chat_id.to_string());
 
@@ -199,8 +220,18 @@ fn parse_message(value: &Value, fallback_chat_id: &str) -> Option<WxCliMessage> 
         return None;
     }
 
-    let id = first_string(value, &["id", "msg_id", "message_id", "local_id"])
-        .unwrap_or_else(|| format!("{}:{}", chat_id, stable_text_id(&text)));
+    let id = first_string(
+        value,
+        &[
+            "id",
+            "msg_id",
+            "message_id",
+            "local_id",
+            "server_id",
+            "client_msg_id",
+        ],
+    )
+    .unwrap_or_else(|| format!("{}:{}", chat_id, stable_text_id(&text)));
     let from = first_string(
         value,
         &[
@@ -209,12 +240,16 @@ fn parse_message(value: &Value, fallback_chat_id: &str) -> Option<WxCliMessage> 
             "sender_username",
             "sender_contact_display",
             "sender_group_nickname",
+            "sender_nickname",
+            "nickname",
+            "wxid",
+            "user_id",
         ],
     )
     .unwrap_or_default();
-    let chat_type = first_string(value, &["chat_type", "type"]).unwrap_or_default();
-    let is_group =
-        chat_type == "group" || chat_id.ends_with("@chatroom") || !fallback_chat_id.is_empty();
+    let chat_type = first_string(value, &["chat_type", "type", "msg_type"]).unwrap_or_default();
+    let is_group = first_bool(value, &["is_group", "is_chatroom", "group"])
+        .unwrap_or_else(|| is_group_chat(&chat_id, &chat_type, fallback_chat_id));
 
     Some(WxCliMessage {
         id,
@@ -244,6 +279,44 @@ fn first_string(value: &Value, keys: &[&str]) -> Option<String> {
     }
 
     None
+}
+
+fn first_bool(value: &Value, keys: &[&str]) -> Option<bool> {
+    let Value::Object(map) = value else {
+        return None;
+    };
+
+    for key in keys {
+        match map.get(*key) {
+            Some(Value::Bool(value)) => return Some(*value),
+            Some(Value::String(value)) => match value.to_ascii_lowercase().as_str() {
+                "true" | "1" | "yes" | "group" | "chatroom" => return Some(true),
+                "false" | "0" | "no" | "private" | "direct" => return Some(false),
+                _ => {}
+            },
+            Some(Value::Number(value)) => {
+                if let Some(value) = value.as_i64() {
+                    return Some(value != 0);
+                }
+            }
+            Some(Value::Object(_)) => {
+                if let Some(value) = first_bool(map.get(*key)?, keys) {
+                    return Some(value);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    None
+}
+
+fn is_group_chat(chat_id: &str, chat_type: &str, fallback_chat_id: &str) -> bool {
+    let chat_type = chat_type.to_ascii_lowercase();
+    matches!(chat_type.as_str(), "group" | "chatroom" | "room")
+        || chat_id.ends_with("@chatroom")
+        || chat_id.starts_with("@@")
+        || !fallback_chat_id.is_empty()
 }
 
 fn stable_text_id(text: &str) -> u64 {
@@ -380,6 +453,57 @@ mod tests {
         assert_eq!(messages[0].from, "eve");
         assert_eq!(messages[0].text, "hello");
         assert!(!messages[0].is_group);
+    }
+
+    #[test]
+    fn parses_common_wechat_export_field_names() {
+        let value = json!([
+            {
+                "client_msg_id": "client-1",
+                "conversation_id": "@@group-session",
+                "sender_nickname": "Frank",
+                "msg_content": "@QunMind 早报",
+                "msg_type": "chatroom"
+            }
+        ]);
+
+        let messages = parse_messages(&value, "");
+
+        assert_eq!(messages.len(), 1);
+        assert_eq!(messages[0].id, "client-1");
+        assert_eq!(messages[0].chat_id, "@@group-session");
+        assert_eq!(messages[0].from, "Frank");
+        assert_eq!(messages[0].text, "@QunMind 早报");
+        assert!(messages[0].is_group);
+    }
+
+    #[test]
+    fn honors_explicit_group_flags() {
+        let group_value = json!([
+            {
+                "server_id": "server-1",
+                "room_name": "room-1",
+                "nickname": "Grace",
+                "plain_text": "hello group",
+                "is_group": true
+            }
+        ]);
+        let direct_value = json!([
+            {
+                "server_id": "server-2",
+                "peer": "alice",
+                "wxid": "bob",
+                "msg": "hello direct",
+                "is_chatroom": 0
+            }
+        ]);
+
+        let group_messages = parse_messages(&group_value, "");
+        let direct_messages = parse_messages(&direct_value, "");
+
+        assert!(group_messages[0].is_group);
+        assert!(!direct_messages[0].is_group);
+        assert_eq!(direct_messages[0].from, "bob");
     }
 
     #[test]
