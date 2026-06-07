@@ -31,14 +31,14 @@ impl BotHandler {
     }
 
     fn should_reply(&self, msg: &IncomingMessage, text: &str) -> bool {
-        !msg.is_group
-            || self.config.mention_names.is_empty()
-            || self
-                .config
-                .mention_names
-                .iter()
-                .any(|name| text.contains(name))
+        should_reply_to_text(&self.config, msg, text)
     }
+}
+
+pub fn should_reply_to_text(config: &BotConfig, msg: &IncomingMessage, text: &str) -> bool {
+    !msg.is_group
+        || config.mention_names.is_empty()
+        || config.mention_names.iter().any(|name| text.contains(name))
 }
 
 #[async_trait]

@@ -27,6 +27,12 @@ pub enum CliCommand {
 pub enum WxCliCommand {
     /// 执行一次 wx_cli.poll_args 并输出解析后的消息
     Poll,
+    /// 执行一次 poll，只预检哪些消息会触发回复，不保存、不调用 AI、不发送
+    DryRun {
+        /// 本次最多预检多少条消息
+        #[arg(long, default_value_t = 10)]
+        limit: usize,
+    },
     /// 执行一次 poll，并把解析后的消息交给机器人链路处理
     HandleOnce {
         /// 本次最多处理多少条消息，默认只处理 1 条，避免联调时刷屏
@@ -58,6 +64,19 @@ mod tests {
                 command: WxCliCommand::Poll
             })
         ));
+    }
+
+    #[test]
+    fn parses_wx_cli_dry_run_command() {
+        let args =
+            Args::try_parse_from(["qunmind", "wx-cli", "dry-run", "--limit", "5"]).expect("args");
+
+        match args.command {
+            Some(CliCommand::WxCli {
+                command: WxCliCommand::DryRun { limit },
+            }) => assert_eq!(limit, 5),
+            _ => panic!("expected wx-cli dry-run command"),
+        }
     }
 
     #[test]

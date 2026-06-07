@@ -16,6 +16,7 @@
 - Generate daily reports from recently stored group messages.
 - Include recent deduplicated links in daily report prompts.
 - Added wx-cli diagnostic CLI commands for one-shot poll/send checks before running the full bot loop.
+- Added `wx-cli dry-run` diagnostic command to poll once and report mention-trigger decisions without PostgreSQL, AI, or sending.
 - Added `wx-cli handle-once` diagnostic command to poll once and run messages through PostgreSQL persistence, mention filtering, AI, and wx-cli replies.
 - Added optional Hacker News, CoinMarketCap, CoinGecko, DeFi Llama, Dune, GitHub Trending, and Slerf Blog fallback material for daily reports when the report group has no messages.
 - Added Rust-side research tool catalog for market data, onchain analytics, code security, community, funding-flow, and research-opinion sources.
@@ -30,8 +31,8 @@
 - `cargo fmt --all -- --check`
 - `taplo fmt --check --option reorder_keys=true Cargo.toml config.example.toml`
 - `cargo clippy --all-targets --all-features --tests --benches -- -D warnings`
-- `cargo nextest run --all-features`：72 tests passing.
-- Latest coverage run: `cargo llvm-cov nextest --all-features --summary-only`：82.64% line coverage, 72 tests passing.
+- `cargo nextest run --all-features`：77 tests passing.
+- Latest coverage run: `cargo llvm-cov nextest --all-features --summary-only`：82.70% line coverage, 77 tests passing.
 - Previous coverage run: `cargo llvm-cov nextest --all-features --summary-only`：65.78% line coverage, 23 tests passing.
 - `cargo deny check`
 - `typos`

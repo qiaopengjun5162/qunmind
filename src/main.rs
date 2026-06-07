@@ -5,8 +5,11 @@ use qunmind::ai;
 use qunmind::ai::hermes::HermesClient;
 use qunmind::ai::openai::OpenAiClient;
 use qunmind::bot::handler::BotHandler;
+use qunmind::bot::handler::should_reply_to_text;
 use qunmind::channel::Channel;
+use qunmind::channel::IncomingMessage;
 use qunmind::channel::MessageHandler;
+use qunmind::channel::MsgType;
 use qunmind::channel::wecom::WeComChannel;
 use qunmind::channel::wx_cli::WxCliChannel;
 use qunmind::cli::{Args, CliCommand, WxCliCommand};
@@ -167,6 +170,26 @@ async fn run_wx_cli_command(command: WxCliCommand, config: &Config) -> anyhow::R
             let messages = channel.poll_once().await?;
             println!("{}", serde_json::to_string_pretty(&messages)?);
         }
+        WxCliCommand::DryRun { limit } => {
+            let channel = WxCliChannel::new(&config.wx_cli);
+            let messages = channel.poll_once().await?;
+            let limit = limit.max(1);
+            let inspected = messages.len().min(limit);
+            let items: Vec<_> = messages
+                .iter()
+                .take(limit)
+                .map(|msg| wx_cli_dry_run_item(&config.bot, msg))
+                .collect();
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&serde_json::json!({
+                    "ok": true,
+                    "total_polled": messages.len(),
+                    "inspected": inspected,
+                    "items": items
+                }))?
+            );
+        }
         WxCliCommand::HandleOnce { limit } => {
             let wx_channel = Arc::new(WxCliChannel::new(&config.wx_cli));
             let channel: Arc<dyn Channel> = wx_channel.clone();
@@ -206,6 +229,73 @@ async fn run_wx_cli_command(command: WxCliCommand, config: &Config) -> anyhow::R
     }
 
     Ok(())
+}
+
+fn wx_cli_dry_run_item(
+    config: &qunmind::config::BotConfig,
+    msg: &IncomingMessage,
+) -> serde_json::Value {
+    let (would_reply, reason) = wx_cli_dry_run_decision(config, msg);
+    let matched_mentions = msg
+        .text
+        .as_deref()
+        .map(|text| {
+            config
+                .mention_names
+                .iter()
+                .filter(|name| text.contains(name.as_str()))
+                .cloned()
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+
+    serde_json::json!({
+        "message_id": &msg.message_id,
+        "chat_id": &msg.chat_id,
+        "from": &msg.from,
+        "is_group": msg.is_group,
+        "msg_type": &msg.msg_type,
+        "text_preview": text_preview(msg.text.as_deref(), 120),
+        "matched_mentions": matched_mentions,
+        "would_reply": would_reply,
+        "reason": reason
+    })
+}
+
+fn wx_cli_dry_run_decision(
+    config: &qunmind::config::BotConfig,
+    msg: &IncomingMessage,
+) -> (bool, &'static str) {
+    if msg.msg_type != MsgType::Text {
+        return (false, "non_text");
+    }
+
+    let Some(text) = msg.text.as_deref() else {
+        return (false, "empty_text");
+    };
+
+    if should_reply_to_text(config, msg, text) {
+        if !msg.is_group {
+            return (true, "direct_message");
+        }
+        if config.mention_names.is_empty() {
+            return (true, "mention_names_empty");
+        }
+        return (true, "mention_matched");
+    }
+
+    (false, "mention_not_matched")
+}
+
+fn text_preview(text: Option<&str>, max_chars: usize) -> Option<String> {
+    text.map(|text| {
+        let max_chars = max_chars.max(1);
+        let mut preview: String = text.chars().take(max_chars).collect();
+        if text.chars().count() > max_chars {
+            preview.push_str("...");
+        }
+        preview
+    })
 }
 
 #[cfg(test)]
@@ -340,5 +430,71 @@ mod tests {
         };
 
         assert!(err.to_string().contains("dune_api_key"));
+    }
+
+    #[test]
+    fn wx_cli_dry_run_marks_group_mention_as_reply() {
+        let config = qunmind::config::BotConfig {
+            mention_names: vec!["@bot".to_string()],
+        };
+        let msg = IncomingMessage {
+            message_id: "m1".to_string(),
+            from: "alice".to_string(),
+            chat_id: "room@chatroom".to_string(),
+            is_group: true,
+            text: Some("@bot 帮我总结一下".to_string()),
+            msg_type: MsgType::Text,
+        };
+
+        let item = wx_cli_dry_run_item(&config, &msg);
+
+        assert_eq!(item["would_reply"], true);
+        assert_eq!(item["reason"], "mention_matched");
+        assert_eq!(item["matched_mentions"], serde_json::json!(["@bot"]));
+    }
+
+    #[test]
+    fn wx_cli_dry_run_marks_unmentioned_group_message_as_skip() {
+        let config = qunmind::config::BotConfig {
+            mention_names: vec!["@bot".to_string()],
+        };
+        let msg = IncomingMessage {
+            message_id: "m1".to_string(),
+            from: "alice".to_string(),
+            chat_id: "room@chatroom".to_string(),
+            is_group: true,
+            text: Some("普通群聊".to_string()),
+            msg_type: MsgType::Text,
+        };
+
+        let (would_reply, reason) = wx_cli_dry_run_decision(&config, &msg);
+
+        assert!(!would_reply);
+        assert_eq!(reason, "mention_not_matched");
+    }
+
+    #[test]
+    fn wx_cli_dry_run_marks_direct_message_as_reply() {
+        let config = qunmind::config::BotConfig {
+            mention_names: vec!["@bot".to_string()],
+        };
+        let msg = IncomingMessage {
+            message_id: "m1".to_string(),
+            from: "alice".to_string(),
+            chat_id: "alice".to_string(),
+            is_group: false,
+            text: Some("你好".to_string()),
+            msg_type: MsgType::Text,
+        };
+
+        let (would_reply, reason) = wx_cli_dry_run_decision(&config, &msg);
+
+        assert!(would_reply);
+        assert_eq!(reason, "direct_message");
+    }
+
+    #[test]
+    fn text_preview_truncates_long_text() {
+        assert_eq!(text_preview(Some("abcdef"), 3), Some("abc...".to_string()));
     }
 }
