@@ -1,3 +1,4 @@
+pub mod coinmarketcap;
 pub mod github_trending;
 pub mod hacker_news;
 pub mod slerf_blog;

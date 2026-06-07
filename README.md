@@ -19,7 +19,7 @@ The project currently supports:
 - Incoming message link extraction and deduplicated storage.
 - Cron-based daily reports.
 - Daily reports generated from recently stored group messages and link intelligence.
-- Optional Hacker News, GitHub Trending, and Slerf Blog fallback reports when a report group has no messages.
+- Optional Hacker News, CoinMarketCap, GitHub Trending, and Slerf Blog fallback reports when a report group has no messages.
 
 ## Status
 
@@ -53,14 +53,16 @@ By default, QunMind sends an empty-report notice when the report group has no me
 ```toml
 [public_sources]
 hacker_news_enabled = true
+coinmarketcap_enabled = true
 github_trending_enabled = true
 slerf_blog_enabled = true
 hacker_news_max_items = 10
+coinmarketcap_max_items = 8
 github_trending_languages = ["rust", "go", "python", "typescript"]
 topic_keywords = ["rust", "web3", "ai", "llm", "agent", "zkp", "solana", "ethereum"]
 ```
 
-These sources are filtered toward programming technology, Rust, Web3, AI, and ZKP. The prompt asks the model to mark this as public-source context, not a summary of group discussion.
+These sources are filtered toward programming technology, Rust, Web3, crypto, AI, and ZKP. CoinMarketCap is used for crypto market top stories. The prompt asks the model to mark this as public-source context, not a summary of group discussion.
 
 ## Link Intelligence
 

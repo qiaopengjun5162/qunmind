@@ -147,6 +147,14 @@ pub struct PublicSourcesConfig {
     #[serde(default = "default_hacker_news_timeout_secs")]
     pub hacker_news_timeout_secs: u64,
     #[serde(default)]
+    pub coinmarketcap_enabled: bool,
+    #[serde(default = "default_coinmarketcap_top_stories_url")]
+    pub coinmarketcap_top_stories_url: String,
+    #[serde(default = "default_coinmarketcap_max_items")]
+    pub coinmarketcap_max_items: usize,
+    #[serde(default = "default_coinmarketcap_timeout_secs")]
+    pub coinmarketcap_timeout_secs: u64,
+    #[serde(default)]
     pub github_trending_enabled: bool,
     #[serde(default = "default_github_trending_base_url")]
     pub github_trending_base_url: String,
@@ -279,6 +287,18 @@ fn default_hacker_news_timeout_secs() -> u64 {
     10
 }
 
+fn default_coinmarketcap_top_stories_url() -> String {
+    "https://coinmarketcap.com/top-stories/".to_string()
+}
+
+fn default_coinmarketcap_max_items() -> usize {
+    8
+}
+
+fn default_coinmarketcap_timeout_secs() -> u64 {
+    10
+}
+
 fn default_github_trending_base_url() -> String {
     "https://github.com/trending".to_string()
 }
@@ -379,6 +399,10 @@ impl Default for PublicSourcesConfig {
             hacker_news_base_url: default_hacker_news_base_url(),
             hacker_news_max_items: default_hacker_news_max_items(),
             hacker_news_timeout_secs: default_hacker_news_timeout_secs(),
+            coinmarketcap_enabled: false,
+            coinmarketcap_top_stories_url: default_coinmarketcap_top_stories_url(),
+            coinmarketcap_max_items: default_coinmarketcap_max_items(),
+            coinmarketcap_timeout_secs: default_coinmarketcap_timeout_secs(),
             github_trending_enabled: false,
             github_trending_base_url: default_github_trending_base_url(),
             github_trending_languages: default_github_trending_languages(),
@@ -457,6 +481,13 @@ mod tests {
         );
         assert_eq!(config.public_sources.hacker_news_max_items, 10);
         assert_eq!(config.public_sources.hacker_news_timeout_secs, 10);
+        assert!(!config.public_sources.coinmarketcap_enabled);
+        assert_eq!(
+            config.public_sources.coinmarketcap_top_stories_url,
+            "https://coinmarketcap.com/top-stories/"
+        );
+        assert_eq!(config.public_sources.coinmarketcap_max_items, 8);
+        assert_eq!(config.public_sources.coinmarketcap_timeout_secs, 10);
         assert!(!config.public_sources.github_trending_enabled);
         assert_eq!(
             config.public_sources.github_trending_base_url,
@@ -540,6 +571,10 @@ mod tests {
             hacker_news_enabled = true
             hacker_news_max_items = 5
             hacker_news_timeout_secs = 3
+            coinmarketcap_enabled = true
+            coinmarketcap_top_stories_url = "https://coinmarketcap.com/top-stories/"
+            coinmarketcap_max_items = 4
+            coinmarketcap_timeout_secs = 7
             github_trending_enabled = true
             github_trending_languages = ["rust"]
             github_trending_since = "weekly"
@@ -577,6 +612,13 @@ mod tests {
         assert!(config.public_sources.hacker_news_enabled);
         assert_eq!(config.public_sources.hacker_news_max_items, 5);
         assert_eq!(config.public_sources.hacker_news_timeout_secs, 3);
+        assert!(config.public_sources.coinmarketcap_enabled);
+        assert_eq!(
+            config.public_sources.coinmarketcap_top_stories_url,
+            "https://coinmarketcap.com/top-stories/"
+        );
+        assert_eq!(config.public_sources.coinmarketcap_max_items, 4);
+        assert_eq!(config.public_sources.coinmarketcap_timeout_secs, 7);
         assert!(config.public_sources.github_trending_enabled);
         assert_eq!(
             config.public_sources.github_trending_languages,

@@ -40,6 +40,10 @@ daily_report_prompt = "请根据今天的对话生成一份简洁的日报摘要
 database_url = "postgres://postgres:postgres@localhost:5432/qunmind"
 
 [public_sources]
+coinmarketcap_enabled = false
+coinmarketcap_max_items = 8
+coinmarketcap_timeout_secs = 10
+coinmarketcap_top_stories_url = "https://coinmarketcap.com/top-stories/"
 github_trending_base_url = "https://github.com/trending"
 github_trending_enabled = false
 github_trending_languages = ["rust", "go", "python", "typescript"]
