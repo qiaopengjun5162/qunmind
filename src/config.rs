@@ -163,6 +163,14 @@ pub struct PublicSourcesConfig {
     #[serde(default = "default_coingecko_timeout_secs")]
     pub coingecko_timeout_secs: u64,
     #[serde(default)]
+    pub defillama_enabled: bool,
+    #[serde(default = "default_defillama_protocols_url")]
+    pub defillama_protocols_url: String,
+    #[serde(default = "default_defillama_max_items")]
+    pub defillama_max_items: usize,
+    #[serde(default = "default_defillama_timeout_secs")]
+    pub defillama_timeout_secs: u64,
+    #[serde(default)]
     pub github_trending_enabled: bool,
     #[serde(default = "default_github_trending_base_url")]
     pub github_trending_base_url: String,
@@ -319,6 +327,18 @@ fn default_coingecko_timeout_secs() -> u64 {
     10
 }
 
+fn default_defillama_protocols_url() -> String {
+    "https://api.llama.fi/protocols".to_string()
+}
+
+fn default_defillama_max_items() -> usize {
+    8
+}
+
+fn default_defillama_timeout_secs() -> u64 {
+    10
+}
+
 fn default_github_trending_base_url() -> String {
     "https://github.com/trending".to_string()
 }
@@ -427,6 +447,10 @@ impl Default for PublicSourcesConfig {
             coingecko_trending_url: default_coingecko_trending_url(),
             coingecko_max_items: default_coingecko_max_items(),
             coingecko_timeout_secs: default_coingecko_timeout_secs(),
+            defillama_enabled: false,
+            defillama_protocols_url: default_defillama_protocols_url(),
+            defillama_max_items: default_defillama_max_items(),
+            defillama_timeout_secs: default_defillama_timeout_secs(),
             github_trending_enabled: false,
             github_trending_base_url: default_github_trending_base_url(),
             github_trending_languages: default_github_trending_languages(),
@@ -519,6 +543,13 @@ mod tests {
         );
         assert_eq!(config.public_sources.coingecko_max_items, 8);
         assert_eq!(config.public_sources.coingecko_timeout_secs, 10);
+        assert!(!config.public_sources.defillama_enabled);
+        assert_eq!(
+            config.public_sources.defillama_protocols_url,
+            "https://api.llama.fi/protocols"
+        );
+        assert_eq!(config.public_sources.defillama_max_items, 8);
+        assert_eq!(config.public_sources.defillama_timeout_secs, 10);
         assert!(!config.public_sources.github_trending_enabled);
         assert_eq!(
             config.public_sources.github_trending_base_url,
@@ -610,6 +641,10 @@ mod tests {
             coingecko_trending_url = "https://api.coingecko.com/api/v3/search/trending"
             coingecko_max_items = 6
             coingecko_timeout_secs = 9
+            defillama_enabled = true
+            defillama_protocols_url = "https://api.llama.fi/protocols"
+            defillama_max_items = 3
+            defillama_timeout_secs = 11
             github_trending_enabled = true
             github_trending_languages = ["rust"]
             github_trending_since = "weekly"
@@ -661,6 +696,13 @@ mod tests {
         );
         assert_eq!(config.public_sources.coingecko_max_items, 6);
         assert_eq!(config.public_sources.coingecko_timeout_secs, 9);
+        assert!(config.public_sources.defillama_enabled);
+        assert_eq!(
+            config.public_sources.defillama_protocols_url,
+            "https://api.llama.fi/protocols"
+        );
+        assert_eq!(config.public_sources.defillama_max_items, 3);
+        assert_eq!(config.public_sources.defillama_timeout_secs, 11);
         assert!(config.public_sources.github_trending_enabled);
         assert_eq!(
             config.public_sources.github_trending_languages,

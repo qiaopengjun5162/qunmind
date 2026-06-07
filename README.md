@@ -20,7 +20,7 @@ The project currently supports:
 - Rust-side crypto research tool catalog for future market data, onchain analytics, code security, community, funding-flow, and research-opinion sources.
 - Cron-based daily reports.
 - Daily reports generated from recently stored group messages and link intelligence.
-- Optional Hacker News, CoinMarketCap, CoinGecko, GitHub Trending, and Slerf Blog fallback reports when a report group has no messages.
+- Optional Hacker News, CoinMarketCap, CoinGecko, DeFi Llama, GitHub Trending, and Slerf Blog fallback reports when a report group has no messages.
 
 ## Status
 
@@ -56,16 +56,18 @@ By default, QunMind sends an empty-report notice when the report group has no me
 hacker_news_enabled = true
 coinmarketcap_enabled = true
 coingecko_enabled = true
+defillama_enabled = true
 github_trending_enabled = true
 slerf_blog_enabled = true
 hacker_news_max_items = 10
 coinmarketcap_max_items = 8
 coingecko_max_items = 8
+defillama_max_items = 8
 github_trending_languages = ["rust", "go", "python", "typescript"]
 topic_keywords = ["rust", "web3", "ai", "llm", "agent", "zkp", "solana", "ethereum"]
 ```
 
-These sources are filtered toward programming technology, Rust, Web3, crypto, AI, and ZKP. CoinMarketCap is used for crypto market top stories, and CoinGecko is used for 24h trending searches. The prompt asks the model to mark this as public-source context, not a summary of group discussion.
+These sources are filtered toward programming technology, Rust, Web3, crypto, AI, and ZKP. CoinMarketCap is used for crypto market top stories, CoinGecko is used for 24h trending searches, and DeFi Llama is used for protocol TVL signals. The prompt asks the model to mark this as public-source context, not a summary of group discussion.
 
 ## Link Intelligence
 

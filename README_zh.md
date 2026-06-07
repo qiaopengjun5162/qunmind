@@ -20,7 +20,7 @@
 - Rust 侧项目投研工具目录，用于后续扩展市场数据、链上分析、代码安全、社区、资金动向和研究观点来源。
 - Cron 定时日报。
 - 基于最近已保存群消息和链接情报生成日报。
-- 群消息为空时可选使用 Hacker News、CoinMarketCap、CoinGecko、GitHub Trending、Slerf Blog 生成公共信息参考日报。
+- 群消息为空时可选使用 Hacker News、CoinMarketCap、CoinGecko、DeFi Llama、GitHub Trending、Slerf Blog 生成公共信息参考日报。
 
 ## 当前状态
 
@@ -56,16 +56,18 @@ cargo run -- wx-cli send --chat-id "room@chatroom" --text "QunMind 诊断消息"
 hacker_news_enabled = true
 coinmarketcap_enabled = true
 coingecko_enabled = true
+defillama_enabled = true
 github_trending_enabled = true
 slerf_blog_enabled = true
 hacker_news_max_items = 10
 coinmarketcap_max_items = 8
 coingecko_max_items = 8
+defillama_max_items = 8
 github_trending_languages = ["rust", "go", "python", "typescript"]
 topic_keywords = ["rust", "web3", "ai", "llm", "agent", "zkp", "solana", "ethereum"]
 ```
 
-这些来源用于补充最新编程技术、Rust、Web3、crypto、AI 和 ZKP 等前沿技术信息。CoinMarketCap 用于补充加密市场 top stories，CoinGecko 用于补充 24 小时热门搜索。生成结果会明确要求模型标明“不是群内讨论总结”，避免把公共信息误当成群聊结论。
+这些来源用于补充最新编程技术、Rust、Web3、crypto、AI 和 ZKP 等前沿技术信息。CoinMarketCap 用于补充加密市场 top stories，CoinGecko 用于补充 24 小时热门搜索，DeFi Llama 用于补充协议 TVL 信号。生成结果会明确要求模型标明“不是群内讨论总结”，避免把公共信息误当成群聊结论。
 
 ## 链接情报
 
