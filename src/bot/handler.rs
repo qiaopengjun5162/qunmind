@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use chrono::{Duration, Utc};
 use std::sync::Arc;
 use tracing::{error, info};
 
@@ -6,7 +7,7 @@ use crate::ai::{AiClient, ChatMessage};
 use crate::channel::{Channel, IncomingMessage, MessageHandler, MsgType};
 use crate::config::BotConfig;
 use crate::error::Result;
-use crate::storage::{MessageStore, NewMessage};
+use crate::storage::{MessageStore, NewMessage, StoredMessage};
 
 pub struct BotHandler {
     ai: Arc<dyn AiClient>,
@@ -33,12 +34,72 @@ impl BotHandler {
     fn should_reply(&self, msg: &IncomingMessage, text: &str) -> bool {
         should_reply_to_text(&self.config, msg, text)
     }
+
+    async fn chat_messages(&self, msg: &IncomingMessage, text: &str) -> Vec<ChatMessage> {
+        if self.config.context_messages == 0 {
+            return vec![user_message(text.to_string())];
+        }
+
+        let until = Utc::now() + Duration::seconds(1);
+        let since = until - Duration::hours(24);
+        let limit = i64::try_from(self.config.context_messages.saturating_add(1))
+            .unwrap_or(i64::MAX)
+            .max(1);
+        let recent = match self
+            .message_store
+            .text_messages(&msg.chat_id, since, until, limit)
+            .await
+        {
+            Ok(messages) => messages,
+            Err(err) => {
+                error!("读取对话上下文失败: {}", err);
+                return vec![user_message(text.to_string())];
+            }
+        };
+
+        build_chat_messages_from_context(&recent, msg, text, self.config.context_messages)
+    }
 }
 
 pub fn should_reply_to_text(config: &BotConfig, msg: &IncomingMessage, text: &str) -> bool {
     !msg.is_group
         || config.mention_names.is_empty()
         || config.mention_names.iter().any(|name| text.contains(name))
+}
+
+fn build_chat_messages_from_context(
+    recent: &[StoredMessage],
+    current: &IncomingMessage,
+    current_text: &str,
+    context_messages: usize,
+) -> Vec<ChatMessage> {
+    let mut messages: Vec<ChatMessage> = recent
+        .iter()
+        .filter(|message| message.message_id != current.message_id)
+        .filter_map(context_message)
+        .rev()
+        .take(context_messages)
+        .collect();
+
+    messages.reverse();
+    messages.push(user_message(current_text.to_string()));
+    messages
+}
+
+fn context_message(message: &StoredMessage) -> Option<ChatMessage> {
+    let text = message.text.as_deref()?.trim();
+    if text.is_empty() {
+        return None;
+    }
+
+    Some(user_message(format!("[{}] {}", message.from, text)))
+}
+
+fn user_message(content: String) -> ChatMessage {
+    ChatMessage {
+        role: "user".to_string(),
+        content,
+    }
 }
 
 #[async_trait]
@@ -71,10 +132,7 @@ impl MessageHandler for BotHandler {
             return Ok(());
         }
 
-        let messages = vec![ChatMessage {
-            role: "user".to_string(),
-            content: text,
-        }];
+        let messages = self.chat_messages(&msg, &text).await;
 
         let reply = match self.ai.chat(&messages).await {
             Ok(r) => r,

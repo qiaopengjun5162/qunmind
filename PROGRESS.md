@@ -2,6 +2,10 @@
 
 ## 2026-06-06
 
+### Status
+
+- MVP completion estimate: about 50%. Rust backend, WeCom/wx-cli channels, AI adapters, PostgreSQL persistence, diagnostics, daily reports, public-source fallback, and basic conversation context are implemented. Real local WeChat validation, per-group configuration, and production hardening remain the main gaps.
+
 ### Done
 
 - Initialized Rust backend skeleton for `QunMind`.
@@ -10,6 +14,7 @@
 - Added OpenAI-compatible AI provider.
 - Added Hermes HTTP AI provider.
 - Added configurable group mention filtering with `bot.mention_names`.
+- Added basic conversation context with `bot.context_messages` from the persisted message stream.
 - Added cron-based daily report scheduler.
 - Added PostgreSQL message persistence.
 - Added incoming link extraction and PostgreSQL `message_links` persistence.
@@ -32,8 +37,8 @@
 - `cargo fmt --all -- --check`
 - `taplo fmt --check --option reorder_keys=true Cargo.toml config.example.toml`
 - `cargo clippy --all-targets --all-features --tests --benches -- -D warnings`
-- `cargo nextest run --all-features`：82 tests passing.
-- Latest coverage run: `cargo llvm-cov nextest --all-features --summary-only`：83.34% line coverage, 82 tests passing.
+- `cargo nextest run --all-features`：84 tests passing.
+- Latest coverage run: `cargo llvm-cov nextest --all-features --summary-only`：83.55% line coverage, 84 tests passing.
 - Previous coverage run: `cargo llvm-cov nextest --all-features --summary-only`：65.78% line coverage, 23 tests passing.
 - `cargo deny check`
 - `typos`
@@ -41,7 +46,7 @@
 ### Next
 
 - Validate actual wx-cli receive/send commands against a real local WeChat environment.
-- Prioritize WeChat work next: real wx-cli poll/send fixture capture, per-group config, and conversation context over adding more public sources.
+- Prioritize WeChat work next: real wx-cli poll/send fixture capture and per-group config over adding more public sources.
 - Add PostgreSQL integration tests for `PostgresMessageStore` message/link persistence when a disposable PG test database is available.
 - Tune CoinMarketCap top-story parsing and topic keywords after real Web3 daily report runs.
 - Prioritize automatable research connectors from `research::tools`, continuing with explorer APIs and audit-report sources.
@@ -49,5 +54,4 @@
 - Add URL title fetching and link quality scoring after real message ingestion is stable.
 - Replace or patch `wecom-aibot-rust-sdk` dependency stack so `reqwest 0.11` / `rustls-pemfile 1.0.4` is no longer pulled in.
 - Add per-group configuration for bot persona, mention names, daily report target, and enabled state.
-- Add conversation context from the persisted message stream.
 - Extract connector / trigger / action / workflow boundaries after the message store is stable.

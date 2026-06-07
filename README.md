@@ -16,6 +16,7 @@ The project currently supports:
 - Hermes / Xiaolongxia style HTTP agent adapter.
 - Configurable group mention filtering.
 - PostgreSQL message persistence.
+- Basic conversation context from recently stored messages when replying.
 - Incoming message link extraction and deduplicated storage.
 - Rust-side crypto research tool catalog for future market data, onchain analytics, code security, community, funding-flow, and research-opinion sources.
 - Cron-based daily reports.
@@ -24,7 +25,7 @@ The project currently supports:
 
 ## Status
 
-This is an MVP foundation, not a production-ready bot yet. The next important step is per-group configuration and conversation memory on top of the stored message stream.
+This is an MVP foundation, not a production-ready bot yet. The next important step is real wx-cli group testing and per-group configuration on top of the stored message stream.
 
 ## Quick Start
 

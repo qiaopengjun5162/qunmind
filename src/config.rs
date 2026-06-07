@@ -104,10 +104,12 @@ pub struct WxCliConfig {
     pub group_chat_id: String,
 }
 
-#[derive(Debug, Clone, Deserialize, Default)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct BotConfig {
     #[serde(default)]
     pub mention_names: Vec<String>,
+    #[serde(default = "default_bot_context_messages")]
+    pub context_messages: usize,
 }
 
 #[derive(Debug, Deserialize)]
@@ -398,6 +400,10 @@ fn default_slerf_blog_timeout_secs() -> u64 {
     10
 }
 
+fn default_bot_context_messages() -> usize {
+    8
+}
+
 fn default_true() -> bool {
     true
 }
@@ -491,6 +497,15 @@ impl Default for PublicSourcesConfig {
             slerf_blog_urls: default_slerf_blog_urls(),
             slerf_blog_max_items: default_slerf_blog_max_items(),
             slerf_blog_timeout_secs: default_slerf_blog_timeout_secs(),
+        }
+    }
+}
+
+impl Default for BotConfig {
+    fn default() -> Self {
+        Self {
+            mention_names: Vec::new(),
+            context_messages: default_bot_context_messages(),
         }
     }
 }
@@ -610,6 +625,7 @@ mod tests {
             vec!["https://blog.slerf.tools/".to_string()]
         );
         assert!(config.bot.mention_names.is_empty());
+        assert_eq!(config.bot.context_messages, 8);
         assert!(config.groups.is_empty());
     }
 
@@ -656,6 +672,7 @@ mod tests {
 
             [bot]
             mention_names = ["@QunMind"]
+            context_messages = 4
 
             [schedule]
             daily_report_chat_id = "group-1"
@@ -711,6 +728,7 @@ mod tests {
         assert_eq!(config.wx_cli.poll_interval_secs, 2);
         assert_eq!(config.wx_cli.group_chat_id, "fallback");
         assert_eq!(config.bot.mention_names, vec!["@QunMind".to_string()]);
+        assert_eq!(config.bot.context_messages, 4);
         assert_eq!(config.schedule.daily_report_chat_id, "group-1");
         assert_eq!(config.schedule.daily_report_lookback_hours, 8);
         assert_eq!(config.schedule.daily_report_max_messages, 50);

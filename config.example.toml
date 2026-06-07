@@ -26,7 +26,8 @@ poll_interval_secs = 5
 send_args = ["send", "--chat", "{chat_id}", "--text", "{text}"]
 
 [bot]
-mention_names = [] # wx-cli 群机器人建议配置为 ["@AI助手"]；留空则回复所有文本消息
+context_messages = 8 # 每次回复前纳入最近多少条同会话文本作为上下文；0 表示只使用当前消息
+mention_names = []   # wx-cli 群机器人建议配置为 ["@AI助手"]；留空则回复所有文本消息
 
 [schedule]
 daily_report_chat_id = ""                    # 目标群的 chat_id

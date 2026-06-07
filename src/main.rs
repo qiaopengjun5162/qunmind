@@ -451,6 +451,7 @@ mod tests {
     fn wx_cli_dry_run_marks_group_mention_as_reply() {
         let config = qunmind::config::BotConfig {
             mention_names: vec!["@bot".to_string()],
+            ..Default::default()
         };
         let msg = IncomingMessage {
             message_id: "m1".to_string(),
@@ -472,6 +473,7 @@ mod tests {
     fn wx_cli_dry_run_marks_unmentioned_group_message_as_skip() {
         let config = qunmind::config::BotConfig {
             mention_names: vec!["@bot".to_string()],
+            ..Default::default()
         };
         let msg = IncomingMessage {
             message_id: "m1".to_string(),
@@ -492,6 +494,7 @@ mod tests {
     fn wx_cli_dry_run_marks_direct_message_as_reply() {
         let config = qunmind::config::BotConfig {
             mention_names: vec!["@bot".to_string()],
+            ..Default::default()
         };
         let msg = IncomingMessage {
             message_id: "m1".to_string(),

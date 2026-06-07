@@ -13,6 +13,14 @@ use tokio::sync::Mutex;
 #[derive(Default)]
 struct RecordingStore {
     saved: Mutex<Vec<NewMessage>>,
+    recent: Mutex<Vec<StoredMessage>>,
+    text_queries: Mutex<Vec<(String, i64)>>,
+}
+
+impl RecordingStore {
+    async fn push_recent(&self, message: StoredMessage) {
+        self.recent.lock().await.push(message);
+    }
 }
 
 #[async_trait]
@@ -24,12 +32,16 @@ impl MessageStore for RecordingStore {
 
     async fn text_messages(
         &self,
-        _chat_id: &str,
+        chat_id: &str,
         _since: DateTime<Utc>,
         _until: DateTime<Utc>,
-        _limit: i64,
+        limit: i64,
     ) -> Result<Vec<StoredMessage>> {
-        Ok(Vec::new())
+        self.text_queries
+            .lock()
+            .await
+            .push((chat_id.to_string(), limit));
+        Ok(self.recent.lock().await.clone())
     }
 }
 
@@ -107,6 +119,7 @@ async fn persists_group_message_before_mention_filter() {
         channel.clone(),
         BotConfig {
             mention_names: vec!["@bot".to_string()],
+            ..Default::default()
         },
         store.clone(),
     );
@@ -140,6 +153,7 @@ async fn replies_to_direct_text_message() {
         channel.clone(),
         BotConfig {
             mention_names: vec!["@bot".to_string()],
+            ..Default::default()
         },
         store.clone(),
     );
@@ -176,6 +190,7 @@ async fn replies_to_group_message_when_mentioned() {
         channel.clone(),
         BotConfig {
             mention_names: vec!["@bot".to_string()],
+            ..Default::default()
         },
         store,
     );
@@ -196,6 +211,110 @@ async fn replies_to_group_message_when_mentioned() {
         *channel.sent.lock().await,
         vec![("group-1".to_string(), "group reply".to_string())]
     );
+}
+
+#[tokio::test]
+async fn includes_recent_group_context_when_replying() {
+    let store = Arc::new(RecordingStore::default());
+    store
+        .push_recent(stored_text("old-1", "group-1", "alice", "Rust 1.90 发布了"))
+        .await;
+    store
+        .push_recent(stored_text(
+            "old-2",
+            "group-1",
+            "bob",
+            "我们关注 async trait",
+        ))
+        .await;
+    store
+        .push_recent(stored_text(
+            "m-current",
+            "group-1",
+            "carol",
+            "@bot 总结一下",
+        ))
+        .await;
+    let channel = Arc::new(RecordingChannel::default());
+    let ai = Arc::new(StaticAi::reply("context reply"));
+    let handler = BotHandler::new(
+        ai.clone(),
+        channel,
+        BotConfig {
+            mention_names: vec!["@bot".to_string()],
+            context_messages: 2,
+        },
+        store.clone(),
+    );
+
+    handler
+        .on_message(IncomingMessage {
+            message_id: "m-current".to_string(),
+            from: "carol".to_string(),
+            chat_id: "group-1".to_string(),
+            is_group: true,
+            text: Some("@bot 总结一下".to_string()),
+            msg_type: MsgType::Text,
+        })
+        .await
+        .expect("message");
+
+    assert_eq!(
+        *store.text_queries.lock().await,
+        vec![("group-1".to_string(), 3)]
+    );
+    let ai_messages = ai.messages.lock().await;
+    assert_eq!(ai_messages.len(), 1);
+    assert_eq!(ai_messages[0].len(), 3);
+    assert_eq!(ai_messages[0][0].content, "[alice] Rust 1.90 发布了");
+    assert_eq!(ai_messages[0][1].content, "[bob] 我们关注 async trait");
+    assert_eq!(ai_messages[0][2].content, "@bot 总结一下");
+}
+
+#[tokio::test]
+async fn skips_context_when_disabled() {
+    let store = Arc::new(RecordingStore::default());
+    let channel = Arc::new(RecordingChannel::default());
+    let ai = Arc::new(StaticAi::reply("reply"));
+    let handler = BotHandler::new(
+        ai.clone(),
+        channel,
+        BotConfig {
+            context_messages: 0,
+            ..Default::default()
+        },
+        store.clone(),
+    );
+
+    handler
+        .on_message(IncomingMessage {
+            message_id: "m1".to_string(),
+            from: "alice".to_string(),
+            chat_id: "group-1".to_string(),
+            is_group: true,
+            text: Some("随便问问".to_string()),
+            msg_type: MsgType::Text,
+        })
+        .await
+        .expect("message");
+
+    assert!(store.text_queries.lock().await.is_empty());
+    let ai_messages = ai.messages.lock().await;
+    assert_eq!(ai_messages[0].len(), 1);
+    assert_eq!(ai_messages[0][0].content, "随便问问");
+}
+
+fn stored_text(message_id: &str, chat_id: &str, from: &str, text: &str) -> StoredMessage {
+    StoredMessage {
+        message_id: message_id.to_string(),
+        channel: "test".to_string(),
+        chat_id: chat_id.to_string(),
+        from: from.to_string(),
+        is_group: true,
+        msg_type: MsgType::Text,
+        text: Some(text.to_string()),
+        received_at: Utc::now(),
+    }
 }
 
 #[tokio::test]
