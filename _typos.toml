@@ -1,4 +1,4 @@
 [default.extend-words]
 # Add project-specific words here
-CertiK = "CertiK"
 Certi = "Certi"
+CertiK = "CertiK"

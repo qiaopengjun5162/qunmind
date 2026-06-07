@@ -14,6 +14,7 @@ use qunmind::error::QunMindError;
 use qunmind::scheduler::daily_report::DailyReportScheduler;
 use qunmind::source::CompositePublicNewsSource;
 use qunmind::source::PublicNewsSource;
+use qunmind::source::coingecko::CoinGeckoTrendingSource;
 use qunmind::source::coinmarketcap::CoinMarketCapSource;
 use qunmind::source::github_trending::GitHubTrendingSource;
 use qunmind::source::hacker_news::HackerNewsSource;
@@ -109,6 +110,9 @@ fn build_public_news_source(config: &Config) -> anyhow::Result<Option<Arc<dyn Pu
     }
     if public_sources.coinmarketcap_enabled {
         sources.push(Arc::new(CoinMarketCapSource::new(public_sources)?));
+    }
+    if public_sources.coingecko_enabled {
+        sources.push(Arc::new(CoinGeckoTrendingSource::new(public_sources)?));
     }
     if public_sources.github_trending_enabled {
         sources.push(Arc::new(GitHubTrendingSource::new(public_sources)?));

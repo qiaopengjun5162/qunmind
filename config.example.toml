@@ -40,6 +40,10 @@ daily_report_prompt = "请根据今天的对话生成一份简洁的日报摘要
 database_url = "postgres://postgres:postgres@localhost:5432/qunmind"
 
 [public_sources]
+coingecko_enabled = false
+coingecko_max_items = 8
+coingecko_timeout_secs = 10
+coingecko_trending_url = "https://api.coingecko.com/api/v3/search/trending"
 coinmarketcap_enabled = false
 coinmarketcap_max_items = 8
 coinmarketcap_timeout_secs = 10
