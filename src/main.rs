@@ -12,6 +12,7 @@ use qunmind::channel::MessageHandler;
 use qunmind::channel::MsgType;
 use qunmind::channel::wecom::WeComChannel;
 use qunmind::channel::wx_cli::WxCliChannel;
+use qunmind::channel::wx_cli::parse_wx_cli_messages_from_str;
 use qunmind::cli::{Args, CliCommand, WxCliCommand};
 use qunmind::config::{AiProvider, ChannelKind, Config};
 use qunmind::error::QunMindError;
@@ -165,14 +166,12 @@ async fn run_diagnostic_command(command: CliCommand, config: &Config) -> anyhow:
 
 async fn run_wx_cli_command(command: WxCliCommand, config: &Config) -> anyhow::Result<()> {
     match command {
-        WxCliCommand::Poll => {
-            let channel = WxCliChannel::new(&config.wx_cli);
-            let messages = channel.poll_once().await?;
+        WxCliCommand::Poll { input } => {
+            let messages = load_wx_cli_messages(config, input.as_ref()).await?;
             println!("{}", serde_json::to_string_pretty(&messages)?);
         }
-        WxCliCommand::DryRun { limit } => {
-            let channel = WxCliChannel::new(&config.wx_cli);
-            let messages = channel.poll_once().await?;
+        WxCliCommand::DryRun { input, limit } => {
+            let messages = load_wx_cli_messages(config, input.as_ref()).await?;
             let limit = limit.max(1);
             let inspected = messages.len().min(limit);
             let items: Vec<_> = messages
@@ -229,6 +228,22 @@ async fn run_wx_cli_command(command: WxCliCommand, config: &Config) -> anyhow::R
     }
 
     Ok(())
+}
+
+async fn load_wx_cli_messages(
+    config: &Config,
+    input: Option<&std::path::PathBuf>,
+) -> anyhow::Result<Vec<IncomingMessage>> {
+    if let Some(input) = input {
+        let raw = std::fs::read_to_string(input)?;
+        return Ok(parse_wx_cli_messages_from_str(
+            &raw,
+            &config.wx_cli.group_chat_id,
+        )?);
+    }
+
+    let channel = WxCliChannel::new(&config.wx_cli);
+    Ok(channel.poll_once().await?)
 }
 
 fn wx_cli_dry_run_item(
@@ -496,5 +511,35 @@ mod tests {
     #[test]
     fn text_preview_truncates_long_text() {
         assert_eq!(text_preview(Some("abcdef"), 3), Some("abc...".to_string()));
+    }
+
+    #[tokio::test]
+    async fn load_wx_cli_messages_reads_input_file() {
+        let path =
+            std::env::temp_dir().join(format!("qunmind-wx-cli-input-{}.json", std::process::id()));
+        std::fs::write(
+            &path,
+            r#"
+            [
+                {
+                    "id": "m-file",
+                    "chat": "room@chatroom",
+                    "sender": "alice",
+                    "content": "@bot file hello"
+                }
+            ]
+            "#,
+        )
+        .expect("write fixture");
+        let config = config_from("");
+
+        let messages = load_wx_cli_messages(&config, Some(&path))
+            .await
+            .expect("messages");
+
+        std::fs::remove_file(path).expect("remove fixture");
+        assert_eq!(messages.len(), 1);
+        assert_eq!(messages[0].message_id, "m-file");
+        assert_eq!(messages[0].text.as_deref(), Some("@bot file hello"));
     }
 }

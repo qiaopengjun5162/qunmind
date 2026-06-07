@@ -26,9 +26,16 @@ pub enum CliCommand {
 #[derive(Debug, Subcommand)]
 pub enum WxCliCommand {
     /// 执行一次 wx_cli.poll_args 并输出解析后的消息
-    Poll,
+    Poll {
+        /// 从本地 wx-cli JSON 文件解析，不实际调用 wx_cli.poll_args
+        #[arg(long)]
+        input: Option<PathBuf>,
+    },
     /// 执行一次 poll，只预检哪些消息会触发回复，不保存、不调用 AI、不发送
     DryRun {
+        /// 从本地 wx-cli JSON 文件解析，不实际调用 wx_cli.poll_args
+        #[arg(long)]
+        input: Option<PathBuf>,
         /// 本次最多预检多少条消息
         #[arg(long, default_value_t = 10)]
         limit: usize,
@@ -61,7 +68,7 @@ mod tests {
         assert!(matches!(
             args.command,
             Some(CliCommand::WxCli {
-                command: WxCliCommand::Poll
+                command: WxCliCommand::Poll { input: None }
             })
         ));
     }
@@ -73,9 +80,43 @@ mod tests {
 
         match args.command {
             Some(CliCommand::WxCli {
-                command: WxCliCommand::DryRun { limit },
+                command: WxCliCommand::DryRun { input: None, limit },
             }) => assert_eq!(limit, 5),
             _ => panic!("expected wx-cli dry-run command"),
+        }
+    }
+
+    #[test]
+    fn parses_wx_cli_input_file_options() {
+        let args =
+            Args::try_parse_from(["qunmind", "wx-cli", "dry-run", "--input", "wx-output.json"])
+                .expect("args");
+
+        match args.command {
+            Some(CliCommand::WxCli {
+                command:
+                    WxCliCommand::DryRun {
+                        input: Some(input),
+                        limit,
+                    },
+            }) => {
+                assert_eq!(input, PathBuf::from("wx-output.json"));
+                assert_eq!(limit, 10);
+            }
+            _ => panic!("expected wx-cli dry-run command"),
+        }
+    }
+
+    #[test]
+    fn parses_wx_cli_poll_input_file_option() {
+        let args = Args::try_parse_from(["qunmind", "wx-cli", "poll", "--input", "wx-output.json"])
+            .expect("args");
+
+        match args.command {
+            Some(CliCommand::WxCli {
+                command: WxCliCommand::Poll { input: Some(input) },
+            }) => assert_eq!(input, PathBuf::from("wx-output.json")),
+            _ => panic!("expected wx-cli poll command"),
         }
     }
 

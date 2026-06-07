@@ -42,12 +42,14 @@ Before connecting a normal WeChat / external group bot loop, validate the local 
 
 ```bash
 cargo run -- wx-cli poll
+cargo run -- wx-cli poll --input wx-output.json
 cargo run -- wx-cli dry-run --limit 10
+cargo run -- wx-cli dry-run --input wx-output.json --limit 10
 cargo run -- wx-cli handle-once --limit 1
 cargo run -- wx-cli send --chat-id "room@chatroom" --text "QunMind diagnostic message"
 ```
 
-`poll`, `dry-run`, and `send` only read `[wx_cli]` config and do not initialize PostgreSQL, AI clients, or the main bot loop. `dry-run` polls once and reports which parsed messages would trigger a bot reply according to `bot.mention_names`, without saving, calling AI, or sending. `handle-once` polls once, stores the parsed messages, runs mention filtering, calls the configured AI provider when needed, and sends replies through `wx_cli.send_args`. Keep `--limit 1` for the first real group test to avoid accidental noisy replies.
+`poll`, `dry-run`, and `send` only read `[wx_cli]` config and do not initialize PostgreSQL, AI clients, or the main bot loop. Add `--input <json-file>` to `poll` or `dry-run` to parse a captured wx-cli JSON output file without invoking wx-cli again. `dry-run` reports which parsed messages would trigger a bot reply according to `bot.mention_names`, without saving, calling AI, or sending. `handle-once` polls once, stores the parsed messages, runs mention filtering, calls the configured AI provider when needed, and sends replies through `wx_cli.send_args`. Keep `--limit 1` for the first real group test to avoid accidental noisy replies.
 
 ## Public Source Fallback
 

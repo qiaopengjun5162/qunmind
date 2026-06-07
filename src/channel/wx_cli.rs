@@ -79,6 +79,21 @@ impl WxCliChannel {
     }
 }
 
+pub fn parse_wx_cli_messages_from_str(
+    raw: &str,
+    fallback_chat_id: &str,
+) -> Result<Vec<IncomingMessage>> {
+    if raw.trim().is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let value: Value = serde_json::from_str(raw)?;
+    Ok(parse_messages(&value, fallback_chat_id)
+        .into_iter()
+        .map(Into::into)
+        .collect())
+}
+
 impl From<WxCliMessage> for IncomingMessage {
     fn from(msg: WxCliMessage) -> Self {
         Self {
@@ -353,6 +368,40 @@ mod tests {
         assert_eq!(messages[0].from, "alice");
         assert_eq!(messages[0].text, "@bot 总结一下");
         assert!(messages[0].is_group);
+    }
+
+    #[test]
+    fn parses_wx_cli_messages_from_raw_json() {
+        let messages = parse_wx_cli_messages_from_str(
+            r#"
+            {
+                "messages": [
+                    {
+                        "id": "m-raw",
+                        "talker": "room@chatroom",
+                        "sender": "alice",
+                        "content": "@bot raw hello"
+                    }
+                ]
+            }
+            "#,
+            "",
+        )
+        .expect("messages");
+
+        assert_eq!(messages.len(), 1);
+        assert_eq!(messages[0].message_id, "m-raw");
+        assert_eq!(messages[0].chat_id, "room@chatroom");
+        assert_eq!(messages[0].from, "alice");
+        assert_eq!(messages[0].text.as_deref(), Some("@bot raw hello"));
+        assert!(messages[0].is_group);
+    }
+
+    #[test]
+    fn parses_empty_raw_json_as_no_messages() {
+        let messages = parse_wx_cli_messages_from_str("  ", "").expect("messages");
+
+        assert!(messages.is_empty());
     }
 
     #[test]
