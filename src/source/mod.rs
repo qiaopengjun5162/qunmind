@@ -58,10 +58,12 @@ impl PublicNewsSource for CompositePublicNewsSource {
 
         for source in &self.sources {
             for item in source.fetch_top_items().await? {
+                // 公共素材只是群里无消息时的补位，必须继续贴近 Rust/Web3/AI/ZKP 等项目焦点。
                 if !matches_topics(&item, &self.topic_keywords) {
                     continue;
                 }
 
+                // 多个来源可能指向同一条新闻，保留首个来源能让日报 prompt 更紧凑。
                 let key = format!("{}:{}", item.source, item.url);
                 if seen.insert(key) {
                     items.push(item);

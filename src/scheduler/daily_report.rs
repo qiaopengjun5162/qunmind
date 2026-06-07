@@ -163,6 +163,7 @@ impl DailyReportScheduler {
         };
 
         if messages.is_empty() {
+            // 群内无消息时不能伪装成群聊总结，公共素材日报必须单独标明来源。
             self.send_empty_report_fallback(target, lookback_hours, since, until)
                 .await;
             return;
@@ -242,6 +243,7 @@ impl DailyReportScheduler {
 
 fn report_targets(config: &ScheduleConfig) -> Vec<DailyReportTarget> {
     if !config.daily_reports.is_empty() {
+        // 旧版单群配置继续作为默认值，方便平滑迁移到多群日报。
         return config
             .daily_reports
             .iter()
@@ -303,6 +305,7 @@ fn build_report_prompt(
     );
 
     for message in messages {
+        // 每条消息压成单行，避免一段堆栈或长文本淹没整份日报 prompt。
         let sender = if message.from.is_empty() {
             "unknown"
         } else {
@@ -367,6 +370,7 @@ fn build_public_report_prompt(
     );
 
     for item in items {
+        // 保留来源和热度线索，让模型排序时不把公共新闻误当作群内讨论。
         let score = match item.score {
             Some(score) => score.to_string(),
             None => "unknown".to_string(),

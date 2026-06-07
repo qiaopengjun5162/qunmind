@@ -128,6 +128,7 @@ fn build_public_news_source(config: &Config) -> anyhow::Result<Option<Arc<dyn Pu
     let public_sources = &config.public_sources;
     let mut sources: Vec<Arc<dyn PublicNewsSource>> = Vec::new();
 
+    // 公共源默认按需启用，因为它们会影响成本、延迟和空群日报的内容口径。
     if public_sources.hacker_news_enabled {
         sources.push(Arc::new(HackerNewsSource::new(public_sources)?));
     }
@@ -193,6 +194,7 @@ async fn run_wx_cli_command(command: WxCliCommand, config: &Config) -> anyhow::R
             );
         }
         WxCliCommand::HandleOnce { limit } => {
+            // handle-once 会走真实回复链路，默认低 limit 是为了避免联调时刷屏。
             let wx_channel = Arc::new(WxCliChannel::new(&config.wx_cli));
             let channel: Arc<dyn Channel> = wx_channel.clone();
             let message_store = build_message_store(config).await?;
