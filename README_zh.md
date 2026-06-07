@@ -88,7 +88,7 @@ QunMind 会在保存文本消息时抽取 `http://` / `https://` 链接，写入
 
 ## AI / Agent 学习地图
 
-`src/research/learning.rs` 维护推荐的 LLM、API、coding agent、agent 框架和 Hermes 执行层学习资源。它把这些参考资料结构化在 Rust 代码里，方便后续设计 prompt、模型供应商对接、tool calling、skills、记忆和长期执行能力，同时不把微信消息主链路变成资料清单。
+`src/research/learning.rs` 维护推荐的 LLM、API、coding agent、agent 框架、Hermes 执行层和 AI x Web3 学习资源。它已经把 AI x Web3 School 的 Learning Agent 启动 Prompt 和 Handbook 作为结构化参考纳入 Rust 代码，方便后续设计 prompt、模型供应商对接、tool calling、skills、记忆和长期执行能力，同时不把微信消息主链路变成资料清单。
 
 ## 开发命令
 

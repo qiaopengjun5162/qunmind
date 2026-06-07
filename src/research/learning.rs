@@ -6,6 +6,8 @@ pub enum LearningResourceCategory {
     AgentFoundations,
     AgentFrameworks,
     HermesExecution,
+    LearningWorkflow,
+    AiWeb3Bridge,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -15,6 +17,8 @@ pub enum LearningResourceFormat {
     Docs,
     Plan,
     Article,
+    Prompt,
+    Handbook,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -25,6 +29,7 @@ pub struct LearningResource {
     pub focus: &'static str,
     pub format: LearningResourceFormat,
     pub priority: u8,
+    pub url: Option<&'static str>,
 }
 
 pub const LEARNING_RESOURCES: &[LearningResource] = &[
@@ -35,6 +40,7 @@ pub const LEARNING_RESOURCES: &[LearningResource] = &[
         focus: "建立 LLM 最小必要直觉",
         format: LearningResourceFormat::Video,
         priority: 10,
+        url: None,
     },
     LearningResource {
         title: "Hugging Face LLM Course Chapter 1",
@@ -43,6 +49,7 @@ pub const LEARNING_RESOURCES: &[LearningResource] = &[
         focus: "系统理解 LLM 工作原理",
         format: LearningResourceFormat::Course,
         priority: 20,
+        url: None,
     },
     LearningResource {
         title: "LLM API 调用入门",
@@ -51,6 +58,7 @@ pub const LEARNING_RESOURCES: &[LearningResource] = &[
         focus: "边看边跟着写 API 调用",
         format: LearningResourceFormat::Video,
         priority: 30,
+        url: None,
     },
     LearningResource {
         title: "Anthropic: Building with the Claude API",
@@ -59,6 +67,7 @@ pub const LEARNING_RESOURCES: &[LearningResource] = &[
         focus: "官方 Claude API 完整入门课程",
         format: LearningResourceFormat::Course,
         priority: 40,
+        url: None,
     },
     LearningResource {
         title: "Z.ai API 开发者文档",
@@ -67,6 +76,7 @@ pub const LEARNING_RESOURCES: &[LearningResource] = &[
         focus: "GLM MaaS API 入门、OpenAI 兼容接口和首个请求",
         format: LearningResourceFormat::Docs,
         priority: 50,
+        url: None,
     },
     LearningResource {
         title: "Z.ai Coding Plan",
@@ -75,6 +85,7 @@ pub const LEARNING_RESOURCES: &[LearningResource] = &[
         focus: "GLM 全系列模型调用能力",
         format: LearningResourceFormat::Plan,
         priority: 60,
+        url: None,
     },
     LearningResource {
         title: "Claude Code 101",
@@ -83,6 +94,7 @@ pub const LEARNING_RESOURCES: &[LearningResource] = &[
         focus: "AI coding 工具快速上手",
         format: LearningResourceFormat::Course,
         priority: 70,
+        url: None,
     },
     LearningResource {
         title: "AI Agent 入门",
@@ -91,6 +103,7 @@ pub const LEARNING_RESOURCES: &[LearningResource] = &[
         focus: "Agent 基础概念",
         format: LearningResourceFormat::Video,
         priority: 80,
+        url: None,
     },
     LearningResource {
         title: "Microsoft AI Agents for Beginners",
@@ -99,6 +112,7 @@ pub const LEARNING_RESOURCES: &[LearningResource] = &[
         focus: "建立 agent 整体直觉，从概念到代码",
         format: LearningResourceFormat::Course,
         priority: 90,
+        url: None,
     },
     LearningResource {
         title: "OpenAI Agents SDK Intro",
@@ -107,6 +121,7 @@ pub const LEARNING_RESOURCES: &[LearningResource] = &[
         focus: "理解 agent 框架如何组织模型、工具与执行",
         format: LearningResourceFormat::Docs,
         priority: 100,
+        url: None,
     },
     LearningResource {
         title: "LangGraph Overview",
@@ -115,6 +130,7 @@ pub const LEARNING_RESOURCES: &[LearningResource] = &[
         focus: "理解 agent 的组织方式",
         format: LearningResourceFormat::Docs,
         priority: 110,
+        url: None,
     },
     LearningResource {
         title: "Hermes Agent Docs",
@@ -123,6 +139,7 @@ pub const LEARNING_RESOURCES: &[LearningResource] = &[
         focus: "理解 agent、tool calling、skills、记忆和长期执行",
         format: LearningResourceFormat::Docs,
         priority: 120,
+        url: None,
     },
     LearningResource {
         title: "Zread.ai 解读 OpenClaw / Hermes",
@@ -131,6 +148,25 @@ pub const LEARNING_RESOURCES: &[LearningResource] = &[
         focus: "理解 agent 进入执行层后的架构变化",
         format: LearningResourceFormat::Article,
         priority: 130,
+        url: None,
+    },
+    LearningResource {
+        title: "AI × Web3 School Learning Agent 启动 Prompt",
+        category: LearningResourceCategory::LearningWorkflow,
+        provider: "AI x Web3 School",
+        focus: "初始化个人学习计划、GitHub 学习仓库、每日打卡和 Handbook feedback 流程",
+        format: LearningResourceFormat::Prompt,
+        priority: 140,
+        url: Some("https://aiweb3.school/learning-agent.zh.txt"),
+    },
+    LearningResource {
+        title: "AI × Web3 School Handbook",
+        category: LearningResourceCategory::AiWeb3Bridge,
+        provider: "AI x Web3 School",
+        focus: "AI 基础、Web3 基础、AI × Web3 Bridge 和前沿探索知识地图",
+        format: LearningResourceFormat::Handbook,
+        priority: 150,
+        url: Some("https://aiweb3.school/zh/handbook/"),
     },
 ];
 
@@ -163,6 +199,22 @@ pub fn agent_path() -> Vec<&'static LearningResource> {
                     | LearningResourceCategory::AgentFoundations
                     | LearningResourceCategory::AgentFrameworks
                     | LearningResourceCategory::HermesExecution
+            )
+        })
+        .collect()
+}
+
+pub fn ai_web3_path() -> Vec<&'static LearningResource> {
+    LEARNING_RESOURCES
+        .iter()
+        .filter(|resource| {
+            matches!(
+                resource.category,
+                LearningResourceCategory::LlmFoundations
+                    | LearningResourceCategory::AgentFoundations
+                    | LearningResourceCategory::AgentFrameworks
+                    | LearningResourceCategory::LearningWorkflow
+                    | LearningResourceCategory::AiWeb3Bridge
             )
         })
         .collect()
@@ -208,6 +260,8 @@ mod tests {
             "LangGraph Overview",
             "Hermes Agent Docs",
             "Zread.ai 解读 OpenClaw / Hermes",
+            "AI × Web3 School Learning Agent 启动 Prompt",
+            "AI × Web3 School Handbook",
         ] {
             assert!(titles.contains(&title), "missing {title}");
         }
@@ -222,6 +276,8 @@ mod tests {
             LearningResourceCategory::AgentFoundations,
             LearningResourceCategory::AgentFrameworks,
             LearningResourceCategory::HermesExecution,
+            LearningResourceCategory::LearningWorkflow,
+            LearningResourceCategory::AiWeb3Bridge,
         ] {
             assert!(!resources_by_category(category).is_empty());
         }
@@ -256,12 +312,29 @@ mod tests {
     }
 
     #[test]
+    fn ai_web3_path_includes_learning_workflow_and_handbook() {
+        let titles = ai_web3_path()
+            .into_iter()
+            .map(|resource| resource.title)
+            .collect::<Vec<_>>();
+
+        assert!(titles.contains(&"What is a Large Language Model?"));
+        assert!(titles.contains(&"Microsoft AI Agents for Beginners"));
+        assert!(titles.contains(&"AI × Web3 School Learning Agent 启动 Prompt"));
+        assert!(titles.contains(&"AI × Web3 School Handbook"));
+        assert!(!titles.contains(&"Z.ai Coding Plan"));
+    }
+
+    #[test]
     fn finds_resources_with_normalized_titles() {
         let claude = find_resource("anthropic building with the claude api").expect("claude api");
         let zread = find_resource("Zread AI OpenClaw Hermes").expect("zread hermes");
+        let handbook = find_resource("AI Web3 School Handbook").expect("ai web3 handbook");
 
         assert_eq!(claude.provider, "Anthropic");
         assert_eq!(claude.category, LearningResourceCategory::ApiCalling);
         assert_eq!(zread.category, LearningResourceCategory::HermesExecution);
+        assert_eq!(handbook.category, LearningResourceCategory::AiWeb3Bridge);
+        assert_eq!(handbook.url, Some("https://aiweb3.school/zh/handbook/"));
     }
 }

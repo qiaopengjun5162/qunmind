@@ -88,7 +88,7 @@ QunMind extracts `http://` / `https://` links from incoming text messages and st
 
 ## AI / Agent Learning Map
 
-`src/research/learning.rs` tracks the recommended LLM, API, coding-agent, agent-framework, and Hermes execution-layer learning resources. It keeps these references structured in Rust so future prompt design, model-provider integration, tool calling, skills, memory, and long-running agent execution decisions can be reviewed without turning the WeChat message path into a documentation dump.
+`src/research/learning.rs` tracks the recommended LLM, API, coding-agent, agent-framework, Hermes execution-layer, and AI x Web3 learning resources. It includes the AI x Web3 School learning-agent startup prompt and handbook as structured references, so future prompt design, model-provider integration, tool calling, skills, memory, and long-running agent execution decisions can be reviewed without turning the WeChat message path into a documentation dump.
 
 ## Development
 
