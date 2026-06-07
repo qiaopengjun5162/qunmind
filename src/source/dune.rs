@@ -89,7 +89,10 @@ fn parse_row(query_id: u64, value: &Value) -> Option<PublicNewsItem> {
         return None;
     }
 
-    let subject = row_subject(map).unwrap_or_else(|| format!("query {}", query_id));
+    let subject = match row_subject(map) {
+        Some(subject) => subject,
+        None => format!("query {}", query_id),
+    };
     let details = row_details(map);
     if details.is_empty() {
         return None;

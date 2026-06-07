@@ -215,7 +215,7 @@ fn parse_message(value: &Value, fallback_chat_id: &str) -> Option<WxCliMessage> 
             "plain_text",
         ],
     )?;
-    let chat_id = first_string(
+    let chat_id = match first_string(
         value,
         &[
             "chat_id",
@@ -228,14 +228,16 @@ fn parse_message(value: &Value, fallback_chat_id: &str) -> Option<WxCliMessage> 
             "conversation_id",
             "peer",
         ],
-    )
-    .unwrap_or_else(|| fallback_chat_id.to_string());
+    ) {
+        Some(chat_id) => chat_id,
+        None => fallback_chat_id.to_string(),
+    };
 
     if chat_id.is_empty() {
         return None;
     }
 
-    let id = first_string(
+    let id = match first_string(
         value,
         &[
             "id",
@@ -245,9 +247,11 @@ fn parse_message(value: &Value, fallback_chat_id: &str) -> Option<WxCliMessage> 
             "server_id",
             "client_msg_id",
         ],
-    )
-    .unwrap_or_else(|| format!("{}:{}", chat_id, stable_text_id(&text)));
-    let from = first_string(
+    ) {
+        Some(id) => id,
+        None => format!("{}:{}", chat_id, stable_text_id(&text)),
+    };
+    let from = string_or_empty(first_string(
         value,
         &[
             "from",
@@ -260,11 +264,12 @@ fn parse_message(value: &Value, fallback_chat_id: &str) -> Option<WxCliMessage> 
             "wxid",
             "user_id",
         ],
-    )
-    .unwrap_or_default();
-    let chat_type = first_string(value, &["chat_type", "type", "msg_type"]).unwrap_or_default();
-    let is_group = first_bool(value, &["is_group", "is_chatroom", "group"])
-        .unwrap_or_else(|| is_group_chat(&chat_id, &chat_type, fallback_chat_id));
+    ));
+    let chat_type = string_or_empty(first_string(value, &["chat_type", "type", "msg_type"]));
+    let is_group = match first_bool(value, &["is_group", "is_chatroom", "group"]) {
+        Some(is_group) => is_group,
+        None => is_group_chat(&chat_id, &chat_type, fallback_chat_id),
+    };
 
     Some(WxCliMessage {
         id,
@@ -273,6 +278,14 @@ fn parse_message(value: &Value, fallback_chat_id: &str) -> Option<WxCliMessage> 
         text,
         is_group,
     })
+}
+
+fn string_or_empty(value: Option<String>) -> String {
+    let mut text = String::new();
+    if let Some(value) = value {
+        text = value;
+    }
+    text
 }
 
 fn first_string(value: &Value, keys: &[&str]) -> Option<String> {
@@ -345,6 +358,13 @@ mod tests {
     use super::*;
     use serde_json::json;
 
+    fn parse_raw_messages(raw: &str, fallback_chat_id: &str) -> Vec<IncomingMessage> {
+        match parse_wx_cli_messages_from_str(raw, fallback_chat_id) {
+            Ok(messages) => messages,
+            Err(err) => panic!("messages: {err}"),
+        }
+    }
+
     #[test]
     fn parses_wrapped_wx_cli_messages() {
         let value = json!({
@@ -372,7 +392,7 @@ mod tests {
 
     #[test]
     fn parses_wx_cli_messages_from_raw_json() {
-        let messages = parse_wx_cli_messages_from_str(
+        let messages = parse_raw_messages(
             r#"
             {
                 "messages": [
@@ -386,8 +406,7 @@ mod tests {
             }
             "#,
             "",
-        )
-        .expect("messages");
+        );
 
         assert_eq!(messages.len(), 1);
         assert_eq!(messages[0].message_id, "m-raw");
@@ -399,7 +418,7 @@ mod tests {
 
     #[test]
     fn parses_empty_raw_json_as_no_messages() {
-        let messages = parse_wx_cli_messages_from_str("  ", "").expect("messages");
+        let messages = parse_raw_messages("  ", "");
 
         assert!(messages.is_empty());
     }

@@ -60,7 +60,7 @@ fn parse_coin_item(value: &Value) -> Option<PublicNewsItem> {
     let item = value.get("item")?;
     let id = item.get("id")?.as_str()?;
     let name = item.get("name")?.as_str()?;
-    let symbol = item.get("symbol").and_then(Value::as_str).unwrap_or("");
+    let symbol = str_or_empty(item.get("symbol").and_then(Value::as_str));
     let rank = item.get("market_cap_rank").and_then(Value::as_i64);
     let score = item.get("score").and_then(Value::as_i64);
     let usd_change = item
@@ -88,6 +88,10 @@ fn parse_coin_item(value: &Value) -> Option<PublicNewsItem> {
         score,
         comments: None,
     })
+}
+
+fn str_or_empty(value: Option<&str>) -> &str {
+    value.map_or("", |value| value)
 }
 
 #[cfg(test)]

@@ -90,7 +90,7 @@ impl AiClient for OpenAiClient {
 
         if !resp.status().is_success() {
             let status = resp.status();
-            let body = resp.text().await.unwrap_or_default();
+            let body = response_text_or_empty(resp).await;
             return Err(QunMindError::Ai(format!(
                 "API 返回错误 {}: {}",
                 status, body
@@ -100,6 +100,14 @@ impl AiClient for OpenAiClient {
         let chat_resp: ChatResponse = resp.json().await?;
         extract_reply(chat_resp)
     }
+}
+
+async fn response_text_or_empty(resp: reqwest::Response) -> String {
+    let mut body = String::new();
+    if let Ok(value) = resp.text().await {
+        body = value;
+    }
+    body
 }
 
 fn extract_reply(response: ChatResponse) -> Result<String> {
@@ -114,25 +122,39 @@ fn extract_reply(response: ChatResponse) -> Result<String> {
 mod tests {
     use super::*;
 
+    fn must<T, E: std::fmt::Display>(result: std::result::Result<T, E>, context: &str) -> T {
+        match result {
+            Ok(value) => value,
+            Err(err) => panic!("{context}: {err}"),
+        }
+    }
+
     #[test]
     fn extracts_first_choice_content() {
-        let response: ChatResponse = serde_json::from_value(serde_json::json!({
-            "choices": [
-                { "message": { "content": "hello" } },
-                { "message": { "content": "ignored" } }
-            ]
-        }))
-        .expect("response");
+        let response: ChatResponse = must(
+            serde_json::from_value(serde_json::json!({
+                "choices": [
+                    { "message": { "content": "hello" } },
+                    { "message": { "content": "ignored" } }
+                ]
+            })),
+            "response",
+        );
 
-        assert_eq!(extract_reply(response).expect("reply"), "hello");
+        assert_eq!(must(extract_reply(response), "reply"), "hello");
     }
 
     #[test]
     fn rejects_empty_choices() {
-        let response: ChatResponse =
-            serde_json::from_value(serde_json::json!({ "choices": [] })).expect("response");
+        let response: ChatResponse = must(
+            serde_json::from_value(serde_json::json!({ "choices": [] })),
+            "response",
+        );
 
-        let err = extract_reply(response).expect_err("empty choices");
+        let err = match extract_reply(response) {
+            Ok(_) => panic!("empty choices should fail"),
+            Err(err) => err,
+        };
 
         assert!(err.to_string().contains("AI 返回空响应"));
     }

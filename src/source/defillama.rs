@@ -57,25 +57,18 @@ fn parse_protocols_response(value: &Value, max_items: usize) -> Vec<PublicNewsIt
 
 fn parse_protocol(value: &Value) -> Option<PublicNewsItem> {
     let name = value.get("name")?.as_str()?;
-    let slug = value.get("slug").and_then(Value::as_str).unwrap_or(name);
-    let category = value
-        .get("category")
-        .and_then(Value::as_str)
-        .unwrap_or("DeFi");
+    let slug = str_or(value.get("slug").and_then(Value::as_str), name);
+    let category = str_or(value.get("category").and_then(Value::as_str), "DeFi");
     let tvl = value.get("tvl").and_then(Value::as_f64)?;
     let change_1d = value.get("change_1d").and_then(Value::as_f64);
     let change_7d = value.get("change_7d").and_then(Value::as_f64);
-    let chains = value
-        .get("chains")
-        .and_then(Value::as_array)
-        .map(|chains| {
-            chains
-                .iter()
-                .filter_map(Value::as_str)
-                .take(3)
-                .collect::<Vec<_>>()
-        })
-        .unwrap_or_default();
+    let chains = vec_or_empty(value.get("chains").and_then(Value::as_array).map(|chains| {
+        chains
+            .iter()
+            .filter_map(Value::as_str)
+            .take(3)
+            .collect::<Vec<_>>()
+    }));
 
     let mut details = Vec::new();
     details.push(format!("{} protocol", category));
@@ -97,6 +90,22 @@ fn parse_protocol(value: &Value) -> Option<PublicNewsItem> {
         score: finite_i64(tvl),
         comments: None,
     })
+}
+
+fn str_or<'a>(value: Option<&'a str>, fallback: &'a str) -> &'a str {
+    if let Some(value) = value {
+        value
+    } else {
+        fallback
+    }
+}
+
+fn vec_or_empty<T>(value: Option<Vec<T>>) -> Vec<T> {
+    let mut items = Vec::new();
+    if let Some(value) = value {
+        items = value;
+    }
+    items
 }
 
 fn finite_i64(value: f64) -> Option<i64> {

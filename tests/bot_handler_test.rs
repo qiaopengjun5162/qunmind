@@ -10,6 +10,19 @@ use qunmind::error::Result;
 use qunmind::storage::{MessageStore, NewMessage, StoredMessage};
 use tokio::sync::Mutex;
 
+trait TestResultExt<T> {
+    fn assert_ok(self, context: &str) -> T;
+}
+
+impl<T, E: std::fmt::Display> TestResultExt<T> for std::result::Result<T, E> {
+    fn assert_ok(self, context: &str) -> T {
+        match self {
+            Ok(value) => value,
+            Err(err) => panic!("{context}: {err}"),
+        }
+    }
+}
+
 #[derive(Default)]
 struct RecordingStore {
     saved: Mutex<Vec<NewMessage>>,
@@ -135,7 +148,7 @@ async fn persists_group_message_before_mention_filter() {
             msg_type: MsgType::Text,
         })
         .await
-        .expect("message");
+        .assert_ok("message");
 
     let saved = store.saved.lock().await;
     assert_eq!(saved.len(), 1);
@@ -170,7 +183,7 @@ async fn replies_to_direct_text_message() {
             msg_type: MsgType::Text,
         })
         .await
-        .expect("message");
+        .assert_ok("message");
 
     assert_eq!(store.saved.lock().await.len(), 1);
     assert_eq!(
@@ -208,7 +221,7 @@ async fn replies_to_group_message_when_mentioned() {
             msg_type: MsgType::Text,
         })
         .await
-        .expect("message");
+        .assert_ok("message");
 
     assert_eq!(
         *channel.sent.lock().await,
@@ -261,7 +274,7 @@ async fn includes_recent_group_context_when_replying() {
             msg_type: MsgType::Text,
         })
         .await
-        .expect("message");
+        .assert_ok("message");
 
     assert_eq!(
         *store.text_queries.lock().await,
@@ -298,7 +311,7 @@ async fn skips_reply_for_disabled_group_after_persisting() {
             msg_type: MsgType::Text,
         })
         .await
-        .expect("message");
+        .assert_ok("message");
 
     assert_eq!(store.saved.lock().await.len(), 1);
     assert!(ai.messages.lock().await.is_empty());
@@ -337,7 +350,7 @@ async fn group_mention_names_override_global_mentions() {
             msg_type: MsgType::Text,
         })
         .await
-        .expect("message");
+        .assert_ok("message");
 
     assert!(ai.messages.lock().await.is_empty());
     assert!(channel.sent.lock().await.is_empty());
@@ -352,7 +365,7 @@ async fn group_mention_names_override_global_mentions() {
             msg_type: MsgType::Text,
         })
         .await
-        .expect("message");
+        .assert_ok("message");
 
     assert_eq!(ai.messages.lock().await.len(), 1);
     assert_eq!(
@@ -390,7 +403,7 @@ async fn group_system_prompt_is_sent_before_user_messages() {
             msg_type: MsgType::Text,
         })
         .await
-        .expect("message");
+        .assert_ok("message");
 
     let ai_messages = ai.messages.lock().await;
     assert_eq!(ai_messages[0].len(), 2);
@@ -426,7 +439,7 @@ async fn skips_context_when_disabled() {
             msg_type: MsgType::Text,
         })
         .await
-        .expect("message");
+        .assert_ok("message");
 
     assert!(store.text_queries.lock().await.is_empty());
     let ai_messages = ai.messages.lock().await;
@@ -486,7 +499,7 @@ async fn sends_fallback_when_ai_fails() {
             msg_type: MsgType::Text,
         })
         .await
-        .expect("message");
+        .assert_ok("message");
 
     assert_eq!(
         *channel.sent.lock().await,

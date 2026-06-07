@@ -133,7 +133,10 @@ mod tests {
             10,
         );
 
-        let items = composite.fetch_top_items().await.expect("items");
+        let items = match composite.fetch_top_items().await {
+            Ok(items) => items,
+            Err(err) => panic!("items: {err}"),
+        };
 
         assert_eq!(items.len(), 1);
         assert_eq!(items[0].title, "Rust ZKP library");

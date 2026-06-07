@@ -321,6 +321,13 @@ fn normalize_name(name: &str) -> String {
 mod tests {
     use super::*;
 
+    fn tool(name: &str) -> &'static ResearchTool {
+        match find_tool(name) {
+            Some(tool) => tool,
+            None => panic!("tool: {name}"),
+        }
+    }
+
     #[test]
     fn covers_core_research_categories() {
         for category in [
@@ -337,8 +344,8 @@ mod tests {
 
     #[test]
     fn finds_tools_with_normalized_names() {
-        let coinmarketcap = find_tool("coin market cap").expect("coinmarketcap");
-        let defillama = find_tool("DeFi-Llama").expect("defillama");
+        let coinmarketcap = tool("coin market cap");
+        let defillama = tool("DeFi-Llama");
 
         assert_eq!(coinmarketcap.name, "CoinMarketCap");
         assert_eq!(coinmarketcap.category, ResearchToolCategory::MarketData);

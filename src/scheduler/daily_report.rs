@@ -82,15 +82,20 @@ impl DailyReportScheduler {
             let next = upcoming.iter().map(|(_, time)| *time).min();
             match next {
                 Some(next_time) => {
-                    let target = upcoming
+                    let Some(target) = upcoming
                         .iter()
                         .find(|(_, time)| *time == next_time)
                         .map(|(target, _)| target)
-                        .expect("next target");
+                    else {
+                        error!(next = %next_time, "找不到下次日报目标");
+                        tokio::time::sleep(std::time::Duration::from_secs(60)).await;
+                        continue;
+                    };
                     let now = chrono::Utc::now();
-                    let wait = (next_time - now)
-                        .to_std()
-                        .unwrap_or(std::time::Duration::from_secs(60));
+                    let wait = match (next_time - now).to_std() {
+                        Ok(wait) => wait,
+                        Err(_) => std::time::Duration::from_secs(60),
+                    };
                     info!(
                         chat_id = %target.chat_id,
                         name = %target.name,
@@ -244,21 +249,26 @@ fn report_targets(config: &ScheduleConfig) -> Vec<DailyReportTarget> {
             .map(|report| DailyReportTarget {
                 chat_id: report.chat_id.clone(),
                 name: report.name.clone(),
-                cron: report
-                    .cron
-                    .clone()
-                    .unwrap_or_else(|| config.daily_report_cron.clone()),
-                prompt: report
-                    .prompt
-                    .clone()
-                    .unwrap_or_else(|| config.daily_report_prompt.clone()),
-                lookback_hours: report
-                    .lookback_hours
-                    .unwrap_or(config.daily_report_lookback_hours),
-                max_messages: report
-                    .max_messages
-                    .unwrap_or(config.daily_report_max_messages),
-                max_links: report.max_links.unwrap_or(config.daily_report_max_links),
+                cron: match report.cron.clone() {
+                    Some(cron) => cron,
+                    None => config.daily_report_cron.clone(),
+                },
+                prompt: match report.prompt.clone() {
+                    Some(prompt) => prompt,
+                    None => config.daily_report_prompt.clone(),
+                },
+                lookback_hours: match report.lookback_hours {
+                    Some(lookback_hours) => lookback_hours,
+                    None => config.daily_report_lookback_hours,
+                },
+                max_messages: match report.max_messages {
+                    Some(max_messages) => max_messages,
+                    None => config.daily_report_max_messages,
+                },
+                max_links: match report.max_links {
+                    Some(max_links) => max_links,
+                    None => config.daily_report_max_links,
+                },
             })
             .collect();
     }
@@ -298,7 +308,10 @@ fn build_report_prompt(
         } else {
             &message.from
         };
-        let text = message.text.as_deref().unwrap_or("").replace('\n', " ");
+        let text = match message.text.as_deref() {
+            Some(text) => text.replace('\n', " "),
+            None => String::new(),
+        };
         prompt.push_str(&format!(
             "- [{}] {}: {}\n",
             message.received_at.to_rfc3339(),
@@ -315,11 +328,10 @@ fn build_report_prompt(
             } else {
                 &link.from
             };
-            let title = link
-                .title
-                .as_deref()
-                .filter(|title| !title.is_empty())
-                .unwrap_or("untitled");
+            let title = str_or(
+                link.title.as_deref().filter(|title| !title.is_empty()),
+                "untitled",
+            );
             prompt.push_str(&format!(
                 "- [{}] {}: {} ({})\n",
                 link.received_at.to_rfc3339(),
@@ -331,6 +343,14 @@ fn build_report_prompt(
     }
 
     prompt
+}
+
+fn str_or<'a>(value: Option<&'a str>, fallback: &'a str) -> &'a str {
+    if let Some(value) = value {
+        value
+    } else {
+        fallback
+    }
 }
 
 fn build_public_report_prompt(
@@ -347,14 +367,14 @@ fn build_public_report_prompt(
     );
 
     for item in items {
-        let score = item
-            .score
-            .map(|score| score.to_string())
-            .unwrap_or_else(|| "unknown".to_string());
-        let comments = item
-            .comments
-            .map(|comments| comments.to_string())
-            .unwrap_or_else(|| "unknown".to_string());
+        let score = match item.score {
+            Some(score) => score.to_string(),
+            None => "unknown".to_string(),
+        };
+        let comments = match item.comments {
+            Some(comments) => comments.to_string(),
+            None => "unknown".to_string(),
+        };
         prompt.push_str(&format!(
             "- [{}] {} (score: {}, comments: {}) {}\n",
             item.source,
@@ -557,15 +577,25 @@ mod tests {
         }
     }
 
+    fn utc_time(value: &str) -> chrono::DateTime<chrono::Utc> {
+        match chrono::DateTime::parse_from_rfc3339(value) {
+            Ok(time) => time.with_timezone(&chrono::Utc),
+            Err(err) => panic!("time {value}: {err}"),
+        }
+    }
+
+    fn must<T, E: std::fmt::Display>(result: std::result::Result<T, E>, context: &str) -> T {
+        match result {
+            Ok(value) => value,
+            Err(err) => panic!("{context}: {err}"),
+        }
+    }
+
     #[test]
     fn builds_report_prompt_from_stored_messages() {
         let target = test_target("group-1", "请总结");
-        let since = chrono::DateTime::parse_from_rfc3339("2026-06-06T00:00:00Z")
-            .expect("since")
-            .with_timezone(&chrono::Utc);
-        let until = chrono::DateTime::parse_from_rfc3339("2026-06-06T01:00:00Z")
-            .expect("until")
-            .with_timezone(&chrono::Utc);
+        let since = utc_time("2026-06-06T00:00:00Z");
+        let until = utc_time("2026-06-06T01:00:00Z");
         let messages = vec![
             StoredMessage {
                 message_id: "m1".to_string(),
@@ -615,12 +645,8 @@ mod tests {
     #[test]
     fn builds_public_report_prompt_from_news_items() {
         let target = test_target("group-1", "请总结");
-        let since = chrono::DateTime::parse_from_rfc3339("2026-06-06T00:00:00Z")
-            .expect("since")
-            .with_timezone(&chrono::Utc);
-        let until = chrono::DateTime::parse_from_rfc3339("2026-06-06T01:00:00Z")
-            .expect("until")
-            .with_timezone(&chrono::Utc);
+        let since = utc_time("2026-06-06T00:00:00Z");
+        let until = utc_time("2026-06-06T01:00:00Z");
 
         let prompt = build_public_report_prompt(
             &target,
@@ -746,7 +772,7 @@ mod tests {
             ScheduleConfig::default(),
         );
 
-        scheduler.start().await.expect("scheduler");
+        must(scheduler.start().await, "scheduler");
     }
 
     #[tokio::test]
@@ -765,7 +791,10 @@ mod tests {
             },
         );
 
-        let err = scheduler.start().await.expect_err("invalid cron");
+        let err = match scheduler.start().await {
+            Ok(_) => panic!("invalid cron should fail"),
+            Err(err) => err,
+        };
 
         assert!(err.to_string().contains("无效的 cron 表达式"));
     }

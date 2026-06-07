@@ -5,6 +5,13 @@ use qunmind::storage::{MessageStore, NewMessage, StoredMessage};
 
 struct DefaultLinkStore;
 
+fn must<T, E: std::fmt::Display>(result: std::result::Result<T, E>, context: &str) -> T {
+    match result {
+        Ok(value) => value,
+        Err(err) => panic!("{context}: {err}"),
+    }
+}
+
 #[async_trait::async_trait]
 impl MessageStore for DefaultLinkStore {
     async fn save(&self, _message: NewMessage) -> Result<()> {
@@ -55,10 +62,8 @@ fn builds_new_message_from_incoming_message() {
 async fn message_store_default_recent_links_is_empty() {
     let now = Utc::now();
 
-    let links = DefaultLinkStore
-        .recent_links("group-1", now, now, 20)
-        .await
-        .expect("recent links");
+    let links = DefaultLinkStore.recent_links("group-1", now, now, 20).await;
+    let links = must(links, "recent links");
 
     assert!(links.is_empty());
 }

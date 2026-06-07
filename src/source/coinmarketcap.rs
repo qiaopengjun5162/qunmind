@@ -51,10 +51,14 @@ impl PublicNewsSource for CoinMarketCapSource {
 }
 
 fn parse_top_stories_html(html: &str, page_url: &str, max_items: usize) -> Vec<PublicNewsItem> {
-    extract_next_data_json(html)
+    let mut items = Vec::new();
+    if let Some(parsed_items) = extract_next_data_json(html)
         .and_then(|json| serde_json::from_str::<Value>(json).ok())
         .map(|value| parse_top_story_items(&value, page_url, max_items))
-        .unwrap_or_default()
+    {
+        items = parsed_items;
+    }
+    items
 }
 
 fn extract_next_data_json(html: &str) -> Option<&str> {
@@ -110,7 +114,7 @@ fn story_from_object(map: &Map<String, Value>, page_url: &str) -> Option<PublicN
         return None;
     }
 
-    let description = string_field(map, "description").unwrap_or_default();
+    let description = str_or_empty(string_field(map, "description"));
     let title = if description.is_empty() {
         title.to_string()
     } else {
@@ -124,6 +128,10 @@ fn story_from_object(map: &Map<String, Value>, page_url: &str) -> Option<PublicN
         score: None,
         comments: None,
     })
+}
+
+fn str_or_empty(value: Option<&str>) -> &str {
+    value.map_or("", |value| value)
 }
 
 fn looks_like_top_story(map: &Map<String, Value>, id: &str, title: &str) -> bool {

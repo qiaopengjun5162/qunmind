@@ -76,9 +76,10 @@ fn parse_trending_html(html: &str, max_items: usize) -> Vec<PublicNewsItem> {
             let article = fragment.split_once("</article>")?.0;
             let (href, repo) = extract_repo_link(article)?;
             let description = extract_tag_text(article, "p").filter(|text| !text.is_empty());
-            let title = description
-                .map(|description| format!("{} - {}", repo, description))
-                .unwrap_or(repo);
+            let title = match description {
+                Some(description) => format!("{} - {}", repo, description),
+                None => repo,
+            };
 
             Some(PublicNewsItem {
                 source: "GitHub Trending".to_string(),

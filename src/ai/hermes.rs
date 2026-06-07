@@ -84,7 +84,7 @@ impl AiClient for HermesClient {
 
         if !resp.status().is_success() {
             let status = resp.status();
-            let body = resp.text().await.unwrap_or_default();
+            let body = response_text_or_empty(resp).await;
             return Err(QunMindError::Ai(format!(
                 "Hermes 返回错误 {}: {}",
                 status, body
@@ -94,6 +94,14 @@ impl AiClient for HermesClient {
         let payload: HermesResponse = resp.json().await?;
         extract_text(payload)
     }
+}
+
+async fn response_text_or_empty(resp: reqwest::Response) -> String {
+    let mut body = String::new();
+    if let Ok(value) = resp.text().await {
+        body = value;
+    }
+    body
 }
 
 fn extract_text(payload: HermesResponse) -> Result<String> {
@@ -108,13 +116,20 @@ fn extract_text(payload: HermesResponse) -> Result<String> {
 mod tests {
     use super::*;
 
+    fn must<T, E: std::fmt::Display>(result: std::result::Result<T, E>, context: &str) -> T {
+        match result {
+            Ok(value) => value,
+            Err(err) => panic!("{context}: {err}"),
+        }
+    }
+
     #[test]
     fn extracts_top_level_text_aliases() {
         for field in ["text", "reply", "message", "content"] {
             let payload = serde_json::json!({ field: "hello" });
-            let response: HermesResponse = serde_json::from_value(payload).expect("response");
+            let response: HermesResponse = must(serde_json::from_value(payload), "response");
 
-            assert_eq!(extract_text(response).expect("text"), "hello");
+            assert_eq!(must(extract_text(response), "text"), "hello");
         }
     }
 
@@ -122,18 +137,23 @@ mod tests {
     fn extracts_nested_data_text_aliases() {
         for field in ["text", "reply", "message", "content"] {
             let payload = serde_json::json!({ "data": { field: "nested" } });
-            let response: HermesResponse = serde_json::from_value(payload).expect("response");
+            let response: HermesResponse = must(serde_json::from_value(payload), "response");
 
-            assert_eq!(extract_text(response).expect("text"), "nested");
+            assert_eq!(must(extract_text(response), "text"), "nested");
         }
     }
 
     #[test]
     fn rejects_empty_response_text() {
-        let response: HermesResponse =
-            serde_json::from_value(serde_json::json!({ "text": "" })).expect("response");
+        let response: HermesResponse = must(
+            serde_json::from_value(serde_json::json!({ "text": "" })),
+            "response",
+        );
 
-        let err = extract_text(response).expect_err("empty response");
+        let err = match extract_text(response) {
+            Ok(_) => panic!("empty response should fail"),
+            Err(err) => err,
+        };
 
         assert!(err.to_string().contains("Hermes 返回空响应"));
     }

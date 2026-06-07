@@ -59,10 +59,16 @@ pub enum WxCliCommand {
 mod tests {
     use super::*;
 
+    fn parse_args(args: &[&str]) -> Args {
+        match Args::try_parse_from(args) {
+            Ok(args) => args,
+            Err(err) => panic!("args: {err}"),
+        }
+    }
+
     #[test]
     fn parses_wx_cli_poll_command() {
-        let args = Args::try_parse_from(["qunmind", "--config", "local.toml", "wx-cli", "poll"])
-            .expect("args");
+        let args = parse_args(&["qunmind", "--config", "local.toml", "wx-cli", "poll"]);
 
         assert_eq!(args.config, PathBuf::from("local.toml"));
         assert!(matches!(
@@ -75,22 +81,19 @@ mod tests {
 
     #[test]
     fn parses_wx_cli_dry_run_command() {
-        let args =
-            Args::try_parse_from(["qunmind", "wx-cli", "dry-run", "--limit", "5"]).expect("args");
+        let args = parse_args(&["qunmind", "wx-cli", "dry-run", "--limit", "5"]);
 
         match args.command {
             Some(CliCommand::WxCli {
                 command: WxCliCommand::DryRun { input: None, limit },
             }) => assert_eq!(limit, 5),
-            _ => panic!("expected wx-cli dry-run command"),
+            _ => panic!("wx-cli dry-run command should parse"),
         }
     }
 
     #[test]
     fn parses_wx_cli_input_file_options() {
-        let args =
-            Args::try_parse_from(["qunmind", "wx-cli", "dry-run", "--input", "wx-output.json"])
-                .expect("args");
+        let args = parse_args(&["qunmind", "wx-cli", "dry-run", "--input", "wx-output.json"]);
 
         match args.command {
             Some(CliCommand::WxCli {
@@ -103,39 +106,37 @@ mod tests {
                 assert_eq!(input, PathBuf::from("wx-output.json"));
                 assert_eq!(limit, 10);
             }
-            _ => panic!("expected wx-cli dry-run command"),
+            _ => panic!("wx-cli dry-run command should parse"),
         }
     }
 
     #[test]
     fn parses_wx_cli_poll_input_file_option() {
-        let args = Args::try_parse_from(["qunmind", "wx-cli", "poll", "--input", "wx-output.json"])
-            .expect("args");
+        let args = parse_args(&["qunmind", "wx-cli", "poll", "--input", "wx-output.json"]);
 
         match args.command {
             Some(CliCommand::WxCli {
                 command: WxCliCommand::Poll { input: Some(input) },
             }) => assert_eq!(input, PathBuf::from("wx-output.json")),
-            _ => panic!("expected wx-cli poll command"),
+            _ => panic!("wx-cli poll command should parse"),
         }
     }
 
     #[test]
     fn parses_wx_cli_handle_once_command() {
-        let args = Args::try_parse_from(["qunmind", "wx-cli", "handle-once", "--limit", "3"])
-            .expect("args");
+        let args = parse_args(&["qunmind", "wx-cli", "handle-once", "--limit", "3"]);
 
         match args.command {
             Some(CliCommand::WxCli {
                 command: WxCliCommand::HandleOnce { limit },
             }) => assert_eq!(limit, 3),
-            _ => panic!("expected wx-cli handle-once command"),
+            _ => panic!("wx-cli handle-once command should parse"),
         }
     }
 
     #[test]
     fn parses_wx_cli_send_command() {
-        let args = Args::try_parse_from([
+        let args = parse_args(&[
             "qunmind",
             "wx-cli",
             "send",
@@ -143,8 +144,7 @@ mod tests {
             "room@chatroom",
             "--text",
             "hello",
-        ])
-        .expect("args");
+        ]);
 
         match args.command {
             Some(CliCommand::WxCli {
@@ -153,7 +153,7 @@ mod tests {
                 assert_eq!(chat_id, "room@chatroom");
                 assert_eq!(text, "hello");
             }
-            _ => panic!("expected wx-cli send command"),
+            _ => panic!("wx-cli send command should parse"),
         }
     }
 }

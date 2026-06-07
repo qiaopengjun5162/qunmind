@@ -53,15 +53,20 @@ impl BotHandler {
     }
 
     fn mention_names_for<'a>(&'a self, msg: &IncomingMessage) -> &'a [String] {
-        self.group_for(msg)
+        match self
+            .group_for(msg)
             .and_then(|group| group.mention_names.as_deref())
-            .unwrap_or(&self.config.mention_names)
+        {
+            Some(mention_names) => mention_names,
+            None => &self.config.mention_names,
+        }
     }
 
     fn context_messages_for(&self, msg: &IncomingMessage) -> usize {
-        self.group_for(msg)
-            .and_then(|group| group.context_messages)
-            .unwrap_or(self.config.context_messages)
+        match self.group_for(msg).and_then(|group| group.context_messages) {
+            Some(context_messages) => context_messages,
+            None => self.config.context_messages,
+        }
     }
 
     fn system_prompt_for<'a>(&'a self, msg: &IncomingMessage) -> Option<&'a str> {
@@ -77,9 +82,7 @@ impl BotHandler {
         } else {
             let until = Utc::now() + Duration::seconds(1);
             let since = until - Duration::hours(24);
-            let limit = i64::try_from(context_messages.saturating_add(1))
-                .unwrap_or(i64::MAX)
-                .max(1);
+            let limit = context_limit(context_messages);
             match self
                 .message_store
                 .text_messages(&msg.chat_id, since, until, limit)
@@ -100,6 +103,14 @@ impl BotHandler {
         }
 
         messages
+    }
+}
+
+fn context_limit(context_messages: usize) -> i64 {
+    if let Ok(limit) = i64::try_from(context_messages.saturating_add(1)) {
+        limit.max(1)
+    } else {
+        i64::MAX
     }
 }
 

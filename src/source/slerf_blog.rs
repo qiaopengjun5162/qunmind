@@ -62,11 +62,14 @@ fn parse_blog_html(html: &str, page_url: &str, max_items: usize) -> Vec<PublicNe
         .filter_map(|fragment| {
             let article = fragment.split_once("</article>")?.0;
             let (href, link_text) = extract_first_link(article)?;
-            let title = ["h1", "h2", "h3"]
+            let title = match ["h1", "h2", "h3"]
                 .into_iter()
                 .find_map(|tag| extract_tag_text(article, tag))
                 .filter(|text| !text.is_empty())
-                .unwrap_or(link_text);
+            {
+                Some(title) => title,
+                None => link_text,
+            };
             if title.is_empty() {
                 return None;
             }

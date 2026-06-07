@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use anyhow::Context;
 use clap::Parser;
 use qunmind::ai;
 use qunmind::ai::hermes::HermesClient;
@@ -32,9 +33,11 @@ use tracing_subscriber::EnvFilter;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    tracing_subscriber::fmt()
-        .with_env_filter(EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()))
-        .init();
+    let env_filter = match EnvFilter::try_from_default_env() {
+        Ok(filter) => filter,
+        Err(_) => "info".into(),
+    };
+    tracing_subscriber::fmt().with_env_filter(env_filter).init();
 
     let args = Args::parse();
     info!(config = %args.config.display(), "加载配置...");
@@ -236,7 +239,8 @@ async fn load_wx_cli_messages(
     input: Option<&std::path::PathBuf>,
 ) -> anyhow::Result<Vec<IncomingMessage>> {
     if let Some(input) = input {
-        let raw = std::fs::read_to_string(input)?;
+        let raw = std::fs::read_to_string(input)
+            .with_context(|| format!("读取 wx-cli 输入文件失败: {}", input.display()))?;
         return Ok(parse_wx_cli_messages_from_str(
             &raw,
             &config.wx_cli.group_chat_id,
@@ -250,18 +254,15 @@ async fn load_wx_cli_messages(
 fn wx_cli_dry_run_item(config: &Config, msg: &IncomingMessage) -> serde_json::Value {
     let effective = effective_bot_config(config, msg);
     let (would_reply, reason) = wx_cli_dry_run_decision(&effective, msg);
-    let matched_mentions = msg
-        .text
-        .as_deref()
-        .map(|text| {
-            effective
-                .mention_names
-                .iter()
-                .filter(|name| text.contains(name.as_str()))
-                .cloned()
-                .collect::<Vec<_>>()
-        })
-        .unwrap_or_default();
+    let matched_mentions = match msg.text.as_deref() {
+        Some(text) => effective
+            .mention_names
+            .iter()
+            .filter(|name| text.contains(name.as_str()))
+            .cloned()
+            .collect::<Vec<_>>(),
+        None => Vec::new(),
+    };
 
     serde_json::json!({
         "message_id": &msg.message_id,
@@ -294,12 +295,14 @@ fn effective_bot_config(config: &Config, msg: &IncomingMessage) -> EffectiveBotC
     EffectiveBotConfig {
         enabled: group.is_none_or(|group| group.enabled),
         group_name: group.map(|group| group.name.clone()),
-        mention_names: group
-            .and_then(|group| group.mention_names.clone())
-            .unwrap_or_else(|| config.bot.mention_names.clone()),
-        context_messages: group
-            .and_then(|group| group.context_messages)
-            .unwrap_or(config.bot.context_messages),
+        mention_names: match group.and_then(|group| group.mention_names.clone()) {
+            Some(mention_names) => mention_names,
+            None => config.bot.mention_names.clone(),
+        },
+        context_messages: match group.and_then(|group| group.context_messages) {
+            Some(context_messages) => context_messages,
+            None => config.bot.context_messages,
+        },
         system_prompt: group.and_then(|group| group.system_prompt.clone()),
     }
 }
@@ -363,7 +366,14 @@ mod tests {
     use super::*;
 
     fn config_from(input: &str) -> Config {
-        toml::from_str(input).expect("config")
+        must(toml::from_str(input), "config")
+    }
+
+    fn must<T, E: std::fmt::Display>(result: std::result::Result<T, E>, context: &str) -> T {
+        match result {
+            Ok(value) => value,
+            Err(err) => panic!("{context}: {err}"),
+        }
     }
 
     #[test]
@@ -371,7 +381,7 @@ mod tests {
         let config = config_from("");
 
         let err = match build_ai_client(&config) {
-            Ok(_) => panic!("expected missing api key error"),
+            Ok(_) => panic!("missing api key should fail"),
             Err(err) => err,
         };
 
@@ -387,7 +397,7 @@ mod tests {
             "#,
         );
 
-        build_ai_client(&config).expect("openai client");
+        must(build_ai_client(&config), "openai client");
     }
 
     #[test]
@@ -399,7 +409,7 @@ mod tests {
             "#,
         );
 
-        build_ai_client(&config).expect("hermes client");
+        must(build_ai_client(&config), "hermes client");
     }
 
     #[test]
@@ -412,7 +422,7 @@ mod tests {
         );
 
         let err = match build_channel(&config) {
-            Ok(_) => panic!("expected missing wecom config error"),
+            Ok(_) => panic!("missing wecom config should fail"),
             Err(err) => err,
         };
 
@@ -432,7 +442,7 @@ mod tests {
             "#,
         );
 
-        let channel = build_channel(&config).expect("wecom channel");
+        let channel = must(build_channel(&config), "wecom channel");
 
         assert_eq!(channel.name(), "wecom");
     }
@@ -446,7 +456,7 @@ mod tests {
             "#,
         );
 
-        let channel = build_channel(&config).expect("wx-cli channel");
+        let channel = must(build_channel(&config), "wx-cli channel");
 
         assert_eq!(channel.name(), "wx_cli");
     }
@@ -455,7 +465,7 @@ mod tests {
     fn build_public_news_source_returns_none_when_all_sources_are_disabled() {
         let config = config_from("");
 
-        let source = build_public_news_source(&config).expect("public source");
+        let source = must(build_public_news_source(&config), "public source");
 
         assert!(source.is_none());
     }
@@ -469,7 +479,7 @@ mod tests {
             "#,
         );
 
-        let source = build_public_news_source(&config).expect("public source");
+        let source = must(build_public_news_source(&config), "public source");
 
         assert!(source.is_some());
     }
@@ -485,7 +495,7 @@ mod tests {
         );
 
         let err = match build_public_news_source(&config) {
-            Ok(_) => panic!("expected missing dune api key error"),
+            Ok(_) => panic!("missing dune api key should fail"),
             Err(err) => err,
         };
 
@@ -611,7 +621,7 @@ mod tests {
     async fn load_wx_cli_messages_reads_input_file() {
         let path =
             std::env::temp_dir().join(format!("qunmind-wx-cli-input-{}.json", std::process::id()));
-        std::fs::write(
+        let write_result = std::fs::write(
             &path,
             r#"
             [
@@ -623,15 +633,13 @@ mod tests {
                 }
             ]
             "#,
-        )
-        .expect("write fixture");
+        );
+        must(write_result, "write fixture");
         let config = config_from("");
 
-        let messages = load_wx_cli_messages(&config, Some(&path))
-            .await
-            .expect("messages");
+        let messages = must(load_wx_cli_messages(&config, Some(&path)).await, "messages");
 
-        std::fs::remove_file(path).expect("remove fixture");
+        must(std::fs::remove_file(path), "remove fixture");
         assert_eq!(messages.len(), 1);
         assert_eq!(messages[0].message_id, "m-file");
         assert_eq!(messages[0].text.as_deref(), Some("@bot file hello"));

@@ -239,6 +239,13 @@ fn normalize_title(title: &str) -> String {
 mod tests {
     use super::*;
 
+    fn resource(title: &str) -> &'static LearningResource {
+        match find_resource(title) {
+            Some(resource) => resource,
+            None => panic!("resource: {title}"),
+        }
+    }
+
     #[test]
     fn covers_all_requested_learning_resources() {
         let titles = LEARNING_RESOURCES
@@ -327,9 +334,9 @@ mod tests {
 
     #[test]
     fn finds_resources_with_normalized_titles() {
-        let claude = find_resource("anthropic building with the claude api").expect("claude api");
-        let zread = find_resource("Zread AI OpenClaw Hermes").expect("zread hermes");
-        let handbook = find_resource("AI Web3 School Handbook").expect("ai web3 handbook");
+        let claude = resource("anthropic building with the claude api");
+        let zread = resource("Zread AI OpenClaw Hermes");
+        let handbook = resource("AI Web3 School Handbook");
 
         assert_eq!(claude.provider, "Anthropic");
         assert_eq!(claude.category, LearningResourceCategory::ApiCalling);

@@ -26,8 +26,8 @@ impl WeComChannel {
 
     fn incoming_message_from_frame(frame: &WsFrame) -> Option<IncomingMessage> {
         let text = extract_text(frame)?;
-        let chat_id = extract_chat_id(frame).unwrap_or_default();
-        let from = extract_from(frame).unwrap_or_default();
+        let chat_id = string_or_empty(extract_chat_id(frame));
+        let from = string_or_empty(extract_from(frame));
         let is_group = !chat_id.is_empty();
 
         Some(IncomingMessage {
@@ -39,6 +39,14 @@ impl WeComChannel {
             msg_type: MsgType::Text,
         })
     }
+}
+
+fn string_or_empty(value: Option<String>) -> String {
+    let mut text = String::new();
+    if let Some(value) = value {
+        text = value;
+    }
+    text
 }
 
 fn extract_text(frame: &WsFrame) -> Option<String> {
@@ -163,6 +171,13 @@ impl Channel for WeComChannel {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    fn incoming(frame: &WsFrame) -> IncomingMessage {
+        match WeComChannel::incoming_message_from_frame(frame) {
+            Some(message) => message,
+            None => panic!("incoming message"),
+        }
+    }
     use wecom_aibot_rust_sdk::types::WsFrameHeaders;
 
     fn text_frame(body: serde_json::Value) -> WsFrame {
@@ -187,7 +202,7 @@ mod tests {
             }
         }));
 
-        let msg = WeComChannel::incoming_message_from_frame(&frame).unwrap();
+        let msg = incoming(&frame);
 
         assert_eq!(msg.message_id, "req-1");
         assert_eq!(msg.from, "alice");
@@ -208,7 +223,7 @@ mod tests {
             }
         }));
 
-        let msg = WeComChannel::incoming_message_from_frame(&frame).unwrap();
+        let msg = incoming(&frame);
 
         assert_eq!(msg.from, "alice");
         assert_eq!(msg.chat_id, "alice");

@@ -552,15 +552,21 @@ impl Config {
 mod tests {
     use super::*;
 
+    fn config_from(input: &str) -> Config {
+        match toml::from_str(input) {
+            Ok(config) => config,
+            Err(err) => panic!("config: {err}"),
+        }
+    }
+
     #[test]
     fn uses_defaults_for_optional_sections() {
-        let config: Config = toml::from_str(
+        let config = config_from(
             r#"
             [ai]
             api_key = "token"
             "#,
-        )
-        .expect("config");
+        );
 
         assert_eq!(config.channel.kind, ChannelKind::Wecom);
         assert_eq!(config.ai.provider, AiProvider::OpenAi);
@@ -660,7 +666,7 @@ mod tests {
 
     #[test]
     fn allows_minimal_wx_cli_diagnostic_config() {
-        let config: Config = toml::from_str(
+        let config = config_from(
             r#"
             [channel]
             kind = "wx_cli"
@@ -669,8 +675,7 @@ mod tests {
             bin = "wx-local"
             poll_args = ["poll", "--json"]
             "#,
-        )
-        .expect("config");
+        );
 
         assert_eq!(config.channel.kind, ChannelKind::WxCli);
         assert_eq!(config.ai.provider, AiProvider::OpenAi);
@@ -684,7 +689,7 @@ mod tests {
 
     #[test]
     fn parses_wx_cli_hermes_and_groups() {
-        let config: Config = toml::from_str(
+        let config = config_from(
             r#"
             [channel]
             kind = "wx_cli"
@@ -766,8 +771,7 @@ mod tests {
             context_messages = 2
             system_prompt = "你是技术群 Rust 助手。"
             "#,
-        )
-        .expect("config");
+        );
 
         assert_eq!(config.channel.kind, ChannelKind::WxCli);
         assert_eq!(config.ai.provider, AiProvider::Hermes);

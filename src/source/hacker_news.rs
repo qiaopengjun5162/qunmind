@@ -103,10 +103,10 @@ fn into_public_item(item: HackerNewsItem) -> Option<PublicNewsItem> {
     Some(PublicNewsItem {
         source: "Hacker News".to_string(),
         title,
-        url: item
-            .url
-            .filter(|url| !url.trim().is_empty())
-            .unwrap_or_else(|| format!("https://news.ycombinator.com/item?id={}", item.id)),
+        url: match item.url.filter(|url| !url.trim().is_empty()) {
+            Some(url) => url,
+            None => format!("https://news.ycombinator.com/item?id={}", item.id),
+        },
         score: item.score,
         comments: item.descendants,
     })
@@ -115,6 +115,13 @@ fn into_public_item(item: HackerNewsItem) -> Option<PublicNewsItem> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn public_item(item: HackerNewsItem) -> PublicNewsItem {
+        match into_public_item(item) {
+            Some(item) => item,
+            None => panic!("item"),
+        }
+    }
 
     #[test]
     fn converts_story_items() {
@@ -129,7 +136,7 @@ mod tests {
             item_type: "story".to_string(),
         };
 
-        let public = into_public_item(item).expect("item");
+        let public = public_item(item);
 
         assert_eq!(public.source, "Hacker News");
         assert_eq!(public.title, "Rust news");
@@ -151,7 +158,7 @@ mod tests {
             item_type: "story".to_string(),
         };
 
-        let public = into_public_item(item).expect("item");
+        let public = public_item(item);
 
         assert_eq!(public.url, "https://news.ycombinator.com/item?id=42");
     }
