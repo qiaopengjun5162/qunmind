@@ -20,6 +20,7 @@
 - 回复时纳入最近已保存群消息作为基础对话上下文。
 - 入站消息链接抽取和去重存储。
 - Rust 侧项目投研工具目录，用于后续扩展市场数据、链上分析、代码安全、社区、资金动向和研究观点来源。
+- Rust 侧 AI / Agent 学习资源目录，用于梳理 LLM 基础、API 调用、coding agent、agent 框架和 Hermes 执行层参考。
 - Cron 定时日报。
 - 基于最近已保存群消息和链接情报生成日报。
 - 群消息为空时可选使用 Hacker News、CoinMarketCap、CoinGecko、DeFi Llama、Dune、GitHub Trending、Slerf Blog 生成公共信息参考日报。
@@ -84,6 +85,10 @@ QunMind 会在保存文本消息时抽取 `http://` / `https://` 链接，写入
 ## 投研工具地图
 
 `src/research/tools.rs` 维护项目投研工具目录，当前按六类组织：基础信息与行情数据、链上数据与分析、项目代码与安全、社区与社交媒体、投资与资金动向、研究报告与专家观点。后续新增 CoinGecko、DeFi Llama、Dune、区块链浏览器、审计报告或社交数据来源时，优先从这个目录选择可自动化的工具，再实现成 Rust source / connector。
+
+## AI / Agent 学习地图
+
+`src/research/learning.rs` 维护推荐的 LLM、API、coding agent、agent 框架和 Hermes 执行层学习资源。它把这些参考资料结构化在 Rust 代码里，方便后续设计 prompt、模型供应商对接、tool calling、skills、记忆和长期执行能力，同时不把微信消息主链路变成资料清单。
 
 ## 开发命令
 

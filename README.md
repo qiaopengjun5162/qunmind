@@ -20,6 +20,7 @@ The project currently supports:
 - Basic conversation context from recently stored messages when replying.
 - Incoming message link extraction and deduplicated storage.
 - Rust-side crypto research tool catalog for future market data, onchain analytics, code security, community, funding-flow, and research-opinion sources.
+- Rust-side AI / agent learning resource catalog for LLM basics, API calling, coding agents, agent frameworks, and Hermes execution-layer references.
 - Cron-based daily reports.
 - Daily reports generated from recently stored group messages and link intelligence.
 - Optional Hacker News, CoinMarketCap, CoinGecko, DeFi Llama, Dune, GitHub Trending, and Slerf Blog fallback reports when a report group has no messages.
@@ -84,6 +85,10 @@ QunMind extracts `http://` / `https://` links from incoming text messages and st
 ## Research Tool Map
 
 `src/research/tools.rs` tracks the project research tool catalog across six categories: market data, onchain analytics, code and security, community and social media, funding flows, and research opinions. Future CoinGecko, DeFi Llama, Dune, explorer, audit-report, or social-data integrations should start from this catalog and then become Rust sources or connectors.
+
+## AI / Agent Learning Map
+
+`src/research/learning.rs` tracks the recommended LLM, API, coding-agent, agent-framework, and Hermes execution-layer learning resources. It keeps these references structured in Rust so future prompt design, model-provider integration, tool calling, skills, memory, and long-running agent execution decisions can be reviewed without turning the WeChat message path into a documentation dump.
 
 ## Development
 
