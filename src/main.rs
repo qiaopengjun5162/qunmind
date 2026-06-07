@@ -193,9 +193,32 @@ async fn run_wx_cli_command(command: WxCliCommand, config: &Config) -> anyhow::R
                 }))?
             );
         }
-        WxCliCommand::HandleOnce { input, limit } => {
+        WxCliCommand::HandleOnce {
+            input,
+            message_id,
+            limit,
+        } => {
             // handle-once exercises the real reply pipeline, so the default limit stays low to avoid chat spam.
             let wx_channel = Arc::new(WxCliChannel::new(&config.wx_cli));
+            let messages = if input.is_some() {
+                load_wx_cli_messages(config, input.as_ref()).await?
+            } else {
+                wx_channel.poll_once().await?
+            };
+            let total_polled = messages.len();
+            let messages = select_wx_cli_messages(messages, message_id.as_deref(), limit);
+            if messages.is_empty() {
+                println!(
+                    "{}",
+                    serde_json::json!({
+                        "ok": true,
+                        "total_polled": total_polled,
+                        "processed": 0
+                    })
+                );
+                return Ok(());
+            }
+
             let channel: Arc<dyn Channel> = wx_channel.clone();
             let message_store = build_message_store(config).await?;
             let ai_client = build_ai_client(config)?;
@@ -206,20 +229,15 @@ async fn run_wx_cli_command(command: WxCliCommand, config: &Config) -> anyhow::R
                 config.groups.clone(),
                 message_store,
             );
-            let messages = if input.is_some() {
-                load_wx_cli_messages(config, input.as_ref()).await?
-            } else {
-                wx_channel.poll_once().await?
-            };
-            let limit = limit.max(1);
-            let processed = messages.len().min(limit);
-            for message in messages.into_iter().take(limit) {
+            let processed = messages.len();
+            for message in messages {
                 handler.on_message(message).await?;
             }
             println!(
                 "{}",
                 serde_json::json!({
                     "ok": true,
+                    "total_polled": total_polled,
                     "processed": processed
                 })
             );
@@ -255,6 +273,19 @@ async fn load_wx_cli_messages(
 
     let channel = WxCliChannel::new(&config.wx_cli);
     Ok(channel.poll_once().await?)
+}
+
+fn select_wx_cli_messages(
+    messages: Vec<IncomingMessage>,
+    message_id: Option<&str>,
+    limit: usize,
+) -> Vec<IncomingMessage> {
+    let limit = limit.max(1);
+    messages
+        .into_iter()
+        .filter(|msg| message_id.is_none_or(|message_id| msg.message_id == message_id))
+        .take(limit)
+        .collect()
 }
 
 fn wx_cli_dry_run_item(config: &Config, msg: &IncomingMessage) -> serde_json::Value {
@@ -621,6 +652,46 @@ mod tests {
     #[test]
     fn text_preview_truncates_long_text() {
         assert_eq!(text_preview(Some("abcdef"), 3), Some("abc...".to_string()));
+    }
+
+    fn test_message(message_id: &str) -> IncomingMessage {
+        IncomingMessage {
+            message_id: message_id.to_string(),
+            from: "alice".to_string(),
+            chat_id: "room@chatroom".to_string(),
+            is_group: true,
+            text: Some("@bot hello".to_string()),
+            msg_type: MsgType::Text,
+        }
+    }
+
+    #[test]
+    fn select_wx_cli_messages_filters_by_message_id_before_limit() {
+        let messages = vec![
+            test_message("m-1"),
+            test_message("m-2"),
+            test_message("m-3"),
+        ];
+
+        let selected = select_wx_cli_messages(messages, Some("m-2"), 1);
+
+        assert_eq!(selected.len(), 1);
+        assert_eq!(selected[0].message_id, "m-2");
+    }
+
+    #[test]
+    fn select_wx_cli_messages_uses_limit_when_message_id_is_absent() {
+        let messages = vec![
+            test_message("m-1"),
+            test_message("m-2"),
+            test_message("m-3"),
+        ];
+
+        let selected = select_wx_cli_messages(messages, None, 2);
+
+        assert_eq!(selected.len(), 2);
+        assert_eq!(selected[0].message_id, "m-1");
+        assert_eq!(selected[1].message_id, "m-2");
     }
 
     #[tokio::test]

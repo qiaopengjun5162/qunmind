@@ -51,10 +51,11 @@ cargo run -- wx-cli dry-run --limit 10
 cargo run -- wx-cli dry-run --input wx-output.json --limit 10
 cargo run -- wx-cli handle-once --limit 1
 cargo run -- wx-cli handle-once --input wx-output.json --limit 1
+cargo run -- wx-cli handle-once --input wx-output.json --message-id "m-123" --limit 1
 cargo run -- wx-cli send --chat-id "room@chatroom" --text "QunMind diagnostic message"
 ```
 
-`poll`, `dry-run`, and `send` only read `[wx_cli]` config and do not initialize PostgreSQL, AI clients, or the main bot loop. Add `--input <json-file>` to `poll`, `dry-run`, or `handle-once` to parse a captured wx-cli JSON output file without invoking wx-cli again. `dry-run` reports which parsed messages would trigger a bot reply according to `bot.mention_names`, without saving, calling AI, or sending. `handle-once` stores the parsed messages, runs mention filtering, calls the configured AI provider when needed, and sends replies through `wx_cli.send_args`. Keep `--limit 1` for the first real group test to avoid accidental noisy replies.
+`poll`, `dry-run`, and `send` only read `[wx_cli]` config and do not initialize PostgreSQL, AI clients, or the main bot loop. Add `--input <json-file>` to `poll`, `dry-run`, or `handle-once` to parse a captured wx-cli JSON output file without invoking wx-cli again. `dry-run` reports which parsed messages would trigger a bot reply according to `bot.mention_names`, without saving, calling AI, or sending. `handle-once` stores the parsed messages, runs mention filtering, calls the configured AI provider when needed, and sends replies through `wx_cli.send_args`. Use `--message-id` with captured files when you want to replay exactly one message from a larger wx-cli output. Keep `--limit 1` for the first real group test to avoid accidental noisy replies.
 
 ## Public Source Fallback
 

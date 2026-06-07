@@ -51,10 +51,11 @@ cargo run -- wx-cli dry-run --limit 10
 cargo run -- wx-cli dry-run --input wx-output.json --limit 10
 cargo run -- wx-cli handle-once --limit 1
 cargo run -- wx-cli handle-once --input wx-output.json --limit 1
+cargo run -- wx-cli handle-once --input wx-output.json --message-id "m-123" --limit 1
 cargo run -- wx-cli send --chat-id "room@chatroom" --text "QunMind 诊断消息"
 ```
 
-`poll`、`dry-run` 和 `send` 只读取 `[wx_cli]` 配置，不会初始化 PostgreSQL、AI 客户端或机器人主循环。`poll`、`dry-run` 或 `handle-once` 加 `--input <json-file>` 时，会解析已捕获的 wx-cli JSON 输出文件，不会再次调用 wx-cli。`dry-run` 会按 `bot.mention_names` 输出哪些消息会触发回复，但不会保存、调用 AI 或发送。`handle-once` 会写入 PostgreSQL，执行群聊 @ 过滤，在命中时调用已配置的 AI，并通过 `wx_cli.send_args` 回复。第一次真实群测建议保持 `--limit 1`，避免误刷屏。
+`poll`、`dry-run` 和 `send` 只读取 `[wx_cli]` 配置，不会初始化 PostgreSQL、AI 客户端或机器人主循环。`poll`、`dry-run` 或 `handle-once` 加 `--input <json-file>` 时，会解析已捕获的 wx-cli JSON 输出文件，不会再次调用 wx-cli。`dry-run` 会按 `bot.mention_names` 输出哪些消息会触发回复，但不会保存、调用 AI 或发送。`handle-once` 会写入 PostgreSQL，执行群聊 @ 过滤，在命中时调用已配置的 AI，并通过 `wx_cli.send_args` 回复。捕获文件里有多条消息时，可以用 `--message-id` 精确重放一条。第一次真实群测建议保持 `--limit 1`，避免误刷屏。
 
 ## 公共信息日报
 

@@ -45,6 +45,9 @@ pub enum WxCliCommand {
         /// Parse a local wx-cli JSON file instead of invoking wx_cli.poll_args.
         #[arg(long)]
         input: Option<PathBuf>,
+        /// Only process the matching message id.
+        #[arg(long)]
+        message_id: Option<String>,
         /// Maximum number of messages to process; defaults low to avoid noisy real chats.
         #[arg(long, default_value_t = 1)]
         limit: usize,
@@ -131,7 +134,12 @@ mod tests {
 
         match args.command {
             Some(CliCommand::WxCli {
-                command: WxCliCommand::HandleOnce { input: None, limit },
+                command:
+                    WxCliCommand::HandleOnce {
+                        input: None,
+                        message_id: None,
+                        limit,
+                    },
             }) => assert_eq!(limit, 3),
             _ => panic!("wx-cli handle-once command should parse"),
         }
@@ -145,6 +153,8 @@ mod tests {
             "handle-once",
             "--input",
             "wx-output.json",
+            "--message-id",
+            "m-2",
             "--limit",
             "2",
         ]);
@@ -154,10 +164,12 @@ mod tests {
                 command:
                     WxCliCommand::HandleOnce {
                         input: Some(input),
+                        message_id: Some(message_id),
                         limit,
                     },
             }) => {
                 assert_eq!(input, PathBuf::from("wx-output.json"));
+                assert_eq!(message_id, "m-2");
                 assert_eq!(limit, 2);
             }
             _ => panic!("wx-cli handle-once command should parse"),
