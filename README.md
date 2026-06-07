@@ -20,7 +20,7 @@ The project currently supports:
 - Rust-side crypto research tool catalog for future market data, onchain analytics, code security, community, funding-flow, and research-opinion sources.
 - Cron-based daily reports.
 - Daily reports generated from recently stored group messages and link intelligence.
-- Optional Hacker News, CoinMarketCap, CoinGecko, DeFi Llama, GitHub Trending, and Slerf Blog fallback reports when a report group has no messages.
+- Optional Hacker News, CoinMarketCap, CoinGecko, DeFi Llama, Dune, GitHub Trending, and Slerf Blog fallback reports when a report group has no messages.
 
 ## Status
 
@@ -57,17 +57,19 @@ hacker_news_enabled = true
 coinmarketcap_enabled = true
 coingecko_enabled = true
 defillama_enabled = true
+dune_enabled = false
 github_trending_enabled = true
 slerf_blog_enabled = true
 hacker_news_max_items = 10
 coinmarketcap_max_items = 8
 coingecko_max_items = 8
 defillama_max_items = 8
+dune_query_ids = []
 github_trending_languages = ["rust", "go", "python", "typescript"]
 topic_keywords = ["rust", "web3", "ai", "llm", "agent", "zkp", "solana", "ethereum"]
 ```
 
-These sources are filtered toward programming technology, Rust, Web3, crypto, AI, and ZKP. CoinMarketCap is used for crypto market top stories, CoinGecko is used for 24h trending searches, and DeFi Llama is used for protocol TVL signals. The prompt asks the model to mark this as public-source context, not a summary of group discussion.
+These sources are filtered toward programming technology, Rust, Web3, crypto, AI, and ZKP. CoinMarketCap is used for crypto market top stories, CoinGecko is used for 24h trending searches, DeFi Llama is used for protocol TVL signals, and Dune can pull configured query result rows when an API key is provided. The prompt asks the model to mark this as public-source context, not a summary of group discussion.
 
 ## Link Intelligence
 

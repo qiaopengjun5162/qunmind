@@ -1,6 +1,7 @@
 pub mod coingecko;
 pub mod coinmarketcap;
 pub mod defillama;
+pub mod dune;
 pub mod github_trending;
 pub mod hacker_news;
 pub mod slerf_blog;

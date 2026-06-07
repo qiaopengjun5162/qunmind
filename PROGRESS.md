@@ -16,7 +16,7 @@
 - Generate daily reports from recently stored group messages.
 - Include recent deduplicated links in daily report prompts.
 - Added wx-cli diagnostic CLI commands for one-shot poll/send checks before running the full bot loop.
-- Added optional Hacker News, CoinMarketCap, CoinGecko, DeFi Llama, GitHub Trending, and Slerf Blog fallback material for daily reports when the report group has no messages.
+- Added optional Hacker News, CoinMarketCap, CoinGecko, DeFi Llama, Dune, GitHub Trending, and Slerf Blog fallback material for daily reports when the report group has no messages.
 - Added Rust-side research tool catalog for market data, onchain analytics, code security, community, funding-flow, and research-opinion sources.
 - Expanded coverage for config parsing/defaults, AI response parsing, WeCom frame conversion, wx-cli message parsing, bot reply paths, storage trait defaults, daily report prompt building, and scheduler report branches.
 - Documented project feasibility, references, and Rust / WASM implementation rules.
@@ -28,8 +28,8 @@
 - `cargo fmt --all -- --check`
 - `taplo fmt --check --option reorder_keys=true Cargo.toml config.example.toml`
 - `cargo clippy --all-targets --all-features --tests --benches -- -D warnings`
-- `cargo nextest run --all-features`：57 tests passing.
-- Latest coverage run: `cargo llvm-cov nextest --all-features --summary-only`：79.01% line coverage, 57 tests passing.
+- `cargo nextest run --all-features`：60 tests passing.
+- Latest coverage run: `cargo llvm-cov nextest --all-features --summary-only`：79.12% line coverage, 60 tests passing.
 - Previous coverage run: `cargo llvm-cov nextest --all-features --summary-only`：65.78% line coverage, 23 tests passing.
 - `cargo deny check`
 - `typos`
@@ -39,7 +39,7 @@
 - Validate actual wx-cli receive/send commands against a real local WeChat environment.
 - Add PostgreSQL integration tests for `PostgresMessageStore` message/link persistence when a disposable PG test database is available.
 - Tune CoinMarketCap top-story parsing and topic keywords after real Web3 daily report runs.
-- Prioritize automatable research connectors from `research::tools`, continuing with Dune, explorer APIs, and audit-report sources.
+- Prioritize automatable research connectors from `research::tools`, continuing with explorer APIs and audit-report sources.
 - Tune public source ranking and topic keywords after real daily report runs.
 - Add URL title fetching and link quality scoring after real message ingestion is stable.
 - Replace or patch `wecom-aibot-rust-sdk` dependency stack so `reqwest 0.11` / `rustls-pemfile 1.0.4` is no longer pulled in.

@@ -17,6 +17,7 @@ use qunmind::source::PublicNewsSource;
 use qunmind::source::coingecko::CoinGeckoTrendingSource;
 use qunmind::source::coinmarketcap::CoinMarketCapSource;
 use qunmind::source::defillama::DeFiLlamaProtocolsSource;
+use qunmind::source::dune::DuneQuerySource;
 use qunmind::source::github_trending::GitHubTrendingSource;
 use qunmind::source::hacker_news::HackerNewsSource;
 use qunmind::source::slerf_blog::SlerfBlogSource;
@@ -117,6 +118,9 @@ fn build_public_news_source(config: &Config) -> anyhow::Result<Option<Arc<dyn Pu
     }
     if public_sources.defillama_enabled {
         sources.push(Arc::new(DeFiLlamaProtocolsSource::new(public_sources)?));
+    }
+    if public_sources.dune_enabled {
+        sources.push(Arc::new(DuneQuerySource::new(public_sources)?));
     }
     if public_sources.github_trending_enabled {
         sources.push(Arc::new(GitHubTrendingSource::new(public_sources)?));
