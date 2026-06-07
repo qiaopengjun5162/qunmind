@@ -112,7 +112,7 @@ pub struct BotConfig {
     pub context_messages: usize,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct ScheduleConfig {
     #[serde(default = "default_daily_report_cron")]
     pub daily_report_cron: String,
@@ -126,6 +126,27 @@ pub struct ScheduleConfig {
     pub daily_report_max_messages: i64,
     #[serde(default = "default_daily_report_max_links")]
     pub daily_report_max_links: i64,
+    #[serde(default)]
+    pub daily_reports: Vec<DailyReportConfig>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct DailyReportConfig {
+    pub chat_id: String,
+    #[serde(default)]
+    pub name: String,
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    #[serde(default)]
+    pub cron: Option<String>,
+    #[serde(default)]
+    pub prompt: Option<String>,
+    #[serde(default)]
+    pub lookback_hours: Option<i64>,
+    #[serde(default)]
+    pub max_messages: Option<i64>,
+    #[serde(default)]
+    pub max_links: Option<i64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -454,6 +475,7 @@ impl Default for ScheduleConfig {
             daily_report_lookback_hours: default_daily_report_lookback_hours(),
             daily_report_max_messages: default_daily_report_max_messages(),
             daily_report_max_links: default_daily_report_max_links(),
+            daily_reports: Vec::new(),
         }
     }
 }
@@ -556,6 +578,7 @@ mod tests {
         assert_eq!(config.schedule.daily_report_lookback_hours, 24);
         assert_eq!(config.schedule.daily_report_max_messages, 200);
         assert_eq!(config.schedule.daily_report_max_links, 20);
+        assert!(config.schedule.daily_reports.is_empty());
         assert_eq!(
             config.storage.database_url,
             "postgres://postgres:postgres@localhost:5432/qunmind"
@@ -686,6 +709,20 @@ mod tests {
             daily_report_max_messages = 50
             daily_report_max_links = 6
 
+            [[schedule.daily_reports]]
+            chat_id = "group-1"
+            name = "技术群日报"
+            cron = "0 30 8 * * *"
+            prompt = "请生成技术群日报。"
+            lookback_hours = 6
+            max_messages = 40
+            max_links = 5
+
+            [[schedule.daily_reports]]
+            chat_id = "group-2"
+            name = "投研群日报"
+            enabled = false
+
             [storage]
             database_url = "postgres://user:pass@localhost/qunmind_test"
 
@@ -743,6 +780,23 @@ mod tests {
         assert_eq!(config.schedule.daily_report_lookback_hours, 8);
         assert_eq!(config.schedule.daily_report_max_messages, 50);
         assert_eq!(config.schedule.daily_report_max_links, 6);
+        assert_eq!(config.schedule.daily_reports.len(), 2);
+        assert_eq!(config.schedule.daily_reports[0].chat_id, "group-1");
+        assert_eq!(config.schedule.daily_reports[0].name, "技术群日报");
+        assert!(config.schedule.daily_reports[0].enabled);
+        assert_eq!(
+            config.schedule.daily_reports[0].cron.as_deref(),
+            Some("0 30 8 * * *")
+        );
+        assert_eq!(
+            config.schedule.daily_reports[0].prompt.as_deref(),
+            Some("请生成技术群日报。")
+        );
+        assert_eq!(config.schedule.daily_reports[0].lookback_hours, Some(6));
+        assert_eq!(config.schedule.daily_reports[0].max_messages, Some(40));
+        assert_eq!(config.schedule.daily_reports[0].max_links, Some(5));
+        assert_eq!(config.schedule.daily_reports[1].chat_id, "group-2");
+        assert!(!config.schedule.daily_reports[1].enabled);
         assert_eq!(
             config.storage.database_url,
             "postgres://user:pass@localhost/qunmind_test"

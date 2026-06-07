@@ -4,7 +4,7 @@
 
 ### Status
 
-- MVP completion estimate: about 59%. Rust backend, WeCom/wx-cli channels, AI adapters, PostgreSQL persistence, diagnostics, daily reports, public-source fallback, basic conversation context, per-group runtime/persona overrides, and structured research/learning catalogs are implemented. AI x Web3 School Prompt/Handbook references are cataloged for future agent design. Real local WeChat validation, per-group report settings, and production hardening remain the main gaps.
+- MVP completion estimate: about 61%. Rust backend, WeCom/wx-cli channels, AI adapters, PostgreSQL persistence, diagnostics, daily reports, public-source fallback, basic conversation context, per-group runtime/persona overrides, per-group daily report targets, and structured research/learning catalogs are implemented. AI x Web3 School Prompt/Handbook references are cataloged for future agent design. Real local WeChat validation and production hardening remain the main gaps.
 
 ### Done
 
@@ -21,6 +21,7 @@
 - Added incoming link extraction and PostgreSQL `message_links` persistence.
 - Generate daily reports from recently stored group messages.
 - Include recent deduplicated links in daily report prompts.
+- Added per-group daily report targets with optional cron, prompt, lookback, message, and link overrides while keeping the legacy single-group schedule config compatible.
 - Added wx-cli diagnostic CLI commands for one-shot poll/send checks before running the full bot loop.
 - Added `wx-cli dry-run` diagnostic command to poll once and report mention-trigger decisions without PostgreSQL, AI, or sending.
 - Added `--input <json-file>` support for `wx-cli poll` and `wx-cli dry-run` to inspect captured wx-cli JSON offline.
@@ -40,8 +41,8 @@
 - `cargo fmt --all -- --check`
 - `taplo fmt --check --option reorder_keys=true Cargo.toml config.example.toml`
 - `cargo clippy --all-targets --all-features --tests --benches -- -D warnings`
-- `cargo nextest run --all-features`：94 tests passing.
-- Latest coverage run: `cargo llvm-cov nextest --all-features --summary-only`：84.54% line coverage, 94 tests passing.
+- `cargo nextest run --all-features`：96 tests passing.
+- Latest coverage run: `cargo llvm-cov nextest --all-features --summary-only`：84.80% line coverage, 96 tests passing.
 - Previous coverage run: `cargo llvm-cov nextest --all-features --summary-only`：65.78% line coverage, 23 tests passing.
 - `cargo deny check`
 - `typos`
@@ -57,5 +58,5 @@
 - Tune public source ranking and topic keywords after real daily report runs.
 - Add URL title fetching and link quality scoring after real message ingestion is stable.
 - Replace or patch `wecom-aibot-rust-sdk` dependency stack so `reqwest 0.11` / `rustls-pemfile 1.0.4` is no longer pulled in.
-- Add per-group daily report target settings.
+- Validate per-group daily report target settings against real wx-cli group IDs after local WeChat capture is stable.
 - Extract connector / trigger / action / workflow boundaries after the message store is stable.

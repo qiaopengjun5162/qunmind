@@ -23,6 +23,7 @@ The project currently supports:
 - Rust-side AI / agent learning resource catalog for LLM basics, API calling, coding agents, agent frameworks, and Hermes execution-layer references.
 - Cron-based daily reports.
 - Daily reports generated from recently stored group messages and link intelligence.
+- Per-group daily report targets with optional cron, prompt, lookback, message, and link overrides.
 - Optional Hacker News, CoinMarketCap, CoinGecko, DeFi Llama, Dune, GitHub Trending, and Slerf Blog fallback reports when a report group has no messages.
 
 ## Status
@@ -77,6 +78,10 @@ topic_keywords = ["rust", "web3", "ai", "llm", "agent", "zkp", "solana", "ethere
 ```
 
 These sources are filtered toward programming technology, Rust, Web3, crypto, AI, and ZKP. CoinMarketCap is used for crypto market top stories, CoinGecko is used for 24h trending searches, DeFi Llama is used for protocol TVL signals, and Dune can pull configured query result rows when an API key is provided. The prompt asks the model to mark this as public-source context, not a summary of group discussion.
+
+## Per-Group Reports
+
+The legacy `[schedule] daily_report_chat_id` config still works for one report group. For multiple groups, add `[[schedule.daily_reports]]` entries. Each entry can override `cron`, `prompt`, `lookback_hours`, `max_messages`, and `max_links`; missing fields inherit the global `[schedule]` defaults.
 
 ## Link Intelligence
 

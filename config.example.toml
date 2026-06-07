@@ -37,6 +37,21 @@ daily_report_max_links = 20                  # 日报最多纳入多少条去重
 daily_report_max_messages = 200              # 日报最多纳入多少条消息
 daily_report_prompt = "请根据今天的对话生成一份简洁的日报摘要。"
 
+[[schedule.daily_reports]]
+chat_id = "group-chat-id-1"
+cron = "0 0 9 * * *"
+enabled = true
+lookback_hours = 24
+max_links = 20
+max_messages = 200
+name = "技术群日报"
+prompt = "请根据今天的技术群对话生成一份简洁日报，优先提炼 Rust、AI、Web3 和 ZKP 相关信息。"
+
+[[schedule.daily_reports]]
+chat_id = "group-chat-id-2"
+enabled = false
+name = "投研群日报"
+
 [storage]
 database_url = "postgres://postgres:postgres@localhost:5432/qunmind"
 

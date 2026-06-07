@@ -17,6 +17,17 @@ pub struct DailyReportScheduler {
     config: ScheduleConfig,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct DailyReportTarget {
+    chat_id: String,
+    name: String,
+    cron: String,
+    prompt: String,
+    lookback_hours: i64,
+    max_messages: i64,
+    max_links: i64,
+}
+
 impl DailyReportScheduler {
     pub fn new(
         channel: Arc<dyn Channel>,
@@ -39,29 +50,60 @@ impl DailyReportScheduler {
     }
 
     pub async fn start(self) -> Result<()> {
-        if self.config.daily_report_chat_id.is_empty() {
-            info!("未配置 daily_report_chat_id，定时日报任务跳过");
+        let targets = report_targets(&self.config);
+        if targets.is_empty() {
+            info!("未配置日报目标群，定时日报任务跳过");
             return Ok(());
         }
 
-        let cron_expr = &self.config.daily_report_cron;
-        let schedule = cron::Schedule::from_str(cron_expr).map_err(|e| {
-            crate::error::QunMindError::Config(format!("无效的 cron 表达式 '{}': {}", cron_expr, e))
-        })?;
+        let mut schedules = Vec::with_capacity(targets.len());
+        for target in targets {
+            let schedule = cron::Schedule::from_str(&target.cron).map_err(|e| {
+                crate::error::QunMindError::Config(format!(
+                    "无效的 cron 表达式 '{}': {}",
+                    target.cron, e
+                ))
+            })?;
+            schedules.push((target, schedule));
+        }
 
-        info!(cron = %cron_expr, "定时日报任务已启动");
+        info!(targets = schedules.len(), "定时日报任务已启动");
 
         loop {
-            let next = schedule.upcoming(chrono::Utc).next();
+            let upcoming = schedules
+                .iter()
+                .filter_map(|(target, schedule)| {
+                    schedule
+                        .upcoming(chrono::Utc)
+                        .next()
+                        .map(|time| (target.clone(), time))
+                })
+                .collect::<Vec<_>>();
+            let next = upcoming.iter().map(|(_, time)| *time).min();
             match next {
                 Some(next_time) => {
+                    let target = upcoming
+                        .iter()
+                        .find(|(_, time)| *time == next_time)
+                        .map(|(target, _)| target)
+                        .expect("next target");
                     let now = chrono::Utc::now();
                     let wait = (next_time - now)
                         .to_std()
                         .unwrap_or(std::time::Duration::from_secs(60));
-                    info!(next = %next_time, wait_secs = %wait.as_secs(), "等待下次日报触发");
+                    info!(
+                        chat_id = %target.chat_id,
+                        name = %target.name,
+                        next = %next_time,
+                        wait_secs = %wait.as_secs(),
+                        "等待下次日报触发"
+                    );
                     tokio::time::sleep(wait).await;
-                    self.send_report().await;
+                    for (due_target, due_time) in upcoming {
+                        if due_time == next_time {
+                            self.send_report_for(&due_target).await;
+                        }
+                    }
                 }
                 None => {
                     error!("无法计算下次 cron 触发时间");
@@ -71,22 +113,26 @@ impl DailyReportScheduler {
         }
     }
 
+    #[cfg(test)]
     async fn send_report(&self) {
+        let Some(target) = report_targets(&self.config).into_iter().next() else {
+            info!("未配置日报目标群，跳过本次日报");
+            return;
+        };
+        self.send_report_for(&target).await;
+    }
+
+    async fn send_report_for(&self, target: &DailyReportTarget) {
         info!("开始生成日报...");
 
-        let lookback_hours = self.config.daily_report_lookback_hours.max(1);
-        let max_messages = self.config.daily_report_max_messages.max(1);
-        let max_links = self.config.daily_report_max_links.max(0);
+        let lookback_hours = target.lookback_hours.max(1);
+        let max_messages = target.max_messages.max(1);
+        let max_links = target.max_links.max(0);
         let until = chrono::Utc::now();
         let since = until - chrono::Duration::hours(lookback_hours);
         let messages = match self
             .message_store
-            .text_messages(
-                &self.config.daily_report_chat_id,
-                since,
-                until,
-                max_messages,
-            )
+            .text_messages(&target.chat_id, since, until, max_messages)
             .await
         {
             Ok(messages) => messages,
@@ -100,7 +146,7 @@ impl DailyReportScheduler {
         } else {
             match self
                 .message_store
-                .recent_links(&self.config.daily_report_chat_id, since, until, max_links)
+                .recent_links(&target.chat_id, since, until, max_links)
                 .await
             {
                 Ok(links) => links,
@@ -112,14 +158,14 @@ impl DailyReportScheduler {
         };
 
         if messages.is_empty() {
-            self.send_empty_report_fallback(lookback_hours, since, until)
+            self.send_empty_report_fallback(target, lookback_hours, since, until)
                 .await;
             return;
         }
 
         let messages = vec![ChatMessage {
             role: "user".to_string(),
-            content: build_report_prompt(&self.config, &messages, &links, since, until),
+            content: build_report_prompt(target, &messages, &links, since, until),
         }];
 
         let report = match self.ai.chat(&messages).await {
@@ -130,22 +176,22 @@ impl DailyReportScheduler {
             }
         };
 
-        let chat_id = &self.config.daily_report_chat_id;
-        if let Err(e) = self.channel.send_text(chat_id, &report).await {
+        if let Err(e) = self.channel.send_text(&target.chat_id, &report).await {
             error!("发送日报失败: {}", e);
         } else {
-            info!(chat_id = %chat_id, "日报发送成功");
+            info!(chat_id = %target.chat_id, "日报发送成功");
         }
     }
 
     async fn send_empty_report_fallback(
         &self,
+        target: &DailyReportTarget,
         lookback_hours: i64,
         since: chrono::DateTime<chrono::Utc>,
         until: chrono::DateTime<chrono::Utc>,
     ) {
         let Some(source) = &self.public_news_source else {
-            self.send_empty_report_notice(lookback_hours).await;
+            self.send_empty_report_notice(target, lookback_hours).await;
             return;
         };
 
@@ -153,19 +199,19 @@ impl DailyReportScheduler {
             Ok(items) => items,
             Err(e) => {
                 error!("读取公共日报素材失败: {}", e);
-                self.send_empty_report_notice(lookback_hours).await;
+                self.send_empty_report_notice(target, lookback_hours).await;
                 return;
             }
         };
 
         if items.is_empty() {
-            self.send_empty_report_notice(lookback_hours).await;
+            self.send_empty_report_notice(target, lookback_hours).await;
             return;
         }
 
         let messages = vec![ChatMessage {
             role: "user".to_string(),
-            content: build_public_report_prompt(&self.config, &items, since, until),
+            content: build_public_report_prompt(target, &items, since, until),
         }];
 
         let report = match self.ai.chat(&messages).await {
@@ -176,29 +222,64 @@ impl DailyReportScheduler {
             }
         };
 
-        if let Err(e) = self
-            .channel
-            .send_text(&self.config.daily_report_chat_id, &report)
-            .await
-        {
+        if let Err(e) = self.channel.send_text(&target.chat_id, &report).await {
             error!("发送公共信息日报失败: {}", e);
         }
     }
 
-    async fn send_empty_report_notice(&self, lookback_hours: i64) {
+    async fn send_empty_report_notice(&self, target: &DailyReportTarget, lookback_hours: i64) {
         let text = format!("过去 {} 小时没有可总结的群消息。", lookback_hours);
-        if let Err(e) = self
-            .channel
-            .send_text(&self.config.daily_report_chat_id, &text)
-            .await
-        {
+        if let Err(e) = self.channel.send_text(&target.chat_id, &text).await {
             error!("发送空日报失败: {}", e);
         }
     }
 }
 
+fn report_targets(config: &ScheduleConfig) -> Vec<DailyReportTarget> {
+    if !config.daily_reports.is_empty() {
+        return config
+            .daily_reports
+            .iter()
+            .filter(|report| report.enabled && !report.chat_id.is_empty())
+            .map(|report| DailyReportTarget {
+                chat_id: report.chat_id.clone(),
+                name: report.name.clone(),
+                cron: report
+                    .cron
+                    .clone()
+                    .unwrap_or_else(|| config.daily_report_cron.clone()),
+                prompt: report
+                    .prompt
+                    .clone()
+                    .unwrap_or_else(|| config.daily_report_prompt.clone()),
+                lookback_hours: report
+                    .lookback_hours
+                    .unwrap_or(config.daily_report_lookback_hours),
+                max_messages: report
+                    .max_messages
+                    .unwrap_or(config.daily_report_max_messages),
+                max_links: report.max_links.unwrap_or(config.daily_report_max_links),
+            })
+            .collect();
+    }
+
+    if config.daily_report_chat_id.is_empty() {
+        return Vec::new();
+    }
+
+    vec![DailyReportTarget {
+        chat_id: config.daily_report_chat_id.clone(),
+        name: String::new(),
+        cron: config.daily_report_cron.clone(),
+        prompt: config.daily_report_prompt.clone(),
+        lookback_hours: config.daily_report_lookback_hours,
+        max_messages: config.daily_report_max_messages,
+        max_links: config.daily_report_max_links,
+    }]
+}
+
 fn build_report_prompt(
-    config: &ScheduleConfig,
+    target: &DailyReportTarget,
     messages: &[StoredMessage],
     links: &[StoredLink],
     since: chrono::DateTime<chrono::Utc>,
@@ -206,7 +287,7 @@ fn build_report_prompt(
 ) -> String {
     let mut prompt = format!(
         "{}\n\n时间范围: {} 到 {}\n群消息:\n",
-        config.daily_report_prompt,
+        target.prompt,
         since.to_rfc3339(),
         until.to_rfc3339()
     );
@@ -253,14 +334,14 @@ fn build_report_prompt(
 }
 
 fn build_public_report_prompt(
-    config: &ScheduleConfig,
+    target: &DailyReportTarget,
     items: &[PublicNewsItem],
     since: chrono::DateTime<chrono::Utc>,
     until: chrono::DateTime<chrono::Utc>,
 ) -> String {
     let mut prompt = format!(
         "{}\n\n时间范围: {} 到 {}\n群内在该时间范围没有可总结消息。请根据以下公共信息源条目生成一份供群成员参考的日报，标明这不是群内讨论总结。\n公共信息源:\n",
-        config.daily_report_prompt,
+        target.prompt,
         since.to_rfc3339(),
         until.to_rfc3339()
     );
@@ -299,6 +380,18 @@ mod tests {
     use crate::error::QunMindError;
     use crate::source::PublicNewsSource;
     use crate::storage::{NewMessage, StoredLink};
+
+    fn test_target(chat_id: &str, prompt: &str) -> DailyReportTarget {
+        DailyReportTarget {
+            chat_id: chat_id.to_string(),
+            name: String::new(),
+            cron: "0 0 9 * * *".to_string(),
+            prompt: prompt.to_string(),
+            lookback_hours: 24,
+            max_messages: 200,
+            max_links: 20,
+        }
+    }
 
     #[derive(Default)]
     struct RecordingChannel {
@@ -353,6 +446,49 @@ mod tests {
     struct StaticStore {
         messages: Vec<StoredMessage>,
         links: Vec<StoredLink>,
+    }
+
+    #[derive(Default)]
+    struct RecordingStore {
+        messages: Vec<StoredMessage>,
+        links: Vec<StoredLink>,
+        text_queries: Mutex<Vec<(String, i64)>>,
+        link_queries: Mutex<Vec<(String, i64)>>,
+    }
+
+    #[async_trait]
+    impl MessageStore for RecordingStore {
+        async fn save(&self, _message: NewMessage) -> Result<()> {
+            Ok(())
+        }
+
+        async fn text_messages(
+            &self,
+            chat_id: &str,
+            _since: chrono::DateTime<chrono::Utc>,
+            _until: chrono::DateTime<chrono::Utc>,
+            limit: i64,
+        ) -> Result<Vec<StoredMessage>> {
+            self.text_queries
+                .lock()
+                .await
+                .push((chat_id.to_string(), limit));
+            Ok(self.messages.clone())
+        }
+
+        async fn recent_links(
+            &self,
+            chat_id: &str,
+            _since: chrono::DateTime<chrono::Utc>,
+            _until: chrono::DateTime<chrono::Utc>,
+            limit: i64,
+        ) -> Result<Vec<StoredLink>> {
+            self.link_queries
+                .lock()
+                .await
+                .push((chat_id.to_string(), limit));
+            Ok(self.links.clone())
+        }
     }
 
     #[async_trait]
@@ -423,10 +559,7 @@ mod tests {
 
     #[test]
     fn builds_report_prompt_from_stored_messages() {
-        let config = ScheduleConfig {
-            daily_report_prompt: "请总结".to_string(),
-            ..Default::default()
-        };
+        let target = test_target("group-1", "请总结");
         let since = chrono::DateTime::parse_from_rfc3339("2026-06-06T00:00:00Z")
             .expect("since")
             .with_timezone(&chrono::Utc);
@@ -467,7 +600,7 @@ mod tests {
             received_at: since,
         }];
 
-        let prompt = build_report_prompt(&config, &messages, &links, since, until);
+        let prompt = build_report_prompt(&target, &messages, &links, since, until);
 
         assert!(prompt.contains("请总结"));
         assert!(
@@ -481,10 +614,7 @@ mod tests {
 
     #[test]
     fn builds_public_report_prompt_from_news_items() {
-        let config = ScheduleConfig {
-            daily_report_prompt: "请总结".to_string(),
-            ..Default::default()
-        };
+        let target = test_target("group-1", "请总结");
         let since = chrono::DateTime::parse_from_rfc3339("2026-06-06T00:00:00Z")
             .expect("since")
             .with_timezone(&chrono::Utc);
@@ -493,7 +623,7 @@ mod tests {
             .with_timezone(&chrono::Utc);
 
         let prompt = build_public_report_prompt(
-            &config,
+            &target,
             &[PublicNewsItem {
                 source: "Hacker News".to_string(),
                 title: "AI\nNews".to_string(),
@@ -508,6 +638,100 @@ mod tests {
         assert!(prompt.contains("群内在该时间范围没有可总结消息"));
         assert!(prompt.contains("[Hacker News] AI News (score: 10, comments: 2)"));
         assert!(prompt.contains("https://example.com/ai"));
+    }
+
+    #[test]
+    fn report_targets_preserve_legacy_single_group_config() {
+        let targets = report_targets(&ScheduleConfig {
+            daily_report_chat_id: "group-1".to_string(),
+            daily_report_cron: "0 0 8 * * *".to_string(),
+            daily_report_prompt: "旧日报".to_string(),
+            daily_report_lookback_hours: 12,
+            daily_report_max_messages: 50,
+            daily_report_max_links: 6,
+            ..Default::default()
+        });
+
+        assert_eq!(
+            targets,
+            vec![DailyReportTarget {
+                chat_id: "group-1".to_string(),
+                name: String::new(),
+                cron: "0 0 8 * * *".to_string(),
+                prompt: "旧日报".to_string(),
+                lookback_hours: 12,
+                max_messages: 50,
+                max_links: 6,
+            }]
+        );
+    }
+
+    #[test]
+    fn report_targets_apply_per_group_overrides() {
+        let targets = report_targets(&ScheduleConfig {
+            daily_report_chat_id: "legacy-group".to_string(),
+            daily_report_cron: "0 0 9 * * *".to_string(),
+            daily_report_prompt: "默认日报".to_string(),
+            daily_report_lookback_hours: 24,
+            daily_report_max_messages: 200,
+            daily_report_max_links: 20,
+            daily_reports: vec![
+                crate::config::DailyReportConfig {
+                    chat_id: "group-1".to_string(),
+                    name: "技术群".to_string(),
+                    enabled: true,
+                    cron: Some("0 30 8 * * *".to_string()),
+                    prompt: Some("技术日报".to_string()),
+                    lookback_hours: Some(8),
+                    max_messages: Some(60),
+                    max_links: Some(5),
+                },
+                crate::config::DailyReportConfig {
+                    chat_id: "group-2".to_string(),
+                    name: "投研群".to_string(),
+                    enabled: true,
+                    cron: None,
+                    prompt: None,
+                    lookback_hours: None,
+                    max_messages: None,
+                    max_links: None,
+                },
+                crate::config::DailyReportConfig {
+                    chat_id: "disabled-group".to_string(),
+                    name: "禁用群".to_string(),
+                    enabled: false,
+                    cron: None,
+                    prompt: None,
+                    lookback_hours: None,
+                    max_messages: None,
+                    max_links: None,
+                },
+                crate::config::DailyReportConfig {
+                    chat_id: String::new(),
+                    name: "空群".to_string(),
+                    enabled: true,
+                    cron: None,
+                    prompt: None,
+                    lookback_hours: None,
+                    max_messages: None,
+                    max_links: None,
+                },
+            ],
+        });
+
+        assert_eq!(targets.len(), 2);
+        assert_eq!(targets[0].chat_id, "group-1");
+        assert_eq!(targets[0].cron, "0 30 8 * * *");
+        assert_eq!(targets[0].prompt, "技术日报");
+        assert_eq!(targets[0].lookback_hours, 8);
+        assert_eq!(targets[0].max_messages, 60);
+        assert_eq!(targets[0].max_links, 5);
+        assert_eq!(targets[1].chat_id, "group-2");
+        assert_eq!(targets[1].cron, "0 0 9 * * *");
+        assert_eq!(targets[1].prompt, "默认日报");
+        assert_eq!(targets[1].lookback_hours, 24);
+        assert_eq!(targets[1].max_messages, 200);
+        assert_eq!(targets[1].max_links, 20);
     }
 
     #[tokio::test]
@@ -646,34 +870,46 @@ mod tests {
     async fn send_report_uses_stored_messages_for_ai_prompt() {
         let channel = Arc::new(RecordingChannel::default());
         let ai = Arc::new(RecordingAi::new("日报正文"));
+        let store = Arc::new(RecordingStore {
+            messages: vec![StoredMessage {
+                message_id: "m1".to_string(),
+                channel: "wx_cli".to_string(),
+                chat_id: "group-2".to_string(),
+                from: "alice".to_string(),
+                is_group: true,
+                msg_type: MsgType::Text,
+                text: Some("今天完成了 PG 存储".to_string()),
+                received_at: chrono::Utc::now(),
+            }],
+            links: vec![StoredLink {
+                message_id: "m1".to_string(),
+                channel: "wx_cli".to_string(),
+                chat_id: "group-2".to_string(),
+                from: "alice".to_string(),
+                url: "https://example.com/rust".to_string(),
+                normalized_url: "https://example.com/rust".to_string(),
+                title: None,
+                received_at: chrono::Utc::now(),
+            }],
+            ..Default::default()
+        });
         let scheduler = DailyReportScheduler::new(
             channel.clone(),
             ai.clone(),
-            Arc::new(StaticStore {
-                messages: vec![StoredMessage {
-                    message_id: "m1".to_string(),
-                    channel: "wx_cli".to_string(),
-                    chat_id: "group-1".to_string(),
-                    from: "alice".to_string(),
-                    is_group: true,
-                    msg_type: MsgType::Text,
-                    text: Some("今天完成了 PG 存储".to_string()),
-                    received_at: chrono::Utc::now(),
-                }],
-                links: vec![StoredLink {
-                    message_id: "m1".to_string(),
-                    channel: "wx_cli".to_string(),
-                    chat_id: "group-1".to_string(),
-                    from: "alice".to_string(),
-                    url: "https://example.com/rust".to_string(),
-                    normalized_url: "https://example.com/rust".to_string(),
-                    title: None,
-                    received_at: chrono::Utc::now(),
-                }],
-            }),
+            store.clone(),
             ScheduleConfig {
-                daily_report_chat_id: "group-1".to_string(),
-                daily_report_max_messages: 0,
+                daily_report_chat_id: "legacy-group".to_string(),
+                daily_report_max_messages: 200,
+                daily_reports: vec![crate::config::DailyReportConfig {
+                    chat_id: "group-2".to_string(),
+                    name: "技术群".to_string(),
+                    enabled: true,
+                    cron: None,
+                    prompt: Some("技术日报".to_string()),
+                    lookback_hours: Some(6),
+                    max_messages: Some(0),
+                    max_links: Some(3),
+                }],
                 ..Default::default()
             },
         );
@@ -682,11 +918,20 @@ mod tests {
 
         assert_eq!(
             *channel.sent.lock().await,
-            vec![("group-1".to_string(), "日报正文".to_string())]
+            vec![("group-2".to_string(), "日报正文".to_string())]
+        );
+        assert_eq!(
+            *store.text_queries.lock().await,
+            vec![("group-2".to_string(), 1)]
+        );
+        assert_eq!(
+            *store.link_queries.lock().await,
+            vec![("group-2".to_string(), 3)]
         );
         let requests = ai.requests.lock().await;
         assert_eq!(requests.len(), 1);
         assert_eq!(requests[0][0].role, "user");
+        assert!(requests[0][0].content.contains("技术日报"));
         assert!(requests[0][0].content.contains("今天完成了 PG 存储"));
         assert!(requests[0][0].content.contains("链接情报"));
         assert!(requests[0][0].content.contains("https://example.com/rust"));
