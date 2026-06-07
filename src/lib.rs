@@ -3,6 +3,7 @@ pub mod bot;
 pub mod channel;
 pub mod cli;
 pub mod config;
+pub mod diagnostic;
 pub mod error;
 pub mod intelligence;
 pub mod research;
