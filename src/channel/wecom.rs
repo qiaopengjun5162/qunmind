@@ -25,7 +25,7 @@ impl WeComChannel {
     }
 
     fn incoming_message_from_frame(frame: &WsFrame) -> Option<IncomingMessage> {
-        // SDK frame 只在通道边界归一化，避免企业微信细节渗进机器人核心链路。
+        // Normalize SDK frames at the channel edge so WeCom details do not leak into bot logic.
         let text = extract_text(frame)?;
         let chat_id = string_or_empty(extract_chat_id(frame));
         let from = string_or_empty(extract_from(frame));
@@ -136,7 +136,7 @@ impl Channel for WeComChannel {
         info!("企业微信通道已启动");
         *self.client.lock().await = Some(ws_client);
 
-        // WebSocket 回调由 SDK 持有，connect 返回后仍要保活当前任务。
+        // The SDK owns WebSocket callbacks, so this task must stay alive after connect returns.
         loop {
             tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
         }

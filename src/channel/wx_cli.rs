@@ -96,7 +96,7 @@ pub fn parse_wx_cli_messages_from_str(
 
 impl From<WxCliMessage> for IncomingMessage {
     fn from(msg: WxCliMessage) -> Self {
-        // 本地微信数据只在通道边界归一化，机器人核心不关心具体 wx-cli 输出形态。
+        // Normalize local WeChat data at the channel edge; the bot core should not depend on one wx-cli shape.
         Self {
             message_id: msg.id,
             from: msg.from,
@@ -176,7 +176,7 @@ impl Channel for WxCliChannel {
 }
 
 fn parse_messages(value: &Value, fallback_chat_id: &str) -> Vec<WxCliMessage> {
-    // wx-cli 类工具的外层字段名不统一，先找可能承载消息列表的数组。
+    // wx-cli-like tools disagree on envelope names, so start by finding plausible message arrays.
     candidate_arrays(value)
         .into_iter()
         .flat_map(|items| items.iter())
@@ -205,7 +205,7 @@ fn collect_candidate_arrays<'a>(value: &'a Value, arrays: &mut Vec<&'a Vec<Value
 }
 
 fn parse_message(value: &Value, fallback_chat_id: &str) -> Option<WxCliMessage> {
-    // 字段别名覆盖多种本地微信导出形态，真实联调兼容性优先于单一 schema。
+    // Field aliases cover multiple local WeChat export shapes; real capture compatibility beats one schema.
     let text = first_string(
         value,
         &[
@@ -240,7 +240,7 @@ fn parse_message(value: &Value, fallback_chat_id: &str) -> Option<WxCliMessage> 
         return None;
     }
 
-    // 有些本地导出只有文本和会话信息，但轮询去重仍需要稳定 ID。
+    // Some local exports only expose text and conversation data, but polling still needs a stable ID.
     let id = match first_string(
         value,
         &[
@@ -345,7 +345,7 @@ fn first_bool(value: &Value, keys: &[&str]) -> Option<bool> {
 
 fn is_group_chat(chat_id: &str, chat_type: &str, fallback_chat_id: &str) -> bool {
     let chat_type = chat_type.to_ascii_lowercase();
-    // 配置了 fallback chat id 时，说明操作者有意把这批捕获消息当作同一个群。
+    // A configured fallback chat id means the operator is intentionally treating the capture as one group.
     matches!(chat_type.as_str(), "group" | "chatroom" | "room")
         || chat_id.ends_with("@chatroom")
         || chat_id.starts_with("@@")

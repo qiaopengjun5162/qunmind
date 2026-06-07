@@ -83,7 +83,7 @@ impl BotHandler {
             let until = Utc::now() + Duration::seconds(1);
             let since = until - Duration::hours(24);
             let limit = context_limit(context_messages);
-            // 上下文是增强项，读取失败不应阻断群里的实时回复。
+            // Context is best-effort; a history read failure should not block live group replies.
             match self
                 .message_store
                 .text_messages(&msg.chat_id, since, until, limit)
@@ -188,7 +188,7 @@ impl MessageHandler for BotHandler {
             "收到消息"
         );
 
-        // 先保存再做 mention 过滤，未触发回复的群消息也能进入日报和后续上下文。
+        // Persist before mention filtering so passive group traffic can still feed reports and later context.
         self.message_store
             .save(NewMessage::incoming(self.channel.name(), &msg))
             .await?;

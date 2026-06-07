@@ -23,7 +23,8 @@
 - Include recent deduplicated links in daily report prompts.
 - Added per-group daily report targets with optional cron, prompt, lookback, message, and link overrides while keeping the legacy single-group schedule config compatible.
 - Removed panic-prone direct Result/Option extraction calls from Rust source and tests; production fallbacks now use explicit matches and wx-cli input file errors include `anyhow` context.
-- Added design comments for the WeChat ingestion path, wx-cli compatibility parser, daily-report fallback boundaries, and public-source aggregation.
+- Added English design comments for the WeChat ingestion path, wx-cli compatibility parser, daily-report fallback boundaries, and public-source aggregation.
+- Isolated public-source aggregation failures so one failing website does not discard healthy fallback material from other sources.
 - Added wx-cli diagnostic CLI commands for one-shot poll/send checks before running the full bot loop.
 - Added `wx-cli dry-run` diagnostic command to poll once and report mention-trigger decisions without PostgreSQL, AI, or sending.
 - Added `--input <json-file>` support for `wx-cli poll` and `wx-cli dry-run` to inspect captured wx-cli JSON offline.
@@ -43,8 +44,8 @@
 - `cargo fmt --all -- --check`
 - `taplo fmt --check --option reorder_keys=true Cargo.toml config.example.toml`
 - `cargo clippy --all-targets --all-features --tests --benches -- -D warnings`
-- `cargo nextest run --all-features`：96 tests passing.
-- `cargo llvm-cov nextest --all-features --summary-only`：84.14% line coverage, 96 tests passing.
+- `cargo nextest run --all-features`：97 tests passing.
+- `cargo llvm-cov nextest --all-features --summary-only`：84.21% line coverage, 97 tests passing.
 - `cargo deny check`：passed with duplicate dependency warnings from the current WeCom SDK dependency stack.
 - `typos`
 

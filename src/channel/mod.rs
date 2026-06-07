@@ -7,20 +7,20 @@ use std::sync::Arc;
 
 use crate::error::Result;
 
-/// 收到的消息
+/// Normalized inbound message from any channel.
 #[derive(Debug, Clone, Serialize)]
 pub struct IncomingMessage {
-    /// 消息 ID
+    /// Channel-specific message identifier.
     pub message_id: String,
-    /// 发送者 ID
+    /// Sender identifier.
     pub from: String,
-    /// 会话 ID（群 chat_id 或单聊 session_id）
+    /// Conversation identifier, such as a group chat_id or direct session id.
     pub chat_id: String,
-    /// 是否群聊
+    /// Whether the message came from a group conversation.
     pub is_group: bool,
-    /// 文本内容
+    /// Text payload when the channel exposes one.
     pub text: Option<String>,
-    /// 消息类型
+    /// Normalized message type.
     pub msg_type: MsgType,
 }
 
@@ -35,13 +35,13 @@ pub enum MsgType {
     Unknown,
 }
 
-/// 消息处理器
+/// Message processing boundary shared by all channels.
 #[async_trait]
 pub trait MessageHandler: Send + Sync {
     async fn on_message(&self, msg: IncomingMessage) -> Result<()>;
 }
 
-/// 通道抽象
+/// Channel adapter boundary for receiving and sending messages.
 #[async_trait]
 pub trait Channel: Send + Sync {
     fn name(&self) -> &str;

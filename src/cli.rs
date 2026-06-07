@@ -5,7 +5,7 @@ use clap::{Parser, Subcommand};
 #[derive(Debug, Parser)]
 #[command(name = "qunmind", about = "微信群 AI 群智中枢")]
 pub struct Args {
-    /// 配置文件路径
+    /// Path to the local configuration file.
     #[arg(short, long, default_value = "config.toml", global = true)]
     pub config: PathBuf,
 
@@ -15,7 +15,7 @@ pub struct Args {
 
 #[derive(Debug, Subcommand)]
 pub enum CliCommand {
-    /// 单独诊断 wx-cli 收发命令，不启动机器人主循环
+    /// Diagnose wx-cli receive/send commands without starting the bot loop.
     #[command(name = "wx-cli")]
     WxCli {
         #[command(subcommand)]
@@ -25,28 +25,28 @@ pub enum CliCommand {
 
 #[derive(Debug, Subcommand)]
 pub enum WxCliCommand {
-    /// 执行一次 wx_cli.poll_args 并输出解析后的消息
+    /// Run wx_cli.poll_args once and print normalized messages.
     Poll {
-        /// 从本地 wx-cli JSON 文件解析，不实际调用 wx_cli.poll_args
+        /// Parse a local wx-cli JSON file instead of invoking wx_cli.poll_args.
         #[arg(long)]
         input: Option<PathBuf>,
     },
-    /// 执行一次 poll，只预检哪些消息会触发回复，不保存、不调用 AI、不发送
+    /// Poll once and preview reply decisions without storing, calling AI, or sending.
     DryRun {
-        /// 从本地 wx-cli JSON 文件解析，不实际调用 wx_cli.poll_args
+        /// Parse a local wx-cli JSON file instead of invoking wx_cli.poll_args.
         #[arg(long)]
         input: Option<PathBuf>,
-        /// 本次最多预检多少条消息
+        /// Maximum number of messages to inspect.
         #[arg(long, default_value_t = 10)]
         limit: usize,
     },
-    /// 执行一次 poll，并把解析后的消息交给机器人链路处理
+    /// Poll once and pass normalized messages through the real bot pipeline.
     HandleOnce {
-        /// 本次最多处理多少条消息，默认只处理 1 条，避免联调时刷屏
+        /// Maximum number of messages to process; defaults low to avoid noisy real chats.
         #[arg(long, default_value_t = 1)]
         limit: usize,
     },
-    /// 通过 wx_cli.send_args 向指定会话发送一条文本
+    /// Send one diagnostic text message through wx_cli.send_args.
     Send {
         #[arg(long)]
         chat_id: String,
