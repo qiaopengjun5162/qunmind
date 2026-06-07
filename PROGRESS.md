@@ -4,7 +4,7 @@
 
 ### Status
 
-- MVP completion estimate: about 61%. Rust backend, WeCom/wx-cli channels, AI adapters, PostgreSQL persistence, diagnostics, daily reports, public-source fallback, basic conversation context, per-group runtime/persona overrides, per-group daily report targets, and structured research/learning catalogs are implemented. AI x Web3 School Prompt/Handbook references are cataloged for future agent design. Real local WeChat validation and production hardening remain the main gaps.
+- MVP completion estimate: about 66%. Rust backend, WeCom/wx-cli channels, AI adapters, PostgreSQL persistence, diagnostics, daily reports, public-source fallback, basic conversation context, per-group runtime/persona overrides, per-group daily report targets, captured wx-cli replay safety, and structured research/learning catalogs are implemented. AI x Web3 School Prompt/Handbook references are cataloged for future agent design. Real local WeChat validation, PostgreSQL integration tests, durable memory/permissions, and production hardening remain the main gaps.
 
 ### Done
 
@@ -28,6 +28,7 @@
 - Added wx-cli diagnostic CLI commands for one-shot poll/send checks before running the full bot loop.
 - Added `wx-cli dry-run` diagnostic command to poll once and report mention-trigger decisions without PostgreSQL, AI, or sending.
 - Added `--input <json-file>` support for `wx-cli poll` and `wx-cli dry-run` to inspect captured wx-cli JSON offline.
+- Added `--message-id <id>` filtering for `wx-cli dry-run` so captured wx-cli files can preflight one target message before real replay.
 - Added `wx-cli handle-once` diagnostic command to poll once and run messages through PostgreSQL persistence, mention filtering, AI, and wx-cli replies.
 - Added `--input <json-file>` support for `wx-cli handle-once`, allowing captured wx-cli JSON to exercise PostgreSQL persistence, mention filtering, AI, and reply sending without another poll.
 - Added `--message-id <id>` filtering for `wx-cli handle-once` so captured wx-cli files with multiple messages can safely replay one target message.
@@ -46,8 +47,8 @@
 - `cargo fmt --all -- --check`
 - `taplo fmt --check --option reorder_keys=true Cargo.toml config.example.toml`
 - `cargo clippy --all-targets --all-features --tests --benches -- -D warnings`
-- `cargo nextest run --all-features`：100 tests passing.
-- `cargo llvm-cov nextest --all-features --summary-only`：84.14% line coverage, 100 tests passing.
+- `cargo nextest run --all-features`：101 tests passing.
+- `cargo llvm-cov nextest --all-features --summary-only`：84.15% line coverage, 101 tests passing.
 - `cargo deny check`：passed with duplicate dependency warnings from the current WeCom SDK dependency stack.
 - `typos`
 

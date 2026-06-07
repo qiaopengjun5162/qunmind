@@ -174,20 +174,24 @@ async fn run_wx_cli_command(command: WxCliCommand, config: &Config) -> anyhow::R
             let messages = load_wx_cli_messages(config, input.as_ref()).await?;
             println!("{}", serde_json::to_string_pretty(&messages)?);
         }
-        WxCliCommand::DryRun { input, limit } => {
+        WxCliCommand::DryRun {
+            input,
+            message_id,
+            limit,
+        } => {
             let messages = load_wx_cli_messages(config, input.as_ref()).await?;
-            let limit = limit.max(1);
-            let inspected = messages.len().min(limit);
+            let total_polled = messages.len();
+            let messages = select_wx_cli_messages(messages, message_id.as_deref(), limit);
+            let inspected = messages.len();
             let items: Vec<_> = messages
                 .iter()
-                .take(limit)
                 .map(|msg| wx_cli_dry_run_item(config, msg))
                 .collect();
             println!(
                 "{}",
                 serde_json::to_string_pretty(&serde_json::json!({
                     "ok": true,
-                    "total_polled": messages.len(),
+                    "total_polled": total_polled,
                     "inspected": inspected,
                     "items": items
                 }))?

@@ -36,6 +36,9 @@ pub enum WxCliCommand {
         /// Parse a local wx-cli JSON file instead of invoking wx_cli.poll_args.
         #[arg(long)]
         input: Option<PathBuf>,
+        /// Only inspect the matching message id.
+        #[arg(long)]
+        message_id: Option<String>,
         /// Maximum number of messages to inspect.
         #[arg(long, default_value_t = 10)]
         limit: usize,
@@ -91,7 +94,12 @@ mod tests {
 
         match args.command {
             Some(CliCommand::WxCli {
-                command: WxCliCommand::DryRun { input: None, limit },
+                command:
+                    WxCliCommand::DryRun {
+                        input: None,
+                        message_id: None,
+                        limit,
+                    },
             }) => assert_eq!(limit, 5),
             _ => panic!("wx-cli dry-run command should parse"),
         }
@@ -106,10 +114,40 @@ mod tests {
                 command:
                     WxCliCommand::DryRun {
                         input: Some(input),
+                        message_id: None,
                         limit,
                     },
             }) => {
                 assert_eq!(input, PathBuf::from("wx-output.json"));
+                assert_eq!(limit, 10);
+            }
+            _ => panic!("wx-cli dry-run command should parse"),
+        }
+    }
+
+    #[test]
+    fn parses_wx_cli_dry_run_message_id_option() {
+        let args = parse_args(&[
+            "qunmind",
+            "wx-cli",
+            "dry-run",
+            "--input",
+            "wx-output.json",
+            "--message-id",
+            "m-1",
+        ]);
+
+        match args.command {
+            Some(CliCommand::WxCli {
+                command:
+                    WxCliCommand::DryRun {
+                        input: Some(input),
+                        message_id: Some(message_id),
+                        limit,
+                    },
+            }) => {
+                assert_eq!(input, PathBuf::from("wx-output.json"));
+                assert_eq!(message_id, "m-1");
                 assert_eq!(limit, 10);
             }
             _ => panic!("wx-cli dry-run command should parse"),
