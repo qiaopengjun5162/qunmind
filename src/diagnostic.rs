@@ -1,5 +1,7 @@
 use crate::channel::{IncomingMessage, MsgType};
-use crate::config::{Config, GroupConfig};
+use std::collections::{BTreeMap, BTreeSet};
+
+use crate::config::{AiProvider, ChannelKind, Config, GroupConfig};
 
 pub fn select_wx_cli_messages(
     messages: Vec<IncomingMessage>,
@@ -42,6 +44,209 @@ pub fn wx_cli_dry_run_item(config: &Config, msg: &IncomingMessage) -> serde_json
         "would_reply": would_reply,
         "reason": reason
     })
+}
+
+pub fn wx_cli_doctor_report(
+    config: &Config,
+    messages: Option<&[IncomingMessage]>,
+    limit: usize,
+) -> serde_json::Value {
+    let blockers = wx_cli_doctor_blockers(config);
+    let warnings = wx_cli_doctor_warnings(config, messages);
+    let capture = messages.map(|messages| wx_cli_capture_summary(config, messages, limit));
+    let ok = blockers.is_empty();
+
+    serde_json::json!({
+        "ok": ok,
+        "blockers": blockers,
+        "warnings": warnings,
+        "config": {
+            "channel_kind": channel_kind_name(config.channel.kind),
+            "wx_cli_bin": &config.wx_cli.bin,
+            "poll_args_count": config.wx_cli.poll_args.len(),
+            "send_args_count": config.wx_cli.send_args.len(),
+            "group_chat_id_configured": !config.wx_cli.group_chat_id.is_empty(),
+            "global_mention_names": &config.bot.mention_names,
+            "groups_count": config.groups.len(),
+            "ai_provider": ai_provider_name(config.ai.provider),
+            "storage_configured": !config.storage.database_url.is_empty()
+        },
+        "capture": capture,
+        "next_steps": wx_cli_doctor_next_steps(ok, capture.is_some())
+    })
+}
+
+fn wx_cli_doctor_blockers(config: &Config) -> Vec<&'static str> {
+    let mut blockers = Vec::new();
+
+    if config.channel.kind != ChannelKind::WxCli {
+        blockers.push("channel_kind_not_wx_cli");
+    }
+    if config.wx_cli.bin.trim().is_empty() {
+        blockers.push("wx_cli_bin_empty");
+    }
+    if config.wx_cli.poll_args.is_empty() {
+        blockers.push("wx_cli_poll_args_empty");
+    }
+    if config.wx_cli.send_args.is_empty() {
+        blockers.push("wx_cli_send_args_empty");
+    } else {
+        if !args_contain_placeholder(&config.wx_cli.send_args, "{chat_id}") {
+            blockers.push("wx_cli_send_args_missing_chat_id_placeholder");
+        }
+        if !args_contain_placeholder(&config.wx_cli.send_args, "{text}") {
+            blockers.push("wx_cli_send_args_missing_text_placeholder");
+        }
+    }
+    if config.storage.database_url.trim().is_empty() {
+        blockers.push("storage_database_url_empty");
+    }
+
+    match config.ai.provider {
+        AiProvider::OpenAi => {
+            if config.ai.api_key.trim().is_empty() {
+                blockers.push("openai_api_key_empty");
+            }
+            if config.ai.api_url.trim().is_empty() {
+                blockers.push("openai_api_url_empty");
+            }
+            if config.ai.model.trim().is_empty() {
+                blockers.push("openai_model_empty");
+            }
+        }
+        AiProvider::Hermes => {
+            if config.hermes.api_url.trim().is_empty() {
+                blockers.push("hermes_api_url_empty");
+            }
+            if config.hermes.agent_id.trim().is_empty() {
+                blockers.push("hermes_agent_id_empty");
+            }
+        }
+    }
+
+    blockers
+}
+
+fn wx_cli_doctor_warnings(
+    config: &Config,
+    messages: Option<&[IncomingMessage]>,
+) -> Vec<&'static str> {
+    let mut warnings = Vec::new();
+
+    if config.bot.mention_names.is_empty() {
+        warnings.push("global_mention_names_empty_replies_to_all_group_text");
+    }
+    if config.groups.is_empty() {
+        warnings.push("groups_empty_no_group_overrides");
+    }
+    if config.wx_cli.group_chat_id.is_empty() {
+        warnings.push("wx_cli_group_chat_id_empty_no_fallback_for_minimal_exports");
+    }
+    if config.schedule.daily_report_chat_id.is_empty() && config.schedule.daily_reports.is_empty() {
+        warnings.push("daily_report_targets_empty");
+    }
+
+    if let Some(messages) = messages {
+        if messages.is_empty() {
+            warnings.push("capture_has_no_messages");
+        }
+        if !messages.iter().any(|message| message.is_group) {
+            warnings.push("capture_has_no_group_messages");
+        }
+        if !messages
+            .iter()
+            .any(|message| message.msg_type == MsgType::Text)
+        {
+            warnings.push("capture_has_no_text_messages");
+        }
+        if messages.iter().any(|message| message.text.is_none()) {
+            warnings.push("capture_has_messages_without_text");
+        }
+        if has_duplicate_message_ids(messages) {
+            warnings.push("capture_has_duplicate_message_ids");
+        }
+    }
+
+    warnings
+}
+
+fn wx_cli_capture_summary(
+    config: &Config,
+    messages: &[IncomingMessage],
+    limit: usize,
+) -> serde_json::Value {
+    let limit = limit.max(1);
+    let mut chat_counts: BTreeMap<String, usize> = BTreeMap::new();
+    for message in messages {
+        let count = chat_counts.entry(message.chat_id.clone()).or_insert(0);
+        *count += 1;
+    }
+    let preview: Vec<_> = messages
+        .iter()
+        .take(limit)
+        .map(|message| wx_cli_dry_run_item(config, message))
+        .collect();
+    let would_reply_count = preview
+        .iter()
+        .filter(|item| matches!(item["would_reply"].as_bool(), Some(true)))
+        .count();
+
+    serde_json::json!({
+        "total_messages": messages.len(),
+        "group_messages": messages.iter().filter(|message| message.is_group).count(),
+        "direct_messages": messages.iter().filter(|message| !message.is_group).count(),
+        "text_messages": messages.iter().filter(|message| message.msg_type == MsgType::Text).count(),
+        "unique_chats": chat_counts.len(),
+        "chat_counts": chat_counts,
+        "previewed": preview.len(),
+        "would_reply_in_preview": would_reply_count,
+        "items": preview
+    })
+}
+
+fn wx_cli_doctor_next_steps(ok: bool, has_capture: bool) -> Vec<&'static str> {
+    if !ok {
+        return vec!["fix_blockers_then_run_wx_cli_doctor_again"];
+    }
+
+    if has_capture {
+        vec![
+            "run_wx_cli_dry_run_with_message_id",
+            "run_wx_cli_send_to_test_chat",
+            "run_wx_cli_handle_once_with_message_id_and_limit_1",
+        ]
+    } else {
+        vec![
+            "capture_wx_cli_poll_output",
+            "run_wx_cli_doctor_with_input_file",
+            "run_wx_cli_dry_run_before_handle_once",
+        ]
+    }
+}
+
+fn args_contain_placeholder(args: &[String], placeholder: &str) -> bool {
+    args.iter().any(|arg| arg.contains(placeholder))
+}
+
+fn has_duplicate_message_ids(messages: &[IncomingMessage]) -> bool {
+    let mut seen = BTreeSet::new();
+    messages
+        .iter()
+        .any(|message| !seen.insert(message.message_id.as_str()))
+}
+
+fn channel_kind_name(kind: ChannelKind) -> &'static str {
+    match kind {
+        ChannelKind::Wecom => "wecom",
+        ChannelKind::WxCli => "wx_cli",
+    }
+}
+
+fn ai_provider_name(provider: AiProvider) -> &'static str {
+    match provider {
+        AiProvider::OpenAi => "open_ai",
+        AiProvider::Hermes => "hermes",
+    }
 }
 
 struct EffectiveBotConfig {
@@ -169,6 +374,87 @@ mod tests {
         assert_eq!(item["reason"], "mention_matched");
         assert_eq!(item["matched_mentions"], serde_json::json!(["@bot"]));
         assert_eq!(item["context_messages"], 8);
+    }
+
+    #[test]
+    fn wx_cli_doctor_reports_blockers_for_unsafe_default_config() {
+        let config = config_from("");
+
+        let report = wx_cli_doctor_report(&config, None, 10);
+
+        assert_eq!(report["ok"], false);
+        assert_eq!(report["config"]["channel_kind"], "wecom");
+        assert!(array_contains(
+            &report["blockers"],
+            "channel_kind_not_wx_cli"
+        ));
+        assert!(array_contains(
+            &report["blockers"],
+            "wx_cli_send_args_empty"
+        ));
+        assert!(array_contains(&report["blockers"], "openai_api_key_empty"));
+        assert!(array_contains(
+            &report["warnings"],
+            "global_mention_names_empty_replies_to_all_group_text"
+        ));
+        assert_eq!(
+            report["next_steps"],
+            serde_json::json!(["fix_blockers_then_run_wx_cli_doctor_again"])
+        );
+    }
+
+    #[test]
+    fn wx_cli_doctor_summarizes_captured_messages_when_ready() {
+        let config = config_from(
+            r#"
+            [channel]
+            kind = "wx_cli"
+
+            [ai]
+            api_key = "token"
+
+            [wx_cli]
+            bin = "wx"
+            poll_args = ["poll", "--json"]
+            send_args = ["send", "--chat", "{chat_id}", "--text", "{text}"]
+
+            [bot]
+            mention_names = ["@bot"]
+
+            [schedule]
+            daily_report_chat_id = "room@chatroom"
+            "#,
+        );
+        let messages = vec![
+            test_message("m-1"),
+            IncomingMessage {
+                message_id: "m-2".to_string(),
+                from: "bob".to_string(),
+                chat_id: "bob".to_string(),
+                is_group: false,
+                text: Some("direct".to_string()),
+                msg_type: MsgType::Text,
+            },
+        ];
+
+        let report = wx_cli_doctor_report(&config, Some(&messages), 1);
+
+        assert_eq!(report["ok"], true);
+        assert_eq!(report["blockers"], serde_json::json!([]));
+        assert_eq!(report["capture"]["total_messages"], 2);
+        assert_eq!(report["capture"]["group_messages"], 1);
+        assert_eq!(report["capture"]["direct_messages"], 1);
+        assert_eq!(report["capture"]["previewed"], 1);
+        assert_eq!(report["capture"]["would_reply_in_preview"], 1);
+        assert_eq!(report["capture"]["items"][0]["message_id"], "m-1");
+        assert_eq!(
+            report["next_steps"],
+            serde_json::json!([
+                "run_wx_cli_dry_run_with_message_id",
+                "run_wx_cli_send_to_test_chat",
+                "run_wx_cli_handle_once_with_message_id_and_limit_1"
+            ])
+        );
     }
 
     #[test]
@@ -347,5 +633,12 @@ mod tests {
         assert_eq!(selected.len(), 2);
         assert_eq!(selected[0].message_id, "m-1");
         assert_eq!(selected[1].message_id, "m-2");
+    }
+
+    fn array_contains(array: &serde_json::Value, needle: &str) -> bool {
+        match array.as_array() {
+            Some(items) => items.iter().any(|item| item.as_str() == Some(needle)),
+            None => false,
+        }
     }
 }

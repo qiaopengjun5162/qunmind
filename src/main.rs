@@ -14,7 +14,7 @@ use qunmind::channel::wx_cli::WxCliChannel;
 use qunmind::channel::wx_cli::parse_wx_cli_messages_from_str;
 use qunmind::cli::{Args, CliCommand, WxCliCommand};
 use qunmind::config::{AiProvider, ChannelKind, Config};
-use qunmind::diagnostic::{select_wx_cli_messages, wx_cli_dry_run_item};
+use qunmind::diagnostic::{select_wx_cli_messages, wx_cli_doctor_report, wx_cli_dry_run_item};
 use qunmind::error::QunMindError;
 use qunmind::scheduler::daily_report::DailyReportScheduler;
 use qunmind::source::CompositePublicNewsSource;
@@ -170,6 +170,20 @@ async fn run_diagnostic_command(command: CliCommand, config: &Config) -> anyhow:
 
 async fn run_wx_cli_command(command: WxCliCommand, config: &Config) -> anyhow::Result<()> {
     match command {
+        WxCliCommand::Doctor { input, limit } => {
+            let messages = match input.as_ref() {
+                Some(input) => Some(load_wx_cli_messages(config, Some(input)).await?),
+                None => None,
+            };
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&wx_cli_doctor_report(
+                    config,
+                    messages.as_deref(),
+                    limit
+                ))?
+            );
+        }
         WxCliCommand::Poll { input } => {
             let messages = load_wx_cli_messages(config, input.as_ref()).await?;
             println!("{}", serde_json::to_string_pretty(&messages)?);

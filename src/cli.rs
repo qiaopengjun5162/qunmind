@@ -25,6 +25,15 @@ pub enum CliCommand {
 
 #[derive(Debug, Subcommand)]
 pub enum WxCliCommand {
+    /// Validate wx-cli readiness before touching a real WeChat group.
+    Doctor {
+        /// Parse a local wx-cli JSON file and include capture readiness signals.
+        #[arg(long)]
+        input: Option<PathBuf>,
+        /// Maximum number of parsed messages to preview.
+        #[arg(long, default_value_t = 10)]
+        limit: usize,
+    },
     /// Run wx_cli.poll_args once and print normalized messages.
     Poll {
         /// Parse a local wx-cli JSON file instead of invoking wx_cli.poll_args.
@@ -86,6 +95,33 @@ mod tests {
                 command: WxCliCommand::Poll { input: None }
             })
         ));
+    }
+
+    #[test]
+    fn parses_wx_cli_doctor_command() {
+        let args = parse_args(&[
+            "qunmind",
+            "wx-cli",
+            "doctor",
+            "--input",
+            "wx-output.json",
+            "--limit",
+            "3",
+        ]);
+
+        match args.command {
+            Some(CliCommand::WxCli {
+                command:
+                    WxCliCommand::Doctor {
+                        input: Some(input),
+                        limit,
+                    },
+            }) => {
+                assert_eq!(input, PathBuf::from("wx-output.json"));
+                assert_eq!(limit, 3);
+            }
+            _ => panic!("wx-cli doctor command should parse"),
+        }
     }
 
     #[test]

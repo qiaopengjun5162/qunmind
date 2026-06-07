@@ -45,6 +45,8 @@ cargo run
 Before connecting a normal WeChat / external group bot loop, validate the local wx-cli commands in isolation:
 
 ```bash
+cargo run -- wx-cli doctor
+cargo run -- wx-cli doctor --input wx-output.json
 cargo run -- wx-cli poll
 cargo run -- wx-cli poll --input wx-output.json
 cargo run -- wx-cli dry-run --limit 10
@@ -56,7 +58,7 @@ cargo run -- wx-cli handle-once --input wx-output.json --message-id "m-123" --li
 cargo run -- wx-cli send --chat-id "room@chatroom" --text "QunMind diagnostic message"
 ```
 
-`poll`, `dry-run`, and `send` only read `[wx_cli]` config and do not initialize PostgreSQL, AI clients, or the main bot loop. Add `--input <json-file>` to `poll`, `dry-run`, or `handle-once` to parse a captured wx-cli JSON output file without invoking wx-cli again. `dry-run` reports which parsed messages would trigger a bot reply according to `bot.mention_names`, without saving, calling AI, or sending. `handle-once` stores the parsed messages, runs mention filtering, calls the configured AI provider when needed, and sends replies through `wx_cli.send_args`. Use `--message-id` with captured files when you want to inspect or replay exactly one message from a larger wx-cli output. Keep `--limit 1` for the first real group test to avoid accidental noisy replies.
+`doctor`, `poll`, `dry-run`, and `send` only read config and do not initialize PostgreSQL, AI clients, or the main bot loop. `doctor` checks wx-cli readiness before a real group test, including send placeholders, AI settings, mention safety, and optional captured-message signals. Add `--input <json-file>` to `doctor`, `poll`, `dry-run`, or `handle-once` to parse a captured wx-cli JSON output file without invoking wx-cli again. `dry-run` reports which parsed messages would trigger a bot reply according to `bot.mention_names`, without saving, calling AI, or sending. `handle-once` stores the parsed messages, runs mention filtering, calls the configured AI provider when needed, and sends replies through `wx_cli.send_args`. Use `--message-id` with captured files when you want to inspect or replay exactly one message from a larger wx-cli output. Keep `--limit 1` for the first real group test to avoid accidental noisy replies.
 
 ## Public Source Fallback
 
