@@ -108,6 +108,15 @@ just test
 
 Use `cargo nextest`, not `cargo test`, for project test runs.
 
+PostgreSQL integration tests are ignored by default because they need a disposable database. Run them explicitly with an isolated test database URL:
+
+```bash
+QUNMIND_TEST_DATABASE_URL="postgres://postgres:postgres@localhost:5432/qunmind_test" \
+  cargo nextest run --all-features --run-ignored only postgres_store
+```
+
+The test creates and drops a temporary schema through `search_path`, so it does not write to the default `public` schema.
+
 ## Architecture Rules
 
 Business logic should be Rust-first. Logic that must be shared by Web, mini program, or App clients should be designed for Rust WASM reuse. TypeScript should stay in platform APIs, rendering, host capability calls, and glue code.

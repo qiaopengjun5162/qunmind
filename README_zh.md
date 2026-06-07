@@ -108,6 +108,15 @@ just test
 
 项目测试使用 `cargo nextest`，不要用 `cargo test` 替代。
 
+PostgreSQL 集成测试默认被 ignore，因为它需要一个可丢弃的测试数据库。需要真实验证 `PostgresMessageStore` 时显式运行：
+
+```bash
+QUNMIND_TEST_DATABASE_URL="postgres://postgres:postgres@localhost:5432/qunmind_test" \
+  cargo nextest run --all-features --run-ignored only postgres_store
+```
+
+测试会通过 `search_path` 创建并删除临时 schema，不会写入默认 `public` schema。
+
 ## 架构约束
 
 能用 Rust 实现的业务逻辑，优先 Rust。能被 Web / 小程序 / App 复用的逻辑，优先 Rust WASM。TypeScript 只做平台 API、渲染、宿主能力调用和胶水层。

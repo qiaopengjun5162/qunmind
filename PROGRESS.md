@@ -4,7 +4,7 @@
 
 ### Status
 
-- MVP completion estimate: about 66%. Rust backend, WeCom/wx-cli channels, AI adapters, PostgreSQL persistence, diagnostics, daily reports, public-source fallback, basic conversation context, per-group runtime/persona overrides, per-group daily report targets, captured wx-cli replay safety, and structured research/learning catalogs are implemented. AI x Web3 School Prompt/Handbook references are cataloged for future agent design. Real local WeChat validation, PostgreSQL integration tests, durable memory/permissions, and production hardening remain the main gaps.
+- MVP completion estimate: about 67%. Rust backend, WeCom/wx-cli channels, AI adapters, PostgreSQL persistence, diagnostics, daily reports, public-source fallback, basic conversation context, per-group runtime/persona overrides, per-group daily report targets, captured wx-cli replay safety, ignored PostgreSQL integration-test coverage, and structured research/learning catalogs are implemented. AI x Web3 School Prompt/Handbook references are cataloged for future agent design. Real local WeChat validation, actually running the PostgreSQL integration test against a disposable database, durable memory/permissions, and production hardening remain the main gaps.
 
 ### Done
 
@@ -34,6 +34,7 @@
 - Added `--message-id <id>` filtering for `wx-cli handle-once` so captured wx-cli files with multiple messages can safely replay one target message.
 - Extracted wx-cli diagnostic selection and dry-run preview logic into `src/diagnostic.rs`, keeping `main.rs` focused on CLI I/O and dependency wiring.
 - Added wx-cli dry-run boundary coverage for non-text messages, empty text, unconfigured mention names, zero limits, and preview truncation.
+- Added ignored PostgreSQL integration coverage for `PostgresMessageStore` message persistence, text-message windows, link extraction, link deduplication, and temporary-schema isolation through `QUNMIND_TEST_DATABASE_URL`.
 - Added optional Hacker News, CoinMarketCap, CoinGecko, DeFi Llama, Dune, GitHub Trending, and Slerf Blog fallback material for daily reports when the report group has no messages.
 - Added Rust-side research tool catalog for market data, onchain analytics, code security, community, funding-flow, and research-opinion sources.
 - Added Rust-side AI / Agent learning resource catalog for LLM foundations, API calling, coding agents, agent frameworks, and Hermes execution-layer references.
@@ -50,8 +51,9 @@
 - `taplo fmt --check --option reorder_keys=true Cargo.toml config.example.toml`
 - Current `taplo fmt --check --option reorder_keys=true Cargo.toml config.example.toml` is blocked by a local `system-configuration` panic before reading changed files; this refactor did not change TOML.
 - `cargo clippy --all-targets --all-features --tests --benches -- -D warnings`
-- `cargo nextest run --all-features`：106 tests passing.
+- `cargo nextest run --all-features`：106 tests passing, 1 ignored PostgreSQL integration test compiled and skipped by default.
 - `cargo llvm-cov nextest --all-features --summary-only`：84.40% line coverage, 106 tests passing.
+- `QUNMIND_TEST_DATABASE_URL` is currently unset in this shell, so the ignored PostgreSQL integration test was not executed against a live database.
 - `cargo deny check`：passed with duplicate dependency warnings from the current WeCom SDK dependency stack.
 - `typos`
 
@@ -59,7 +61,7 @@
 
 - Validate actual wx-cli receive/send commands against a real local WeChat environment.
 - Prioritize WeChat work next: real wx-cli poll/send fixture capture and per-group report settings over adding more public sources.
-- Add PostgreSQL integration tests for `PostgresMessageStore` message/link persistence when a disposable PG test database is available.
+- Run the ignored PostgreSQL integration test against a disposable local database with `QUNMIND_TEST_DATABASE_URL` and keep expanding store coverage from there.
 - Tune CoinMarketCap top-story parsing and topic keywords after real Web3 daily report runs.
 - Prioritize automatable research connectors from `research::tools`, continuing with explorer APIs and audit-report sources.
 - Use `research::learning::ai_web3_path` as the reference map when refining AI provider integration, tool calling, skills, memory, and long-running AI/Web3 agent execution.

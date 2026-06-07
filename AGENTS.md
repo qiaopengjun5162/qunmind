@@ -40,6 +40,7 @@
 - `just test`：使用 `cargo nextest run --all-features`
 - `just check-all`：完整检查
 - `just run`：运行本地服务
+- `QUNMIND_TEST_DATABASE_URL="postgres://postgres:postgres@localhost:5432/qunmind_test" cargo nextest run --all-features --run-ignored only postgres_store`：在隔离临时 schema 中运行 PostgreSQL 集成测试
 - `cargo run -- wx-cli poll`：执行一次 `[wx_cli].poll_args` 并输出解析后的消息
 - `cargo run -- wx-cli poll --input wx-output.json`：解析已捕获的 wx-cli JSON 输出文件
 - `cargo run -- wx-cli dry-run --limit 10`：执行一次 wx-cli 轮询，只预检群聊 @ 是否会触发回复
@@ -67,6 +68,7 @@
 - `config.toml` 包含本地凭据，默认不要读取、修改或提交；需要示例配置时使用 `config.example.toml`。
 - `config.toml` 已被 `.gitignore` 忽略，初始化或格式化时不要把它纳入批量 TOML 格式化命令。
 - `tests/` 已初始化，新增对外行为测试时放在这里，命名使用 `*_test.rs`。
+- PostgreSQL 集成测试默认 `#[ignore]`，通过 `QUNMIND_TEST_DATABASE_URL` 指向可丢弃测试库；测试会创建临时 schema 并用 `search_path` 隔离，不要直接使用包含真实数据的生产库 URL。
 - 本项目最终实现语言是 Rust；参考 Python/TypeScript/Next.js 项目时只吸收产品、架构和接口边界，不迁移其技术栈。
 - 能用 Rust 实现的业务逻辑，优先放在 Rust crate 中；能被 Web / 小程序 / App 复用的逻辑，优先设计成 Rust WASM 可导出的核心模块。
 - TypeScript 只承担平台 API、渲染、宿主能力调用和胶水层，不承载可复用业务规则。
