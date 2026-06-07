@@ -17,6 +17,7 @@ The project currently supports:
 - Configurable group mention filtering.
 - PostgreSQL message persistence.
 - Incoming message link extraction and deduplicated storage.
+- Rust-side crypto research tool catalog for future market data, onchain analytics, code security, community, funding-flow, and research-opinion sources.
 - Cron-based daily reports.
 - Daily reports generated from recently stored group messages and link intelligence.
 - Optional Hacker News, CoinMarketCap, GitHub Trending, and Slerf Blog fallback reports when a report group has no messages.
@@ -67,6 +68,10 @@ These sources are filtered toward programming technology, Rust, Web3, crypto, AI
 ## Link Intelligence
 
 QunMind extracts `http://` / `https://` links from incoming text messages and stores them in PostgreSQL `message_links`. Daily reports include recent deduplicated links up to `schedule.daily_report_max_links`, so article, tool, and repository resources stay visible instead of being buried in chat text.
+
+## Research Tool Map
+
+`src/research/tools.rs` tracks the project research tool catalog across six categories: market data, onchain analytics, code and security, community and social media, funding flows, and research opinions. Future CoinGecko, DeFi Llama, Dune, explorer, audit-report, or social-data integrations should start from this catalog and then become Rust sources or connectors.
 
 ## Development
 

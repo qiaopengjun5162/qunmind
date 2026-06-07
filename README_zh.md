@@ -17,6 +17,7 @@
 - 群聊 @ 触发过滤。
 - PostgreSQL 消息持久化。
 - 入站消息链接抽取和去重存储。
+- Rust 侧项目投研工具目录，用于后续扩展市场数据、链上分析、代码安全、社区、资金动向和研究观点来源。
 - Cron 定时日报。
 - 基于最近已保存群消息和链接情报生成日报。
 - 群消息为空时可选使用 Hacker News、CoinMarketCap、GitHub Trending、Slerf Blog 生成公共信息参考日报。
@@ -67,6 +68,10 @@ topic_keywords = ["rust", "web3", "ai", "llm", "agent", "zkp", "solana", "ethere
 ## 链接情报
 
 QunMind 会在保存文本消息时抽取 `http://` / `https://` 链接，写入 PostgreSQL 的 `message_links` 表。日报会按 `schedule.daily_report_max_links` 纳入最近去重链接，帮助模型区分普通聊天内容和文章、工具、仓库等可追踪资源。
+
+## 投研工具地图
+
+`src/research/tools.rs` 维护项目投研工具目录，当前按六类组织：基础信息与行情数据、链上数据与分析、项目代码与安全、社区与社交媒体、投资与资金动向、研究报告与专家观点。后续新增 CoinGecko、DeFi Llama、Dune、区块链浏览器、审计报告或社交数据来源时，优先从这个目录选择可自动化的工具，再实现成 Rust source / connector。
 
 ## 开发命令
 

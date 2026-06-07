@@ -8,6 +8,8 @@
 
 当前已有 PostgreSQL 消息持久化。`BotHandler` 会在 mention 过滤前保存入站消息；`PostgresMessageStore` 会从文本消息中抽取 URL 并写入 `message_links`；`scheduler` 的日报会按 `schedule.daily_report_lookback_hours`、`schedule.daily_report_max_messages` 和 `schedule.daily_report_max_links` 读取已保存群消息与链接情报后再调用模型生成。群消息为空且 `[public_sources]` 中至少一个来源启用时，会读取 Hacker News、CoinMarketCap、GitHub Trending、Slerf Blog 作为公共信息参考日报素材，并按 `topic_keywords` 聚焦 Rust、Web3、crypto、AI、ZKP 等前沿技术。当前还没有对话上下文或前端 UI。
 
+`src/research/tools.rs` 维护项目投研工具目录，覆盖基础信息与行情数据、链上数据与分析、项目代码与安全、社区与社交媒体、投资与资金动向、研究报告与专家观点。新增投研来源时先归类到该目录，再决定是否实现为 `PublicNewsSource`、链上 connector 或人工辅助入口。
+
 `channel.kind = "wx_cli"` 时通过 `wx_cli.bin + wx_cli.poll_args` 轮询 JSON 消息，通过 `wx_cli.send_args` 模板发送文本。`ai.provider = "hermes"` 时调用 `[hermes]` 中的 HTTP API，适合先对接爱马仕/小龙虾一类 Agent 平台。
 
 可以用 `cargo run -- wx-cli poll` 和 `cargo run -- wx-cli send --chat-id "<chat_id>" --text "<text>"` 单独诊断 wx-cli 收发命令；这两个命令只读取配置，不会初始化 PG、AI、日报调度或进入机器人主循环。
@@ -54,6 +56,7 @@
 - 现有 trait 边界是 `Channel` 和 `AiClient`，新增通道或模型时优先复用这些边界。
 - 通道适配器里能纯函数化的 SDK frame 转换、CLI JSON 解析和发送 payload 构造，应优先抽成小的 Rust helper 并补单测；真实网络连接只保留在 `Channel::start` / `Channel::send_text` 周围。
 - 新增公共信息网站时优先实现为 `PublicNewsSource`，放在 Rust `src/source/` 中，配置默认关闭；HTML/JSON 解析逻辑必须有纯 Rust 单测，不把抓取逻辑写进 scheduler。
+- 新增投研工具时优先维护 `research::tools` 里的目录、分类和自动化标记；可自动化的市场数据/链上/安全来源再逐步落成 Rust connector。
 - 未来平台化时优先抽象 `Connector` / `Trigger` / `Action` / `Workflow`，不要把微信采集、AI 调度和内容知识层耦合成一个大模块。
 - 删除不用的代码，不保留占位 re-export、`_` 前缀变量或说明“已移除”的注释。
 
