@@ -24,41 +24,66 @@ impl WeComChannel {
         }
     }
 
-    fn extract_text(frame: &WsFrame) -> Option<String> {
-        frame
-            .body
-            .as_ref()
-            .and_then(|v| v.as_object())
-            .and_then(|b| b.get("content"))
-            .and_then(|v| v.as_object())
-            .and_then(|c| c.get("text_item"))
-            .and_then(|v| v.as_object())
-            .and_then(|t| t.get("text"))
-            .and_then(|v| v.as_str())
-            .map(String::from)
-    }
+    fn incoming_message_from_frame(frame: &WsFrame) -> Option<IncomingMessage> {
+        let text = extract_text(frame)?;
+        let chat_id = extract_chat_id(frame).unwrap_or_default();
+        let from = extract_from(frame).unwrap_or_default();
+        let is_group = !chat_id.is_empty();
 
-    fn extract_chat_id(frame: &WsFrame) -> Option<String> {
-        frame
-            .body
-            .as_ref()
-            .and_then(|v| v.as_object())
-            .and_then(|b| b.get("chatid"))
-            .and_then(|v| v.as_str())
-            .map(String::from)
+        Some(IncomingMessage {
+            message_id: frame.headers.req_id.clone(),
+            from: from.clone(),
+            chat_id: if is_group { chat_id } else { from },
+            is_group,
+            text: Some(text),
+            msg_type: MsgType::Text,
+        })
     }
+}
 
-    fn extract_from(frame: &WsFrame) -> Option<String> {
-        frame
-            .body
-            .as_ref()
-            .and_then(|v| v.as_object())
-            .and_then(|b| b.get("from"))
-            .and_then(|v| v.as_object())
-            .and_then(|f| f.get("userid"))
-            .and_then(|v| v.as_str())
-            .map(String::from)
-    }
+fn extract_text(frame: &WsFrame) -> Option<String> {
+    frame
+        .body
+        .as_ref()
+        .and_then(|v| v.as_object())
+        .and_then(|b| b.get("content"))
+        .and_then(|v| v.as_object())
+        .and_then(|c| c.get("text_item"))
+        .and_then(|v| v.as_object())
+        .and_then(|t| t.get("text"))
+        .and_then(|v| v.as_str())
+        .map(String::from)
+}
+
+fn extract_chat_id(frame: &WsFrame) -> Option<String> {
+    frame
+        .body
+        .as_ref()
+        .and_then(|v| v.as_object())
+        .and_then(|b| b.get("chatid"))
+        .and_then(|v| v.as_str())
+        .map(String::from)
+}
+
+fn extract_from(frame: &WsFrame) -> Option<String> {
+    frame
+        .body
+        .as_ref()
+        .and_then(|v| v.as_object())
+        .and_then(|b| b.get("from"))
+        .and_then(|v| v.as_object())
+        .and_then(|f| f.get("userid"))
+        .and_then(|v| v.as_str())
+        .map(String::from)
+}
+
+fn markdown_body(text: &str) -> serde_json::Value {
+    serde_json::json!({
+        "msgtype": "markdown",
+        "markdown": {
+            "content": text
+        }
+    })
 }
 
 #[async_trait]
@@ -80,23 +105,8 @@ impl Channel for WeComChannel {
 
         ws_client
             .on_message_text(move |frame: &WsFrame| {
-                let text = Self::extract_text(frame);
-                let chat_id = Self::extract_chat_id(frame).unwrap_or_default();
-                let from = Self::extract_from(frame).unwrap_or_default();
-                let is_group = !chat_id.is_empty();
-                let message_id = frame.headers.req_id.clone();
-
-                if text.is_none() {
+                let Some(msg) = Self::incoming_message_from_frame(frame) else {
                     return;
-                }
-
-                let msg = IncomingMessage {
-                    message_id,
-                    from: from.clone(),
-                    chat_id: if is_group { chat_id } else { from },
-                    is_group,
-                    text,
-                    msg_type: MsgType::Text,
                 };
 
                 let handler = Arc::clone(&handler_clone);
@@ -129,12 +139,7 @@ impl Channel for WeComChannel {
             .as_ref()
             .ok_or_else(|| QunMindError::Channel("企业微信通道未启动".to_string()))?;
 
-        let body = serde_json::json!({
-            "msgtype": "markdown",
-            "markdown": {
-                "content": text
-            }
-        });
+        let body = markdown_body(text);
 
         client
             .send_message(chat_id, body)
@@ -151,5 +156,86 @@ impl Channel for WeComChannel {
             info!("企业微信通道已关闭");
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+    use wecom_aibot_rust_sdk::types::WsFrameHeaders;
+
+    fn text_frame(body: serde_json::Value) -> WsFrame {
+        WsFrame {
+            cmd: Some("message".to_string()),
+            headers: WsFrameHeaders::new("req-1"),
+            body: Some(body),
+            errcode: None,
+            errmsg: None,
+        }
+    }
+
+    #[test]
+    fn converts_group_text_frame_to_incoming_message() {
+        let frame = text_frame(json!({
+            "chatid": "group-1",
+            "from": { "userid": "alice" },
+            "content": {
+                "text_item": {
+                    "text": "hello"
+                }
+            }
+        }));
+
+        let msg = WeComChannel::incoming_message_from_frame(&frame).unwrap();
+
+        assert_eq!(msg.message_id, "req-1");
+        assert_eq!(msg.from, "alice");
+        assert_eq!(msg.chat_id, "group-1");
+        assert!(msg.is_group);
+        assert_eq!(msg.text.as_deref(), Some("hello"));
+        assert_eq!(msg.msg_type, MsgType::Text);
+    }
+
+    #[test]
+    fn converts_direct_text_frame_to_sender_session() {
+        let frame = text_frame(json!({
+            "from": { "userid": "alice" },
+            "content": {
+                "text_item": {
+                    "text": "private hello"
+                }
+            }
+        }));
+
+        let msg = WeComChannel::incoming_message_from_frame(&frame).unwrap();
+
+        assert_eq!(msg.from, "alice");
+        assert_eq!(msg.chat_id, "alice");
+        assert!(!msg.is_group);
+    }
+
+    #[test]
+    fn skips_frame_without_text_content() {
+        let frame = text_frame(json!({
+            "chatid": "group-1",
+            "from": { "userid": "alice" },
+            "content": {}
+        }));
+
+        assert!(WeComChannel::incoming_message_from_frame(&frame).is_none());
+    }
+
+    #[test]
+    fn builds_markdown_send_body() {
+        assert_eq!(
+            markdown_body("日报"),
+            json!({
+                "msgtype": "markdown",
+                "markdown": {
+                    "content": "日报"
+                }
+            })
+        );
     }
 }

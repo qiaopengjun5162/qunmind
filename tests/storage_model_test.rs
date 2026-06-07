@@ -1,6 +1,26 @@
 use chrono::Utc;
 use qunmind::channel::{IncomingMessage, MsgType};
-use qunmind::storage::NewMessage;
+use qunmind::error::Result;
+use qunmind::storage::{MessageStore, NewMessage, StoredMessage};
+
+struct DefaultLinkStore;
+
+#[async_trait::async_trait]
+impl MessageStore for DefaultLinkStore {
+    async fn save(&self, _message: NewMessage) -> Result<()> {
+        Ok(())
+    }
+
+    async fn text_messages(
+        &self,
+        _chat_id: &str,
+        _since: chrono::DateTime<Utc>,
+        _until: chrono::DateTime<Utc>,
+        _limit: i64,
+    ) -> Result<Vec<StoredMessage>> {
+        Ok(Vec::new())
+    }
+}
 
 #[test]
 fn builds_new_message_from_incoming_message() {
@@ -29,4 +49,16 @@ fn builds_new_message_from_incoming_message() {
     );
     assert!(message.received_at >= before);
     assert!(message.received_at <= after);
+}
+
+#[tokio::test]
+async fn message_store_default_recent_links_is_empty() {
+    let now = Utc::now();
+
+    let links = DefaultLinkStore
+        .recent_links("group-1", now, now, 20)
+        .await
+        .expect("recent links");
+
+    assert!(links.is_empty());
 }

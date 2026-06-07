@@ -333,4 +333,74 @@ mod tests {
         assert_eq!(messages[0].from, "carol");
         assert!(messages[0].is_group);
     }
+
+    #[test]
+    fn parses_message_arrays_nested_under_data_messages() {
+        let value = json!({
+            "data": {
+                "messages": [
+                    {
+                        "message": "nested array text",
+                        "session": "room-1",
+                        "from": "dave",
+                        "id": "m-2"
+                    }
+                ]
+            }
+        });
+
+        let messages = parse_messages(&value, "");
+
+        assert_eq!(messages.len(), 1);
+        assert_eq!(messages[0].id, "m-2");
+        assert_eq!(messages[0].chat_id, "room-1");
+        assert_eq!(messages[0].from, "dave");
+        assert_eq!(messages[0].text, "nested array text");
+    }
+
+    #[test]
+    fn ignores_empty_string_fields_and_uses_numeric_fallbacks() {
+        let value = json!([
+            {
+                "content": "",
+                "text": "hello",
+                "chat_id": "",
+                "roomid": 12345,
+                "sender": "",
+                "sender_username": "eve",
+                "local_id": 99
+            }
+        ]);
+
+        let messages = parse_messages(&value, "");
+
+        assert_eq!(messages.len(), 1);
+        assert_eq!(messages[0].id, "99");
+        assert_eq!(messages[0].chat_id, "12345");
+        assert_eq!(messages[0].from, "eve");
+        assert_eq!(messages[0].text, "hello");
+        assert!(!messages[0].is_group);
+    }
+
+    #[test]
+    fn renders_send_args_with_chat_and_text_placeholders() {
+        let channel = WxCliChannel {
+            bin: "wx-cli".to_string(),
+            poll_args: Vec::new(),
+            send_args: vec![
+                "send".to_string(),
+                "--room".to_string(),
+                "{chat_id}".to_string(),
+                "--text={text}".to_string(),
+            ],
+            poll_interval: tokio::time::Duration::from_secs(1),
+            group_chat_id: String::new(),
+            seen: Mutex::new(HashSet::new()),
+        };
+
+        assert_eq!(
+            channel.render_send_args("room-1", "hello"),
+            vec!["send", "--room", "room-1", "--text=hello"]
+        );
+    }
 }
