@@ -47,6 +47,7 @@ cargo run
 ```bash
 cargo run -- wx-cli doctor
 cargo run -- wx-cli doctor --input wx-output.json
+cargo run -- wx-cli capture --output wx-output.json
 cargo run -- wx-cli poll
 cargo run -- wx-cli poll --input wx-output.json
 cargo run -- wx-cli dry-run --limit 10
@@ -58,7 +59,7 @@ cargo run -- wx-cli handle-once --input wx-output.json --message-id "m-123" --li
 cargo run -- wx-cli send --chat-id "room@chatroom" --text "QunMind 诊断消息"
 ```
 
-`doctor`、`poll`、`dry-run` 和 `send` 只读取配置，不会初始化 PostgreSQL、AI 客户端或机器人主循环。`doctor` 用于真实群测前检查 wx-cli 就绪度，包括发送参数占位符、AI 配置、@ 触发安全性，以及可选捕获消息里的群聊和 message_id 信号。`doctor`、`poll`、`dry-run` 或 `handle-once` 加 `--input <json-file>` 时，会解析已捕获的 wx-cli JSON 输出文件，不会再次调用 wx-cli。`dry-run` 会按 `bot.mention_names` 输出哪些消息会触发回复，但不会保存、调用 AI 或发送。`handle-once` 会写入 PostgreSQL，执行群聊 @ 过滤，在命中时调用已配置的 AI，并通过 `wx_cli.send_args` 回复。捕获文件里有多条消息时，可以用 `--message-id` 精确预检或重放一条。第一次真实群测建议保持 `--limit 1`，避免误刷屏。
+`doctor`、`capture`、`poll`、`dry-run` 和 `send` 只读取配置，不会初始化 PostgreSQL、AI 客户端或机器人主循环。`doctor` 用于真实群测前检查 wx-cli 就绪度，包括发送参数占位符、AI 配置、@ 触发安全性，以及可选捕获消息里的群聊和 message_id 信号。`capture` 会执行一次 `wx_cli.poll_args`，把归一化后的可复放消息写入 JSON 文件。`doctor`、`poll`、`dry-run` 或 `handle-once` 加 `--input <json-file>` 时，会解析已捕获的 wx-cli JSON 输出文件，不会再次调用 wx-cli。`dry-run` 会按 `bot.mention_names` 输出哪些消息会触发回复，但不会保存、调用 AI 或发送。`handle-once` 会写入 PostgreSQL，执行群聊 @ 过滤，在命中时调用已配置的 AI，并通过 `wx_cli.send_args` 回复。捕获文件里有多条消息时，可以用 `--message-id` 精确预检或重放一条。第一次真实群测建议保持 `--limit 1`，避免误刷屏。
 
 ## 公共信息日报
 

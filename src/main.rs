@@ -1,3 +1,4 @@
+use std::path::Path;
 use std::sync::Arc;
 
 use anyhow::Context;
@@ -184,6 +185,23 @@ async fn run_wx_cli_command(command: WxCliCommand, config: &Config) -> anyhow::R
                 ))?
             );
         }
+        WxCliCommand::Capture { output } => {
+            let messages = load_wx_cli_messages(config, None).await?;
+            write_wx_cli_capture(&output, &messages)?;
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&serde_json::json!({
+                    "ok": true,
+                    "output": output,
+                    "captured": messages.len(),
+                    "next_steps": [
+                        "run_wx_cli_doctor_with_input_file",
+                        "run_wx_cli_dry_run_with_input_file",
+                        "run_wx_cli_handle_once_with_message_id_and_limit_1"
+                    ]
+                }))?
+            );
+        }
         WxCliCommand::Poll { input } => {
             let messages = load_wx_cli_messages(config, input.as_ref()).await?;
             println!("{}", serde_json::to_string_pretty(&messages)?);
@@ -293,9 +311,24 @@ async fn load_wx_cli_messages(
     Ok(channel.poll_once().await?)
 }
 
+fn write_wx_cli_capture(output: &Path, messages: &[IncomingMessage]) -> anyhow::Result<()> {
+    if let Some(parent) = output
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+    {
+        std::fs::create_dir_all(parent)
+            .with_context(|| format!("创建 wx-cli 捕获目录失败: {}", parent.display()))?;
+    }
+    let body = serde_json::to_string_pretty(messages)?;
+    std::fs::write(output, body)
+        .with_context(|| format!("写入 wx-cli 捕获文件失败: {}", output.display()))?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use qunmind::channel::MsgType;
 
     fn config_from(input: &str) -> Config {
         must(toml::from_str(input), "config")
@@ -460,5 +493,75 @@ mod tests {
         assert_eq!(messages.len(), 1);
         assert_eq!(messages[0].message_id, "m-file");
         assert_eq!(messages[0].text.as_deref(), Some("@bot file hello"));
+    }
+
+    #[test]
+    fn write_wx_cli_capture_writes_replayable_messages() {
+        let dir =
+            std::env::temp_dir().join(format!("qunmind-wx-cli-capture-{}", std::process::id()));
+        let path = dir.join("wx-output.json");
+        let messages = vec![IncomingMessage {
+            message_id: "m-capture".to_string(),
+            from: "alice".to_string(),
+            chat_id: "room@chatroom".to_string(),
+            is_group: true,
+            text: Some("@bot captured hello".to_string()),
+            msg_type: MsgType::Text,
+        }];
+
+        must(write_wx_cli_capture(&path, &messages), "write capture");
+        let raw = must(std::fs::read_to_string(&path), "read capture");
+        let replayed = must(
+            parse_wx_cli_messages_from_str(&raw, ""),
+            "parse captured messages",
+        );
+
+        must(std::fs::remove_file(path), "remove capture");
+        must(std::fs::remove_dir(dir), "remove capture dir");
+        assert_eq!(replayed.len(), 1);
+        assert_eq!(replayed[0].message_id, "m-capture");
+        assert_eq!(replayed[0].text.as_deref(), Some("@bot captured hello"));
+        assert!(replayed[0].is_group);
+    }
+
+    #[tokio::test]
+    async fn wx_cli_capture_command_writes_polled_messages() {
+        let dir = std::env::temp_dir().join(format!(
+            "qunmind-wx-cli-capture-command-{}",
+            std::process::id()
+        ));
+        let output = dir.join("wx-output.json");
+        let config = config_from(
+            r#"
+            [channel]
+            kind = "wx_cli"
+
+            [wx_cli]
+            bin = "/bin/echo"
+            poll_args = ['[{"id":"m-polled","chat":"room@chatroom","sender":"alice","content":"@bot polled hello"}]']
+            "#,
+        );
+
+        must(
+            run_wx_cli_command(
+                WxCliCommand::Capture {
+                    output: output.clone(),
+                },
+                &config,
+            )
+            .await,
+            "capture command",
+        );
+        let raw = must(std::fs::read_to_string(&output), "read capture");
+        let replayed = must(
+            parse_wx_cli_messages_from_str(&raw, ""),
+            "parse captured messages",
+        );
+
+        must(std::fs::remove_file(output), "remove capture");
+        must(std::fs::remove_dir(dir), "remove capture dir");
+        assert_eq!(replayed.len(), 1);
+        assert_eq!(replayed[0].message_id, "m-polled");
+        assert_eq!(replayed[0].text.as_deref(), Some("@bot polled hello"));
     }
 }

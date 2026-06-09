@@ -34,6 +34,12 @@ pub enum WxCliCommand {
         #[arg(long, default_value_t = 10)]
         limit: usize,
     },
+    /// Run wx_cli.poll_args once and save normalized messages for replay.
+    Capture {
+        /// Write normalized wx-cli messages to this JSON file.
+        #[arg(long)]
+        output: PathBuf,
+    },
     /// Run wx_cli.poll_args once and print normalized messages.
     Poll {
         /// Parse a local wx-cli JSON file instead of invoking wx_cli.poll_args.
@@ -121,6 +127,18 @@ mod tests {
                 assert_eq!(limit, 3);
             }
             _ => panic!("wx-cli doctor command should parse"),
+        }
+    }
+
+    #[test]
+    fn parses_wx_cli_capture_command() {
+        let args = parse_args(&["qunmind", "wx-cli", "capture", "--output", "wx-output.json"]);
+
+        match args.command {
+            Some(CliCommand::WxCli {
+                command: WxCliCommand::Capture { output },
+            }) => assert_eq!(output, PathBuf::from("wx-output.json")),
+            _ => panic!("wx-cli capture command should parse"),
         }
     }
 
