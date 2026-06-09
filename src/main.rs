@@ -17,9 +17,9 @@ use qunmind::channel::wx_cli::parse_wx_cli_messages_from_str;
 use qunmind::cli::{Args, CliCommand, WxCliCommand};
 use qunmind::config::{AiProvider, ChannelKind, Config};
 use qunmind::diagnostic::{
-    select_wx_cli_messages, wx_cli_doctor_report, wx_cli_dry_run_item,
-    wx_cli_dry_run_message_id_not_found_report, wx_cli_handle_once_message_id_not_found_report,
-    wx_cli_message_id_found, wx_cli_message_ids,
+    select_wx_cli_messages, wx_cli_doctor_report, wx_cli_dry_run_message_id_not_found_report,
+    wx_cli_dry_run_report, wx_cli_handle_once_message_id_not_found_report,
+    wx_cli_handle_once_report, wx_cli_message_id_found, wx_cli_message_ids,
 };
 use qunmind::error::QunMindError;
 use qunmind::scheduler::daily_report::DailyReportScheduler;
@@ -231,21 +231,13 @@ async fn run_wx_cli_command(command: WxCliCommand, config: &Config) -> anyhow::R
                 return Ok(());
             }
             let messages = select_wx_cli_messages(messages, message_id.as_deref(), limit);
-            let inspected = messages.len();
-            let selected_message_ids = wx_cli_message_ids(&messages);
-            let items: Vec<_> = messages
-                .iter()
-                .map(|msg| wx_cli_dry_run_item(config, msg))
-                .collect();
             println!(
                 "{}",
-                serde_json::to_string_pretty(&serde_json::json!({
-                    "ok": true,
-                    "total_polled": total_polled,
-                    "inspected": inspected,
-                    "selected_message_ids": selected_message_ids,
-                    "items": items
-                }))?
+                serde_json::to_string_pretty(&wx_cli_dry_run_report(
+                    config,
+                    total_polled,
+                    &messages
+                ))?
             );
         }
         WxCliCommand::HandleOnce {
@@ -278,14 +270,13 @@ async fn run_wx_cli_command(command: WxCliCommand, config: &Config) -> anyhow::R
             if messages.is_empty() {
                 println!(
                     "{}",
-                    serde_json::to_string_pretty(&serde_json::json!({
-                        "ok": true,
-                        "total_polled": total_polled,
-                        "processed": 0,
-                        "selected_message_ids": selected_message_ids,
-                        "no_send": no_send,
-                        "suppressed_replies": []
-                    }))?
+                    serde_json::to_string_pretty(&wx_cli_handle_once_report(
+                        total_polled,
+                        0,
+                        &selected_message_ids,
+                        no_send,
+                        &[] as &[serde_json::Value]
+                    ))?
                 );
                 return Ok(());
             }
@@ -318,14 +309,13 @@ async fn run_wx_cli_command(command: WxCliCommand, config: &Config) -> anyhow::R
             };
             println!(
                 "{}",
-                serde_json::to_string_pretty(&serde_json::json!({
-                    "ok": true,
-                    "total_polled": total_polled,
-                    "processed": processed,
-                    "selected_message_ids": selected_message_ids,
-                    "no_send": no_send,
-                    "suppressed_replies": suppressed_replies
-                }))?
+                serde_json::to_string_pretty(&wx_cli_handle_once_report(
+                    total_polled,
+                    processed,
+                    &selected_message_ids,
+                    no_send,
+                    &suppressed_replies
+                ))?
             );
         }
         WxCliCommand::Send {
