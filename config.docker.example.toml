@@ -1,0 +1,93 @@
+[channel]
+kind = "wecom"
+
+[wecom]
+bot_id = "replace-with-wecom-bot-id"
+secret = "replace-with-wecom-secret"
+
+[ai]
+api_key = "replace-with-openai-compatible-api-key"
+api_url = "https://api.openai.com/v1/chat/completions"
+model = "gpt-4o-mini"
+provider = "open_ai"
+system_prompt = "你是一个有用的助手，用中文回复。"
+
+[hermes]
+agent_id = ""
+api_key = ""
+api_url = "http://hermes:8000/v1/chat"
+timeout_secs = 60
+
+[wx_cli]
+bin = "wx"
+group_chat_id = ""
+poll_args = ["new-messages", "--json"]
+poll_interval_secs = 5
+send_args = ["send", "--chat", "{chat_id}", "--text", "{text}"]
+
+[bot]
+context_messages = 8
+mention_names = []
+
+[schedule]
+daily_report_chat_id = ""
+daily_report_cron = "0 0 9 * * *"
+daily_report_lookback_hours = 24
+daily_report_max_links = 20
+daily_report_max_messages = 200
+daily_report_prompt = "请根据今天的对话生成一份简洁的日报摘要。"
+
+[storage]
+database_url = "postgres://qunmind:qunmind@postgres:5432/qunmind"
+
+[public_sources]
+coingecko_enabled = false
+coingecko_max_items = 8
+coingecko_timeout_secs = 10
+coingecko_trending_url = "https://api.coingecko.com/api/v3/search/trending"
+coinmarketcap_enabled = false
+coinmarketcap_max_items = 8
+coinmarketcap_timeout_secs = 10
+coinmarketcap_top_stories_url = "https://coinmarketcap.com/top-stories/"
+defillama_enabled = false
+defillama_max_items = 8
+defillama_protocols_url = "https://api.llama.fi/protocols"
+defillama_timeout_secs = 10
+dune_api_base_url = "https://api.dune.com/api/v1"
+dune_api_key = ""
+dune_enabled = false
+dune_max_rows_per_query = 5
+dune_query_ids = []
+dune_timeout_secs = 10
+github_trending_base_url = "https://github.com/trending"
+github_trending_enabled = false
+github_trending_languages = ["rust", "go", "python", "typescript"]
+github_trending_max_items = 8
+github_trending_since = "daily"
+github_trending_timeout_secs = 10
+hacker_news_base_url = "https://hacker-news.firebaseio.com/v0"
+hacker_news_enabled = false
+hacker_news_max_items = 10
+hacker_news_timeout_secs = 10
+max_items = 12
+slerf_blog_enabled = false
+slerf_blog_max_items = 8
+slerf_blog_timeout_secs = 10
+slerf_blog_urls = ["https://blog.slerf.tools/"]
+topic_keywords = [
+  "rust",
+  "wasm",
+  "webassembly",
+  "web3",
+  "crypto",
+  "blockchain",
+  "ethereum",
+  "solana",
+  "ai",
+  "llm",
+  "agent",
+  "zk",
+  "zkp",
+  "zero knowledge",
+  "zero-knowledge",
+]

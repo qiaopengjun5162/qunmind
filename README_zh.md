@@ -40,6 +40,22 @@ cargo run
 
 `config.toml` 包含本地凭据，已被 `.gitignore` 忽略。
 
+## Docker 部署
+
+项目现在包含 Dockerfile 和 Docker Compose，可一键启动 QunMind 与
+PostgreSQL：
+
+```bash
+cp config.docker.example.toml config.toml
+$EDITOR config.toml
+docker compose up -d --build
+docker compose logs -f qunmind
+```
+
+Compose 会把 `config.toml` 只读挂载到容器内，并用命名 volume 保存
+PostgreSQL 数据。完整部署步骤、wx-cli 容器边界、Release 镜像和生产检查清单见
+[DEPLOYMENT.md](DEPLOYMENT.md)。
+
 ## wx-cli 诊断
 
 真实连接普通微信 / 外部群前，可以先只验证本地 wx-cli 收发命令：
@@ -120,6 +136,16 @@ just test
 QunMind 默认采用 PR-first 工作流。每个改动先创建 `codex/<short-topic>`
 分支，保持 PR 聚焦，运行 `just clippy` 和 `just test`，push 分支后再向
 `master` 提 pull request。完整流程和检查清单见 [CONTRIBUTING.md](CONTRIBUTING.md)。
+
+## Release 自动化
+
+推送 `v*` tag 后，GitHub Actions 会先跑格式检查、clippy 和 nextest，再自动创建
+GitHub Release 并发布 GHCR 镜像：
+
+```text
+ghcr.io/qiaopengjun5162/qunmind:<tag>
+ghcr.io/qiaopengjun5162/qunmind:latest
+```
 
 PostgreSQL 集成测试默认被 ignore，因为它需要一个可丢弃的测试数据库。需要真实验证 `PostgresMessageStore` 时显式运行：
 

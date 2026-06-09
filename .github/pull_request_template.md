@@ -7,6 +7,8 @@
 - [ ] `just clippy`
 - [ ] `just test`
 - [ ] `cargo llvm-cov nextest --all-features --summary-only`
+- [ ] `docker compose config` when deployment files change
+- [ ] Docker image build passed locally or in CI when deployment files change
 
 ## WeChat Safety
 

@@ -29,6 +29,7 @@ QUNMIND_TEST_DATABASE_URL="postgres://postgres:postgres@localhost:5432/qunmind_t
 - Use `anyhow` / `thiserror` style error propagation instead of panic-prone extraction.
 - Write source comments in English and explain non-obvious boundaries, safety constraints, or compatibility reasons.
 - Do not commit `config.toml` or secrets.
+- When changing deployment files, keep secrets out of image layers and run `docker compose config`.
 
 ## Pull Requests
 
@@ -37,6 +38,7 @@ QUNMIND_TEST_DATABASE_URL="postgres://postgres:postgres@localhost:5432/qunmind_t
 - Update `README.md`, `README_zh.md`, `PROGRESS.md`, and `AGENTS.md` when architecture or workflow changes.
 - Add or update tests for behavior changes.
 - Run `just clippy` and `just test` before opening a PR.
+- For Docker, Compose, or release workflow changes, make sure the Docker image build passes locally or in CI.
 - Fill out the pull request template with behavior changes, verification, and remaining risks.
 - Use Conventional Commits, for example `feat: add message store`.
 - Prefer opening a pull request from your own branch instead of pushing directly to `master`.

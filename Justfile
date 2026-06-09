@@ -6,12 +6,12 @@ default: check-all
 # 格式检查
 fmt-check:
     cargo fmt --all -- --check
-    taplo fmt --check --option reorder_keys=true Cargo.toml config.example.toml
+    taplo fmt --check --option reorder_keys=true Cargo.toml config.example.toml config.docker.example.toml
 
 # 格式化
 fmt:
     cargo fmt
-    taplo fmt --option reorder_keys=true Cargo.toml config.example.toml
+    taplo fmt --option reorder_keys=true Cargo.toml config.example.toml config.docker.example.toml
 
 # 静态分析
 clippy:
@@ -46,6 +46,30 @@ run:
 # Release 构建
 release:
     cargo build --release
+
+# Docker 镜像构建
+docker-build:
+    docker build --tag qunmind:local .
+
+# Docker Compose 配置预检
+compose-config:
+    docker compose config
+
+# Docker Compose 一键启动
+compose-up:
+    docker compose up -d --build
+
+# Docker Compose 停止服务
+compose-down:
+    docker compose down
+
+# Docker Compose 日志
+compose-logs:
+    docker compose logs -f qunmind
+
+# Docker Compose 状态
+compose-ps:
+    docker compose ps
 
 # 覆盖率
 coverage:

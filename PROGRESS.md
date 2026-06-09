@@ -4,7 +4,7 @@
 
 ### Status
 
-- MVP completion estimate: about 80%. Rust backend, WeCom/wx-cli channels, AI adapters, PostgreSQL persistence, diagnostics, wx-cli readiness doctor, capture-aware wx-cli test plan output with full readiness blockers, replayable wx-cli capture files, wx-cli send dry-run guardrails, wx-cli handle-once no-send replay, PR-first contribution workflow, daily reports, public-source fallback, basic conversation context, per-group runtime/persona overrides, per-group daily report targets, captured wx-cli replay safety, wx-cli group/report target readiness, live PostgreSQL integration-test coverage, and structured research/learning catalogs are implemented. AI x Web3 School Prompt/Handbook references are cataloged for future agent design. Real local WeChat validation, durable memory/permissions, and production hardening remain the main gaps.
+- MVP completion estimate: about 82%. Rust backend, WeCom/wx-cli channels, AI adapters, PostgreSQL persistence, diagnostics, wx-cli readiness doctor, capture-aware wx-cli test plan output with full readiness blockers, replayable wx-cli capture files, wx-cli send dry-run guardrails, wx-cli handle-once no-send replay, PR-first contribution workflow, Docker/Compose deployment packaging, release image publishing, daily reports, public-source fallback, basic conversation context, per-group runtime/persona overrides, per-group daily report targets, captured wx-cli replay safety, wx-cli group/report target readiness, live PostgreSQL integration-test coverage, and structured research/learning catalogs are implemented. AI x Web3 School Prompt/Handbook references are cataloged for future agent design. Real local WeChat validation, durable memory/permissions, real server deployment validation, and production hardening remain the main gaps.
 
 ### Done
 
@@ -60,6 +60,7 @@
 - Created the local disposable `qunmind_test` PostgreSQL database and verified the ignored `postgres_store` integration test against it.
 - Added a PR-first contribution workflow, PR template, and `master` branch CI trigger so Codex changes can be pushed as branches and opened as self PRs.
 - Added tag-triggered GitHub Release automation so pushing a `v*` tag creates the matching release and unblocks the README release badge.
+- Added Dockerfile, Docker Compose, Docker-specific example config, deployment guide, Justfile deployment commands, CI Docker build validation, and GHCR image publishing on `v*` release tags.
 - Added optional Hacker News, CoinMarketCap, CoinGecko, DeFi Llama, Dune, GitHub Trending, and Slerf Blog fallback material for daily reports when the report group has no messages.
 - Added Rust-side research tool catalog for market data, onchain analytics, code security, community, funding-flow, and research-opinion sources.
 - Added Rust-side AI / Agent learning resource catalog for LLM foundations, API calling, coding agents, agent frameworks, and Hermes execution-layer references.
@@ -75,12 +76,15 @@
 - `cargo check --all-features`
 - `cargo fmt --all -- --check`
 - `taplo fmt --check --option reorder_keys=true Cargo.toml config.example.toml`
-- Current `taplo fmt --check --option reorder_keys=true Cargo.toml config.example.toml` is blocked by a local `system-configuration` panic before reading changed files; this refactor did not change TOML.
+- Current `taplo fmt --check --option reorder_keys=true Cargo.toml config.example.toml config.docker.example.toml` is blocked by a local `system-configuration` panic before reading changed files; CI runs the same check on Ubuntu.
 - `cargo clippy --all-targets --all-features --tests --benches -- -D warnings`
 - `cargo nextest run --all-features wx_cli_doctor`：7 targeted wx-cli doctor tests passing.
 - `cargo nextest run --all-features message_id`：15 targeted message-id tests passing.
 - `cargo nextest run --all-features`：146 tests passing, 1 ignored PostgreSQL integration test compiled and skipped by default.
 - `cargo llvm-cov nextest --all-features --summary-only`：88.74% line coverage, 146 tests passing.
+- `docker compose config`：validates the QunMind + PostgreSQL Compose stack.
+- `cargo run -- --config config.docker.example.toml wx-cli doctor`：passed and parsed the Docker example config without touching PG, AI, or WeChat.
+- `docker build --tag qunmind:local .`：blocked locally because the OrbStack Docker daemon is not running; the new CI Docker job validates the production image build.
 - `cargo run -- --config config.example.toml wx-cli doctor`：passed and reported example-config blockers/warnings without touching PG, AI, or WeChat.
 - `cargo run -- --config config.example.toml wx-cli test-plan --capture-file wx-output.json`：passed, preserved `config.example.toml` in generated commands, and reported the intended example-config blockers including `test_message_id_required` and `test_chat_id_required`, without touching PG, AI, or WeChat.
 - `cargo run -- --config config.example.toml wx-cli test-plan --input /dev/null --message-id m-1 --chat-id room@chatroom`：passed, preserved `config.example.toml`, skipped `capture_once`, and reported `selected_message_id_not_found_in_capture` without touching PG, AI, or WeChat.
@@ -94,6 +98,7 @@
 ### Next
 
 - Validate actual wx-cli receive/send commands against a real local WeChat environment.
+- Validate the Docker Compose stack against a real server or local Docker daemon with a secret `config.toml`.
 - Prioritize WeChat work next: real wx-cli poll/send fixture capture and per-group report settings over adding more public sources.
 - Run the ignored PostgreSQL integration test against a disposable local database with `QUNMIND_TEST_DATABASE_URL` and keep expanding store coverage from there.
 - Tune CoinMarketCap top-story parsing and topic keywords after real Web3 daily report runs.
