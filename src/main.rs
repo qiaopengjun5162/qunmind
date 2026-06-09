@@ -211,18 +211,28 @@ async fn run_wx_cli_command(command: WxCliCommand, config: &Config) -> anyhow::R
         }
         WxCliCommand::TestPlan {
             capture_file,
+            input,
             message_id,
             chat_id,
             text,
         } => {
+            let messages = match input.as_ref() {
+                Some(input) => Some(load_wx_cli_messages(config, Some(input)).await?),
+                None => None,
+            };
+            let capture_file = match input.as_ref() {
+                Some(input) => input,
+                None => &capture_file,
+            };
             println!(
                 "{}",
                 serde_json::to_string_pretty(&wx_cli_formal_test_plan(
                     config,
-                    &capture_file,
+                    capture_file,
                     message_id.as_deref(),
                     chat_id.as_deref(),
                     &text,
+                    messages.as_deref(),
                 ))?
             );
         }
@@ -683,6 +693,7 @@ mod tests {
             run_wx_cli_command(
                 WxCliCommand::TestPlan {
                     capture_file: "wx-output.json".into(),
+                    input: None,
                     message_id: Some("m-1".to_string()),
                     chat_id: Some("room@chatroom".to_string()),
                     text: "diagnostic".to_string(),
