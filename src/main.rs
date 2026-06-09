@@ -2,7 +2,6 @@ use std::path::Path;
 use std::sync::Arc;
 
 use anyhow::Context;
-use async_trait::async_trait;
 use clap::Parser;
 use qunmind::ai;
 use qunmind::ai::hermes::HermesClient;
@@ -11,6 +10,7 @@ use qunmind::bot::handler::BotHandler;
 use qunmind::channel::Channel;
 use qunmind::channel::IncomingMessage;
 use qunmind::channel::MessageHandler;
+use qunmind::channel::suppressed::SuppressedSendChannel;
 use qunmind::channel::wecom::WeComChannel;
 use qunmind::channel::wx_cli::WxCliChannel;
 use qunmind::channel::wx_cli::parse_wx_cli_messages_from_str;
@@ -30,57 +30,8 @@ use qunmind::source::hacker_news::HackerNewsSource;
 use qunmind::source::slerf_blog::SlerfBlogSource;
 use qunmind::storage::MessageStore;
 use qunmind::storage::postgres::PostgresMessageStore;
-use serde::Serialize;
-use tokio::sync::Mutex;
 use tracing::{error, info};
 use tracing_subscriber::EnvFilter;
-
-#[derive(Debug, Clone, Serialize)]
-struct SuppressedReply {
-    chat_id: String,
-    text: String,
-}
-
-struct SuppressedSendChannel {
-    name: &'static str,
-    replies: Mutex<Vec<SuppressedReply>>,
-}
-
-impl SuppressedSendChannel {
-    fn new(name: &'static str) -> Self {
-        Self {
-            name,
-            replies: Mutex::new(Vec::new()),
-        }
-    }
-
-    async fn replies(&self) -> Vec<SuppressedReply> {
-        self.replies.lock().await.clone()
-    }
-}
-
-#[async_trait]
-impl Channel for SuppressedSendChannel {
-    fn name(&self) -> &str {
-        self.name
-    }
-
-    async fn start(&self, _handler: Arc<dyn MessageHandler>) -> qunmind::error::Result<()> {
-        Ok(())
-    }
-
-    async fn send_text(&self, chat_id: &str, text: &str) -> qunmind::error::Result<()> {
-        self.replies.lock().await.push(SuppressedReply {
-            chat_id: chat_id.to_string(),
-            text: text.to_string(),
-        });
-        Ok(())
-    }
-
-    async fn shutdown(&self) -> qunmind::error::Result<()> {
-        Ok(())
-    }
-}
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -437,22 +388,6 @@ mod tests {
         };
 
         assert!(err.to_string().contains("ai.api_key"));
-    }
-
-    #[tokio::test]
-    async fn suppressed_send_channel_records_replies_without_external_send() {
-        let channel = SuppressedSendChannel::new("wx_cli");
-
-        must(
-            channel.send_text("room@chatroom", "diagnostic reply").await,
-            "suppress send",
-        );
-        let replies = channel.replies().await;
-
-        assert_eq!(channel.name(), "wx_cli");
-        assert_eq!(replies.len(), 1);
-        assert_eq!(replies[0].chat_id, "room@chatroom");
-        assert_eq!(replies[0].text, "diagnostic reply");
     }
 
     #[test]
