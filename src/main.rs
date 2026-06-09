@@ -16,7 +16,11 @@ use qunmind::channel::wx_cli::WxCliChannel;
 use qunmind::channel::wx_cli::parse_wx_cli_messages_from_str;
 use qunmind::cli::{Args, CliCommand, WxCliCommand};
 use qunmind::config::{AiProvider, ChannelKind, Config};
-use qunmind::diagnostic::{select_wx_cli_messages, wx_cli_doctor_report, wx_cli_dry_run_item};
+use qunmind::diagnostic::{
+    select_wx_cli_messages, wx_cli_doctor_report, wx_cli_dry_run_item,
+    wx_cli_dry_run_message_id_not_found_report, wx_cli_handle_once_message_id_not_found_report,
+    wx_cli_message_id_found, wx_cli_message_ids,
+};
 use qunmind::error::QunMindError;
 use qunmind::scheduler::daily_report::DailyReportScheduler;
 use qunmind::source::CompositePublicNewsSource;
@@ -216,8 +220,19 @@ async fn run_wx_cli_command(command: WxCliCommand, config: &Config) -> anyhow::R
         } => {
             let messages = load_wx_cli_messages(config, input.as_ref()).await?;
             let total_polled = messages.len();
+            if !wx_cli_message_id_found(&messages, message_id.as_deref()) {
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&wx_cli_dry_run_message_id_not_found_report(
+                        total_polled,
+                        message_id.as_deref()
+                    ))?
+                );
+                return Ok(());
+            }
             let messages = select_wx_cli_messages(messages, message_id.as_deref(), limit);
             let inspected = messages.len();
+            let selected_message_ids = wx_cli_message_ids(&messages);
             let items: Vec<_> = messages
                 .iter()
                 .map(|msg| wx_cli_dry_run_item(config, msg))
@@ -228,6 +243,7 @@ async fn run_wx_cli_command(command: WxCliCommand, config: &Config) -> anyhow::R
                     "ok": true,
                     "total_polled": total_polled,
                     "inspected": inspected,
+                    "selected_message_ids": selected_message_ids,
                     "items": items
                 }))?
             );
@@ -246,7 +262,19 @@ async fn run_wx_cli_command(command: WxCliCommand, config: &Config) -> anyhow::R
                 wx_channel.poll_once().await?
             };
             let total_polled = messages.len();
+            if !wx_cli_message_id_found(&messages, message_id.as_deref()) {
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&wx_cli_handle_once_message_id_not_found_report(
+                        total_polled,
+                        message_id.as_deref(),
+                        no_send
+                    ))?
+                );
+                return Ok(());
+            }
             let messages = select_wx_cli_messages(messages, message_id.as_deref(), limit);
+            let selected_message_ids = wx_cli_message_ids(&messages);
             if messages.is_empty() {
                 println!(
                     "{}",
@@ -254,6 +282,7 @@ async fn run_wx_cli_command(command: WxCliCommand, config: &Config) -> anyhow::R
                         "ok": true,
                         "total_polled": total_polled,
                         "processed": 0,
+                        "selected_message_ids": selected_message_ids,
                         "no_send": no_send,
                         "suppressed_replies": []
                     }))?
@@ -293,6 +322,7 @@ async fn run_wx_cli_command(command: WxCliCommand, config: &Config) -> anyhow::R
                     "ok": true,
                     "total_polled": total_polled,
                     "processed": processed,
+                    "selected_message_ids": selected_message_ids,
                     "no_send": no_send,
                     "suppressed_replies": suppressed_replies
                 }))?
