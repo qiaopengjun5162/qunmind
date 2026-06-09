@@ -4,7 +4,7 @@
 [![All Contributors](https://img.shields.io/badge/all_contributors-1-orange.svg?style=flat-square)](#contributors-)
 <!-- ALL-CONTRIBUTORS-BADGE:END -->
 
-![Version](https://img.shields.io/badge/version-0.1.0-blue)
+![GitHub release (latest by date)](https://img.shields.io/github/v/release/qiaopengjun5162/qunmind)
 ![GitHub license](https://img.shields.io/github/license/qiaopengjun5162/qunmind)
 ![Rust Version](https://img.shields.io/badge/rust-%3E%3D1.85-blue)
 
@@ -128,6 +128,15 @@ QunMind uses a PR-first workflow. Create a `codex/<short-topic>` branch, keep th
 change focused, run `just clippy` and `just test`, push the branch, and open a
 pull request back to `master`. See [CONTRIBUTING.md](CONTRIBUTING.md) for the
 full workflow and review checklist.
+
+## Release Automation
+
+GitHub Releases are created automatically after a `v*` tag is pushed and the release workflow passes formatting, clippy, and nextest checks.
+
+```bash
+git tag -a v0.1.0 -m "v0.1.0"
+git push origin v0.1.0
+```
 
 PostgreSQL integration tests are ignored by default because they need a disposable database. Run them explicitly with an isolated test database URL:
 
