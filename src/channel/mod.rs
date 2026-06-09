@@ -1,3 +1,4 @@
+pub mod suppressed;
 pub mod wecom;
 pub mod wx_cli;
 

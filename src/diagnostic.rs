@@ -16,6 +16,52 @@ pub fn select_wx_cli_messages(
         .collect()
 }
 
+pub fn wx_cli_message_id_found(messages: &[IncomingMessage], message_id: Option<&str>) -> bool {
+    match message_id {
+        Some(message_id) => messages
+            .iter()
+            .any(|message| message.message_id == message_id),
+        None => true,
+    }
+}
+
+pub fn wx_cli_message_ids(messages: &[IncomingMessage]) -> Vec<String> {
+    messages
+        .iter()
+        .map(|message| message.message_id.clone())
+        .collect()
+}
+
+pub fn wx_cli_dry_run_message_id_not_found_report(
+    total_polled: usize,
+    message_id: Option<&str>,
+) -> serde_json::Value {
+    serde_json::json!({
+        "ok": false,
+        "error": "message_id_not_found",
+        "total_polled": total_polled,
+        "requested_message_id": message_id,
+        "inspected": 0,
+        "items": []
+    })
+}
+
+pub fn wx_cli_handle_once_message_id_not_found_report(
+    total_polled: usize,
+    message_id: Option<&str>,
+    no_send: bool,
+) -> serde_json::Value {
+    serde_json::json!({
+        "ok": false,
+        "error": "message_id_not_found",
+        "total_polled": total_polled,
+        "requested_message_id": message_id,
+        "processed": 0,
+        "no_send": no_send,
+        "suppressed_replies": []
+    })
+}
+
 pub fn wx_cli_dry_run_item(config: &Config, msg: &IncomingMessage) -> serde_json::Value {
     let effective = effective_bot_config(config, msg);
     let (would_reply, reason) = wx_cli_dry_run_decision(&effective, msg);
@@ -165,6 +211,12 @@ fn wx_cli_doctor_warnings(
         if has_duplicate_message_ids(messages) {
             warnings.push("capture_has_duplicate_message_ids");
         }
+        let reply_candidates = wx_cli_reply_candidate_message_ids(config, messages);
+        if reply_candidates.is_empty() {
+            warnings.push("capture_has_no_reply_candidates");
+        } else if reply_candidates.len() > 1 {
+            warnings.push("capture_has_multiple_reply_candidates_select_message_id");
+        }
     }
 
     warnings
@@ -196,6 +248,7 @@ fn wx_cli_capture_summary(
         "group_messages": messages.iter().filter(|message| message.is_group).count(),
         "direct_messages": messages.iter().filter(|message| !message.is_group).count(),
         "text_messages": messages.iter().filter(|message| message.msg_type == MsgType::Text).count(),
+        "reply_candidate_message_ids": wx_cli_reply_candidate_message_ids(config, messages),
         "unique_chats": chat_counts.len(),
         "chat_counts": chat_counts,
         "previewed": preview.len(),
@@ -212,14 +265,17 @@ fn wx_cli_doctor_next_steps(ok: bool, has_capture: bool) -> Vec<&'static str> {
     if has_capture {
         vec![
             "run_wx_cli_dry_run_with_message_id",
+            "run_wx_cli_handle_once_no_send_with_message_id_and_limit_1",
+            "run_wx_cli_send_dry_run_to_test_chat",
             "run_wx_cli_send_to_test_chat",
-            "run_wx_cli_handle_once_with_message_id_and_limit_1",
+            "run_wx_cli_handle_once_send_with_message_id_and_limit_1",
         ]
     } else {
         vec![
             "capture_wx_cli_poll_output",
             "run_wx_cli_doctor_with_input_file",
-            "run_wx_cli_dry_run_before_handle_once",
+            "run_wx_cli_dry_run_with_message_id",
+            "run_wx_cli_handle_once_no_send_with_message_id_and_limit_1",
         ]
     }
 }
@@ -233,6 +289,21 @@ fn has_duplicate_message_ids(messages: &[IncomingMessage]) -> bool {
     messages
         .iter()
         .any(|message| !seen.insert(message.message_id.as_str()))
+}
+
+fn wx_cli_reply_candidate_message_ids(
+    config: &Config,
+    messages: &[IncomingMessage],
+) -> Vec<String> {
+    messages
+        .iter()
+        .filter(|message| {
+            let effective = effective_bot_config(config, message);
+            let (would_reply, _) = wx_cli_dry_run_decision(&effective, message);
+            would_reply
+        })
+        .map(|message| message.message_id.clone())
+        .collect()
 }
 
 fn channel_kind_name(kind: ChannelKind) -> &'static str {
@@ -446,13 +517,97 @@ mod tests {
         assert_eq!(report["capture"]["direct_messages"], 1);
         assert_eq!(report["capture"]["previewed"], 1);
         assert_eq!(report["capture"]["would_reply_in_preview"], 1);
+        assert_eq!(
+            report["capture"]["reply_candidate_message_ids"],
+            serde_json::json!(["m-1", "m-2"])
+        );
         assert_eq!(report["capture"]["items"][0]["message_id"], "m-1");
+        assert!(array_contains(
+            &report["warnings"],
+            "capture_has_multiple_reply_candidates_select_message_id"
+        ));
         assert_eq!(
             report["next_steps"],
             serde_json::json!([
                 "run_wx_cli_dry_run_with_message_id",
+                "run_wx_cli_handle_once_no_send_with_message_id_and_limit_1",
+                "run_wx_cli_send_dry_run_to_test_chat",
                 "run_wx_cli_send_to_test_chat",
-                "run_wx_cli_handle_once_with_message_id_and_limit_1"
+                "run_wx_cli_handle_once_send_with_message_id_and_limit_1"
+            ])
+        );
+    }
+
+    #[test]
+    fn wx_cli_doctor_warns_when_capture_has_no_reply_candidates() {
+        let config = config_from(
+            r#"
+            [channel]
+            kind = "wx_cli"
+
+            [ai]
+            api_key = "token"
+
+            [wx_cli]
+            bin = "wx"
+            poll_args = ["poll", "--json"]
+            send_args = ["send", "--chat", "{chat_id}", "--text", "{text}"]
+
+            [bot]
+            mention_names = ["@bot"]
+            "#,
+        );
+        let messages = vec![IncomingMessage {
+            message_id: "m-1".to_string(),
+            from: "alice".to_string(),
+            chat_id: "room@chatroom".to_string(),
+            is_group: true,
+            text: Some("ordinary group message".to_string()),
+            msg_type: MsgType::Text,
+        }];
+
+        let report = wx_cli_doctor_report(&config, Some(&messages), 10);
+
+        assert_eq!(
+            report["capture"]["reply_candidate_message_ids"],
+            serde_json::json!([])
+        );
+        assert!(array_contains(
+            &report["warnings"],
+            "capture_has_no_reply_candidates"
+        ));
+    }
+
+    #[test]
+    fn wx_cli_doctor_guides_uncaptured_runs_toward_no_send_replay() {
+        let config = config_from(
+            r#"
+            [channel]
+            kind = "wx_cli"
+
+            [ai]
+            api_key = "token"
+
+            [wx_cli]
+            bin = "wx"
+            poll_args = ["poll", "--json"]
+            send_args = ["send", "--chat", "{chat_id}", "--text", "{text}"]
+
+            [bot]
+            mention_names = ["@bot"]
+            "#,
+        );
+
+        let report = wx_cli_doctor_report(&config, None, 10);
+
+        assert_eq!(report["ok"], true);
+        assert_eq!(
+            report["next_steps"],
+            serde_json::json!([
+                "capture_wx_cli_poll_output",
+                "run_wx_cli_doctor_with_input_file",
+                "run_wx_cli_dry_run_with_message_id",
+                "run_wx_cli_handle_once_no_send_with_message_id_and_limit_1"
             ])
         );
     }
@@ -608,6 +763,47 @@ mod tests {
 
         assert_eq!(selected.len(), 1);
         assert_eq!(selected[0].message_id, "m-2");
+    }
+
+    #[test]
+    fn wx_cli_message_id_found_reports_missing_requested_id() {
+        let messages = vec![test_message("m-1"), test_message("m-2")];
+
+        assert!(wx_cli_message_id_found(&messages, None));
+        assert!(wx_cli_message_id_found(&messages, Some("m-2")));
+        assert!(!wx_cli_message_id_found(&messages, Some("m-missing")));
+    }
+
+    #[test]
+    fn wx_cli_message_ids_preserve_selected_order() {
+        let messages = vec![test_message("m-1"), test_message("m-2")];
+
+        assert_eq!(wx_cli_message_ids(&messages), vec!["m-1", "m-2"]);
+    }
+
+    #[test]
+    fn wx_cli_dry_run_message_id_not_found_report_is_structured() {
+        let report = wx_cli_dry_run_message_id_not_found_report(2, Some("missing"));
+
+        assert_eq!(report["ok"], false);
+        assert_eq!(report["error"], "message_id_not_found");
+        assert_eq!(report["total_polled"], 2);
+        assert_eq!(report["requested_message_id"], "missing");
+        assert_eq!(report["inspected"], 0);
+        assert_eq!(report["items"], serde_json::json!([]));
+    }
+
+    #[test]
+    fn wx_cli_handle_once_message_id_not_found_report_is_structured() {
+        let report = wx_cli_handle_once_message_id_not_found_report(3, Some("missing"), true);
+
+        assert_eq!(report["ok"], false);
+        assert_eq!(report["error"], "message_id_not_found");
+        assert_eq!(report["total_polled"], 3);
+        assert_eq!(report["requested_message_id"], "missing");
+        assert_eq!(report["processed"], 0);
+        assert_eq!(report["no_send"], true);
+        assert_eq!(report["suppressed_replies"], serde_json::json!([]));
     }
 
     #[test]

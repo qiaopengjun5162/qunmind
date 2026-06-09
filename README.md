@@ -55,12 +55,13 @@ cargo run -- wx-cli dry-run --input wx-output.json --limit 10
 cargo run -- wx-cli dry-run --input wx-output.json --message-id "m-123"
 cargo run -- wx-cli handle-once --limit 1
 cargo run -- wx-cli handle-once --input wx-output.json --limit 1
+cargo run -- wx-cli handle-once --input wx-output.json --message-id "m-123" --limit 1 --no-send
 cargo run -- wx-cli handle-once --input wx-output.json --message-id "m-123" --limit 1
 cargo run -- wx-cli send --chat-id "room@chatroom" --text "QunMind diagnostic message" --dry-run
 cargo run -- wx-cli send --chat-id "room@chatroom" --text "QunMind diagnostic message"
 ```
 
-`doctor`, `capture`, `poll`, `dry-run`, and `send --dry-run` only read config and do not initialize PostgreSQL, AI clients, or the main bot loop. `doctor` checks wx-cli readiness before a real group test, including send placeholders, AI settings, mention safety, and optional captured-message signals. `capture` runs `wx_cli.poll_args` once and writes normalized replayable messages to a JSON file. Add `--input <json-file>` to `doctor`, `poll`, `dry-run`, or `handle-once` to parse a captured wx-cli JSON output file without invoking wx-cli again. `dry-run` reports which parsed messages would trigger a bot reply according to `bot.mention_names`, without saving, calling AI, or sending. `send --dry-run` renders the final `wx_cli.send_args` command without sending to WeChat, so use it before the first real diagnostic send. `handle-once` stores the parsed messages, runs mention filtering, calls the configured AI provider when needed, and sends replies through `wx_cli.send_args`. Use `--message-id` with captured files when you want to inspect or replay exactly one message from a larger wx-cli output. Keep `--limit 1` for the first real group test to avoid accidental noisy replies.
+`doctor`, `capture`, `poll`, `dry-run`, and `send --dry-run` only read config and do not initialize PostgreSQL, AI clients, or the main bot loop. `doctor` checks wx-cli readiness before a real group test, including send placeholders, AI settings, mention safety, and optional captured-message signals. `capture` runs `wx_cli.poll_args` once and writes normalized replayable messages to a JSON file. Add `--input <json-file>` to `doctor`, `poll`, `dry-run`, or `handle-once` to parse a captured wx-cli JSON output file without invoking wx-cli again. `dry-run` reports which parsed messages would trigger a bot reply according to `bot.mention_names`, without saving, calling AI, or sending. `send --dry-run` renders the final `wx_cli.send_args` command without sending to WeChat, so use it before the first real diagnostic send. `handle-once --no-send` still stores messages and calls the configured AI provider, but captures the reply in JSON instead of sending it through wx-cli. Plain `handle-once` stores the parsed messages, runs mention filtering, calls the configured AI provider when needed, and sends replies through `wx_cli.send_args`. Use `--message-id` with captured files when you want to inspect or replay exactly one message from a larger wx-cli output; a missing requested message id returns structured `ok = false` JSON instead of silently processing zero messages. Keep `--limit 1` for the first real group test to avoid accidental noisy replies.
 
 ## Public Source Fallback
 
@@ -112,6 +113,13 @@ just test
 
 Use `cargo nextest`, not `cargo test`, for project test runs.
 
+## Contributing
+
+QunMind uses a PR-first workflow. Create a `codex/<short-topic>` branch, keep the
+change focused, run `just clippy` and `just test`, push the branch, and open a
+pull request back to `master`. See [CONTRIBUTING.md](CONTRIBUTING.md) for the
+full workflow and review checklist.
+
 PostgreSQL integration tests are ignored by default because they need a disposable database. Run them explicitly with an isolated test database URL:
 
 ```bash
@@ -124,6 +132,33 @@ The test creates and drops a temporary schema through `search_path`, so it does 
 ## Architecture Rules
 
 Business logic should be Rust-first. Logic that must be shared by Web, mini program, or App clients should be designed for Rust WASM reuse. TypeScript should stay in platform APIs, rendering, host capability calls, and glue code.
+
+## Contributors
+
+<!-- ALL-CONTRIBUTORS-LIST:START - Do not remove or modify this section -->
+<!-- prettier-ignore-start -->
+<!-- markdownlint-disable -->
+<table>
+  <tbody>
+    <tr>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/qiaopengjun5162"><img src="https://avatars.githubusercontent.com/u/124650229?v=4?s=100" width="100px;" alt="Paxon Qiao 乔鹏军"/><br /><sub><b>Paxon Qiao 乔鹏军</b></sub></a><br /><a href="#content-qiaopengjun5162" title="Content">🖋</a></td>
+    </tr>
+  </tbody>
+  <tfoot>
+    <tr>
+      <td align="center" size="13px" colspan="7">
+        <img src="https://raw.githubusercontent.com/all-contributors/all-contributors-cli/1b8533af435da9854653492b1327a23a4dbd0a10/assets/logo-small.svg">
+          <a href="https://all-contributors.js.org/docs/en/bot/usage">Add your contributions</a>
+        </img>
+      </td>
+    </tr>
+  </tfoot>
+</table>
+
+<!-- markdownlint-restore -->
+<!-- prettier-ignore-end -->
+
+<!-- ALL-CONTRIBUTORS-LIST:END -->
 
 ## License
 
