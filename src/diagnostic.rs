@@ -212,14 +212,17 @@ fn wx_cli_doctor_next_steps(ok: bool, has_capture: bool) -> Vec<&'static str> {
     if has_capture {
         vec![
             "run_wx_cli_dry_run_with_message_id",
+            "run_wx_cli_handle_once_no_send_with_message_id_and_limit_1",
+            "run_wx_cli_send_dry_run_to_test_chat",
             "run_wx_cli_send_to_test_chat",
-            "run_wx_cli_handle_once_with_message_id_and_limit_1",
+            "run_wx_cli_handle_once_send_with_message_id_and_limit_1",
         ]
     } else {
         vec![
             "capture_wx_cli_poll_output",
             "run_wx_cli_doctor_with_input_file",
-            "run_wx_cli_dry_run_before_handle_once",
+            "run_wx_cli_dry_run_with_message_id",
+            "run_wx_cli_handle_once_no_send_with_message_id_and_limit_1",
         ]
     }
 }
@@ -451,8 +454,44 @@ mod tests {
             report["next_steps"],
             serde_json::json!([
                 "run_wx_cli_dry_run_with_message_id",
+                "run_wx_cli_handle_once_no_send_with_message_id_and_limit_1",
+                "run_wx_cli_send_dry_run_to_test_chat",
                 "run_wx_cli_send_to_test_chat",
-                "run_wx_cli_handle_once_with_message_id_and_limit_1"
+                "run_wx_cli_handle_once_send_with_message_id_and_limit_1"
+            ])
+        );
+    }
+
+    #[test]
+    fn wx_cli_doctor_guides_uncaptured_runs_toward_no_send_replay() {
+        let config = config_from(
+            r#"
+            [channel]
+            kind = "wx_cli"
+
+            [ai]
+            api_key = "token"
+
+            [wx_cli]
+            bin = "wx"
+            poll_args = ["poll", "--json"]
+            send_args = ["send", "--chat", "{chat_id}", "--text", "{text}"]
+
+            [bot]
+            mention_names = ["@bot"]
+            "#,
+        );
+
+        let report = wx_cli_doctor_report(&config, None, 10);
+
+        assert_eq!(report["ok"], true);
+        assert_eq!(
+            report["next_steps"],
+            serde_json::json!([
+                "capture_wx_cli_poll_output",
+                "run_wx_cli_doctor_with_input_file",
+                "run_wx_cli_dry_run_with_message_id",
+                "run_wx_cli_handle_once_no_send_with_message_id_and_limit_1"
             ])
         );
     }

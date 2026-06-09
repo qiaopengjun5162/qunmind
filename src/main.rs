@@ -198,7 +198,9 @@ async fn run_wx_cli_command(command: WxCliCommand, config: &Config) -> anyhow::R
                     "next_steps": [
                         "run_wx_cli_doctor_with_input_file",
                         "run_wx_cli_dry_run_with_input_file",
-                        "run_wx_cli_handle_once_with_message_id_and_limit_1"
+                        "run_wx_cli_handle_once_no_send_with_message_id_and_limit_1",
+                        "run_wx_cli_send_dry_run_to_test_chat",
+                        "run_wx_cli_handle_once_send_with_message_id_and_limit_1"
                     ]
                 }))?
             );
