@@ -131,6 +131,14 @@ pub fn wx_cli_formal_test_plan(
     blockers.extend(wx_cli_test_plan_chat_blockers(&selected_chat_id));
     let warnings = wx_cli_doctor_warnings(config, messages);
     let capture = messages.map(|messages| wx_cli_capture_summary(config, messages, 10));
+    let steps = wx_cli_formal_test_steps(
+        &config_path,
+        &capture_file,
+        selected_message_id.value,
+        selected_chat_id.value,
+        text,
+        messages.is_some(),
+    );
 
     serde_json::json!({
         "ok": blockers.is_empty(),
@@ -144,48 +152,7 @@ pub fn wx_cli_formal_test_plan(
         "chat_id": selected_chat_id.value,
         "chat_id_source": selected_chat_id.source,
         "text": text,
-        "steps": [
-            {
-                "name": "doctor_config",
-                "safe_to_send": false,
-                "command": wx_cli_cargo_command(&config_path, &["doctor"])
-            },
-            {
-                "name": "capture_once",
-                "safe_to_send": false,
-                "command": wx_cli_cargo_command(&config_path, &["capture", "--output", &capture_file])
-            },
-            {
-                "name": "doctor_capture",
-                "safe_to_send": false,
-                "command": wx_cli_cargo_command(&config_path, &["doctor", "--input", &capture_file])
-            },
-            {
-                "name": "dry_run_selected_message",
-                "safe_to_send": false,
-                "command": wx_cli_cargo_command(&config_path, &["dry-run", "--input", &capture_file, "--message-id", selected_message_id.value])
-            },
-            {
-                "name": "handle_once_no_send",
-                "safe_to_send": false,
-                "command": wx_cli_cargo_command(&config_path, &["handle-once", "--input", &capture_file, "--message-id", selected_message_id.value, "--limit", "1", "--no-send"])
-            },
-            {
-                "name": "send_dry_run",
-                "safe_to_send": false,
-                "command": wx_cli_cargo_command(&config_path, &["send", "--chat-id", selected_chat_id.value, "--text", text, "--dry-run"])
-            },
-            {
-                "name": "send_diagnostic_text",
-                "safe_to_send": true,
-                "command": wx_cli_cargo_command(&config_path, &["send", "--chat-id", selected_chat_id.value, "--text", text])
-            },
-            {
-                "name": "handle_once_real_send",
-                "safe_to_send": true,
-                "command": wx_cli_cargo_command(&config_path, &["handle-once", "--input", &capture_file, "--message-id", selected_message_id.value, "--limit", "1"])
-            }
-        ]
+        "steps": steps
     })
 }
 
@@ -405,6 +372,64 @@ fn wx_cli_doctor_next_steps(ok: bool, has_capture: bool) -> Vec<&'static str> {
             "run_wx_cli_handle_once_no_send_with_message_id_and_limit_1",
         ]
     }
+}
+
+fn wx_cli_formal_test_steps(
+    config_path: &str,
+    capture_file: &str,
+    message_id: &str,
+    chat_id: &str,
+    text: &str,
+    has_captured_input: bool,
+) -> Vec<serde_json::Value> {
+    let mut steps = vec![serde_json::json!({
+        "name": "doctor_config",
+        "safe_to_send": false,
+        "command": wx_cli_cargo_command(config_path, &["doctor"])
+    })];
+
+    if !has_captured_input {
+        steps.push(serde_json::json!({
+            "name": "capture_once",
+            "safe_to_send": false,
+            "command": wx_cli_cargo_command(config_path, &["capture", "--output", capture_file])
+        }));
+    }
+
+    steps.extend([
+        serde_json::json!({
+            "name": "doctor_capture",
+            "safe_to_send": false,
+            "command": wx_cli_cargo_command(config_path, &["doctor", "--input", capture_file])
+        }),
+        serde_json::json!({
+            "name": "dry_run_selected_message",
+            "safe_to_send": false,
+            "command": wx_cli_cargo_command(config_path, &["dry-run", "--input", capture_file, "--message-id", message_id])
+        }),
+        serde_json::json!({
+            "name": "handle_once_no_send",
+            "safe_to_send": false,
+            "command": wx_cli_cargo_command(config_path, &["handle-once", "--input", capture_file, "--message-id", message_id, "--limit", "1", "--no-send"])
+        }),
+        serde_json::json!({
+            "name": "send_dry_run",
+            "safe_to_send": false,
+            "command": wx_cli_cargo_command(config_path, &["send", "--chat-id", chat_id, "--text", text, "--dry-run"])
+        }),
+        serde_json::json!({
+            "name": "send_diagnostic_text",
+            "safe_to_send": true,
+            "command": wx_cli_cargo_command(config_path, &["send", "--chat-id", chat_id, "--text", text])
+        }),
+        serde_json::json!({
+            "name": "handle_once_real_send",
+            "safe_to_send": true,
+            "command": wx_cli_cargo_command(config_path, &["handle-once", "--input", capture_file, "--message-id", message_id, "--limit", "1"])
+        }),
+    ]);
+
+    steps
 }
 
 fn wx_cli_cargo_command(config_path: &str, args: &[&str]) -> Vec<String> {
@@ -1145,6 +1170,7 @@ mod tests {
         assert_eq!(plan["chat_id_source"], "explicit");
         assert_eq!(plan["steps"][0]["name"], "doctor_config");
         assert_eq!(plan["steps"][0]["safe_to_send"], false);
+        assert_eq!(plan["steps"][1]["name"], "capture_once");
         assert_eq!(
             plan["steps"][0]["command"],
             serde_json::json!([
@@ -1394,12 +1420,18 @@ mod tests {
             plan["capture"]["reply_candidate_message_ids"],
             serde_json::json!(["m-reply"])
         );
+        assert_eq!(plan["steps"][1]["name"], "doctor_capture");
+        let steps = match plan["steps"].as_array() {
+            Some(steps) => steps,
+            None => panic!("steps should be an array"),
+        };
+        assert!(!steps.iter().any(|step| step["name"] == "capture_once"));
         assert_eq!(
-            plan["steps"][3]["command"][10],
+            plan["steps"][2]["command"][10],
             serde_json::json!("m-reply")
         );
         assert_eq!(
-            plan["steps"][5]["command"][8],
+            plan["steps"][4]["command"][8],
             serde_json::json!("room@chatroom")
         );
     }
