@@ -102,12 +102,14 @@ pub fn wx_cli_handle_once_report<T: Serialize>(
 
 pub fn wx_cli_formal_test_plan(
     config: &Config,
+    config_path: &Path,
     capture_file: &Path,
     message_id: Option<&str>,
     chat_id: Option<&str>,
     text: &str,
     messages: Option<&[IncomingMessage]>,
 ) -> serde_json::Value {
+    let config_path = config_path.display().to_string();
     let capture_file = capture_file.display().to_string();
     let reply_candidates = match messages {
         Some(messages) => wx_cli_reply_candidate_message_ids(config, messages),
@@ -135,6 +137,7 @@ pub fn wx_cli_formal_test_plan(
         "blockers": blockers,
         "warnings": warnings,
         "capture": capture,
+        "config_path": config_path,
         "capture_file": capture_file,
         "message_id": selected_message_id.value,
         "message_id_source": selected_message_id.source,
@@ -145,42 +148,42 @@ pub fn wx_cli_formal_test_plan(
             {
                 "name": "doctor_config",
                 "safe_to_send": false,
-                "command": ["cargo", "run", "--", "wx-cli", "doctor"]
+                "command": wx_cli_cargo_command(&config_path, &["doctor"])
             },
             {
                 "name": "capture_once",
                 "safe_to_send": false,
-                "command": ["cargo", "run", "--", "wx-cli", "capture", "--output", capture_file]
+                "command": wx_cli_cargo_command(&config_path, &["capture", "--output", &capture_file])
             },
             {
                 "name": "doctor_capture",
                 "safe_to_send": false,
-                "command": ["cargo", "run", "--", "wx-cli", "doctor", "--input", capture_file]
+                "command": wx_cli_cargo_command(&config_path, &["doctor", "--input", &capture_file])
             },
             {
                 "name": "dry_run_selected_message",
                 "safe_to_send": false,
-                "command": ["cargo", "run", "--", "wx-cli", "dry-run", "--input", capture_file, "--message-id", selected_message_id.value]
+                "command": wx_cli_cargo_command(&config_path, &["dry-run", "--input", &capture_file, "--message-id", selected_message_id.value])
             },
             {
                 "name": "handle_once_no_send",
                 "safe_to_send": false,
-                "command": ["cargo", "run", "--", "wx-cli", "handle-once", "--input", capture_file, "--message-id", selected_message_id.value, "--limit", "1", "--no-send"]
+                "command": wx_cli_cargo_command(&config_path, &["handle-once", "--input", &capture_file, "--message-id", selected_message_id.value, "--limit", "1", "--no-send"])
             },
             {
                 "name": "send_dry_run",
                 "safe_to_send": false,
-                "command": ["cargo", "run", "--", "wx-cli", "send", "--chat-id", selected_chat_id.value, "--text", text, "--dry-run"]
+                "command": wx_cli_cargo_command(&config_path, &["send", "--chat-id", selected_chat_id.value, "--text", text, "--dry-run"])
             },
             {
                 "name": "send_diagnostic_text",
                 "safe_to_send": true,
-                "command": ["cargo", "run", "--", "wx-cli", "send", "--chat-id", selected_chat_id.value, "--text", text]
+                "command": wx_cli_cargo_command(&config_path, &["send", "--chat-id", selected_chat_id.value, "--text", text])
             },
             {
                 "name": "handle_once_real_send",
                 "safe_to_send": true,
-                "command": ["cargo", "run", "--", "wx-cli", "handle-once", "--input", capture_file, "--message-id", selected_message_id.value, "--limit", "1"]
+                "command": wx_cli_cargo_command(&config_path, &["handle-once", "--input", &capture_file, "--message-id", selected_message_id.value, "--limit", "1"])
             }
         ]
     })
@@ -402,6 +405,19 @@ fn wx_cli_doctor_next_steps(ok: bool, has_capture: bool) -> Vec<&'static str> {
             "run_wx_cli_handle_once_no_send_with_message_id_and_limit_1",
         ]
     }
+}
+
+fn wx_cli_cargo_command(config_path: &str, args: &[&str]) -> Vec<String> {
+    let mut command = vec![
+        "cargo".to_string(),
+        "run".to_string(),
+        "--".to_string(),
+        "--config".to_string(),
+        config_path.to_string(),
+        "wx-cli".to_string(),
+    ];
+    command.extend(args.iter().map(|arg| (*arg).to_string()));
+    command
 }
 
 fn args_contain_placeholder(args: &[String], placeholder: &str) -> bool {
@@ -1111,6 +1127,7 @@ mod tests {
 
         let plan = wx_cli_formal_test_plan(
             &config,
+            Path::new("local.toml"),
             Path::new("wx-output.json"),
             Some("m-1"),
             Some("room@chatroom"),
@@ -1120,6 +1137,7 @@ mod tests {
 
         assert_eq!(plan["ok"], true);
         assert_eq!(plan["blockers"], serde_json::json!([]));
+        assert_eq!(plan["config_path"], "local.toml");
         assert_eq!(plan["capture_file"], "wx-output.json");
         assert_eq!(plan["message_id"], "m-1");
         assert_eq!(plan["message_id_source"], "explicit");
@@ -1127,6 +1145,18 @@ mod tests {
         assert_eq!(plan["chat_id_source"], "explicit");
         assert_eq!(plan["steps"][0]["name"], "doctor_config");
         assert_eq!(plan["steps"][0]["safe_to_send"], false);
+        assert_eq!(
+            plan["steps"][0]["command"],
+            serde_json::json!([
+                "cargo",
+                "run",
+                "--",
+                "--config",
+                "local.toml",
+                "wx-cli",
+                "doctor"
+            ])
+        );
         assert_eq!(plan["steps"][6]["name"], "send_diagnostic_text");
         assert_eq!(plan["steps"][6]["safe_to_send"], true);
     }
@@ -1151,6 +1181,7 @@ mod tests {
 
         let plan = wx_cli_formal_test_plan(
             &config,
+            Path::new("config.toml"),
             Path::new("capture.json"),
             None,
             None,
@@ -1175,6 +1206,8 @@ mod tests {
                 "cargo",
                 "run",
                 "--",
+                "--config",
+                "config.toml",
                 "wx-cli",
                 "dry-run",
                 "--input",
@@ -1204,6 +1237,7 @@ mod tests {
 
         let plan = wx_cli_formal_test_plan(
             &config,
+            Path::new("config.toml"),
             Path::new("capture.json"),
             None,
             None,
@@ -1242,6 +1276,7 @@ mod tests {
 
         let plan = wx_cli_formal_test_plan(
             &config,
+            Path::new("config.toml"),
             Path::new("capture.json"),
             None,
             None,
@@ -1266,6 +1301,7 @@ mod tests {
 
         let plan = wx_cli_formal_test_plan(
             &config,
+            Path::new("config.toml"),
             Path::new("wx-output.json"),
             None,
             None,
@@ -1297,6 +1333,7 @@ mod tests {
 
         let plan = wx_cli_formal_test_plan(
             &config,
+            Path::new("config.toml"),
             Path::new("wx-output.json"),
             None,
             None,
@@ -1340,6 +1377,7 @@ mod tests {
 
         let plan = wx_cli_formal_test_plan(
             &config,
+            Path::new("config.toml"),
             Path::new("wx-output.json"),
             None,
             None,
@@ -1356,9 +1394,12 @@ mod tests {
             plan["capture"]["reply_candidate_message_ids"],
             serde_json::json!(["m-reply"])
         );
-        assert_eq!(plan["steps"][3]["command"][8], serde_json::json!("m-reply"));
         assert_eq!(
-            plan["steps"][5]["command"][6],
+            plan["steps"][3]["command"][10],
+            serde_json::json!("m-reply")
+        );
+        assert_eq!(
+            plan["steps"][5]["command"][8],
             serde_json::json!("room@chatroom")
         );
     }
@@ -1383,6 +1424,7 @@ mod tests {
 
         let plan = wx_cli_formal_test_plan(
             &config,
+            Path::new("config.toml"),
             Path::new("wx-output.json"),
             None,
             None,
@@ -1418,6 +1460,7 @@ mod tests {
 
         let plan = wx_cli_formal_test_plan(
             &config,
+            Path::new("config.toml"),
             Path::new("wx-output.json"),
             Some("m-missing"),
             None,

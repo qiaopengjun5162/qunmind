@@ -51,7 +51,7 @@ async fn main() -> anyhow::Result<()> {
     let config = Config::load(&args.config)?;
 
     if let Some(command) = args.command {
-        return run_diagnostic_command(command, &config).await;
+        return run_diagnostic_command(command, &config, &args.config).await;
     }
 
     let message_store = build_message_store(&config).await?;
@@ -168,13 +168,21 @@ fn build_public_news_source(config: &Config) -> anyhow::Result<Option<Arc<dyn Pu
     ))))
 }
 
-async fn run_diagnostic_command(command: CliCommand, config: &Config) -> anyhow::Result<()> {
+async fn run_diagnostic_command(
+    command: CliCommand,
+    config: &Config,
+    config_path: &Path,
+) -> anyhow::Result<()> {
     match command {
-        CliCommand::WxCli { command } => run_wx_cli_command(command, config).await,
+        CliCommand::WxCli { command } => run_wx_cli_command(command, config, config_path).await,
     }
 }
 
-async fn run_wx_cli_command(command: WxCliCommand, config: &Config) -> anyhow::Result<()> {
+async fn run_wx_cli_command(
+    command: WxCliCommand,
+    config: &Config,
+    config_path: &Path,
+) -> anyhow::Result<()> {
     match command {
         WxCliCommand::Doctor { input, limit } => {
             let messages = match input.as_ref() {
@@ -228,6 +236,7 @@ async fn run_wx_cli_command(command: WxCliCommand, config: &Config) -> anyhow::R
                 "{}",
                 serde_json::to_string_pretty(&wx_cli_formal_test_plan(
                     config,
+                    config_path,
                     capture_file,
                     message_id.as_deref(),
                     chat_id.as_deref(),
@@ -418,6 +427,10 @@ mod tests {
 
     fn config_from(input: &str) -> Config {
         must(toml::from_str(input), "config")
+    }
+
+    fn test_config_path() -> &'static Path {
+        Path::new("test-config.toml")
     }
 
     fn must<T, E: std::fmt::Display>(result: std::result::Result<T, E>, context: &str) -> T {
@@ -634,6 +647,7 @@ mod tests {
                     output: output.clone(),
                 },
                 &config,
+                test_config_path(),
             )
             .await,
             "capture command",
@@ -669,6 +683,7 @@ mod tests {
                     dry_run: true,
                 },
                 &config,
+                test_config_path(),
             )
             .await,
             "send dry run",
@@ -699,6 +714,7 @@ mod tests {
                     text: "diagnostic".to_string(),
                 },
                 &config,
+                test_config_path(),
             )
             .await,
             "test plan",
@@ -755,6 +771,7 @@ mod tests {
                     text: "diagnostic".to_string(),
                 },
                 &config,
+                test_config_path(),
             )
             .await,
             "test plan input",
