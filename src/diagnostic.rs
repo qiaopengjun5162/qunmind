@@ -122,6 +122,10 @@ pub fn wx_cli_formal_test_plan(
         message_id,
         &reply_candidates,
     ));
+    blockers.extend(wx_cli_test_plan_message_blockers(
+        messages,
+        &selected_message_id,
+    ));
     blockers.extend(wx_cli_test_plan_chat_blockers(&selected_chat_id));
     let warnings = wx_cli_doctor_warnings(config, messages);
     let capture = messages.map(|messages| wx_cli_capture_summary(config, messages, 10));
@@ -416,6 +420,12 @@ struct FormalTestMessageId<'a> {
     source: &'static str,
 }
 
+impl FormalTestMessageId<'_> {
+    fn is_placeholder(&self) -> bool {
+        self.source == "placeholder"
+    }
+}
+
 struct FormalTestChatId<'a> {
     value: &'a str,
     source: &'static str,
@@ -506,6 +516,17 @@ fn wx_cli_test_plan_capture_blockers(
     }
 
     blockers
+}
+
+fn wx_cli_test_plan_message_blockers(
+    messages: Option<&[IncomingMessage]>,
+    message_id: &FormalTestMessageId<'_>,
+) -> Vec<&'static str> {
+    if messages.is_none() && message_id.is_placeholder() {
+        return vec!["test_message_id_required"];
+    }
+
+    Vec::new()
 }
 
 fn wx_cli_test_plan_chat_blockers(chat_id: &FormalTestChatId<'_>) -> Vec<&'static str> {
@@ -1141,6 +1162,11 @@ mod tests {
             plan["message_id"],
             "<message_id_from_reply_candidate_message_ids>"
         );
+        assert_eq!(plan["ok"], false);
+        assert!(array_contains(
+            &plan["blockers"],
+            "test_message_id_required"
+        ));
         assert_eq!(plan["chat_id"], "configured@chatroom");
         assert_eq!(plan["chat_id_source"], "config");
         assert_eq!(
@@ -1188,7 +1214,50 @@ mod tests {
         assert_eq!(plan["ok"], false);
         assert_eq!(plan["chat_id"], "<test_chat_id>");
         assert_eq!(plan["chat_id_source"], "placeholder");
+        assert!(array_contains(
+            &plan["blockers"],
+            "test_message_id_required"
+        ));
         assert!(array_contains(&plan["blockers"], "test_chat_id_required"));
+    }
+
+    #[test]
+    fn wx_cli_formal_test_plan_uses_capture_blocker_for_empty_capture() {
+        let config = config_from(
+            r#"
+            [channel]
+            kind = "wx_cli"
+
+            [ai]
+            api_key = "token"
+
+            [wx_cli]
+            bin = "wx"
+            poll_args = ["poll", "--json"]
+            send_args = ["send", "--chat", "{chat_id}", "--text", "{text}"]
+            group_chat_id = "configured@chatroom"
+            "#,
+        );
+        let messages = Vec::new();
+
+        let plan = wx_cli_formal_test_plan(
+            &config,
+            Path::new("capture.json"),
+            None,
+            None,
+            "hello",
+            Some(&messages),
+        );
+
+        assert_eq!(plan["ok"], false);
+        assert!(array_contains(
+            &plan["blockers"],
+            "capture_requires_explicit_message_id"
+        ));
+        assert!(!array_contains(
+            &plan["blockers"],
+            "test_message_id_required"
+        ));
     }
 
     #[test]
