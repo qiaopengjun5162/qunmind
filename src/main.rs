@@ -704,4 +704,62 @@ mod tests {
             "test plan",
         );
     }
+
+    #[tokio::test]
+    async fn wx_cli_test_plan_input_file_does_not_execute_external_commands() {
+        let path = std::env::temp_dir().join(format!(
+            "qunmind-wx-cli-test-plan-input-{}.json",
+            std::process::id()
+        ));
+        must(
+            std::fs::write(
+                &path,
+                r#"
+                [
+                    {
+                        "id": "m-plan",
+                        "chat": "room@chatroom",
+                        "sender": "alice",
+                        "content": "@bot captured hello"
+                    }
+                ]
+                "#,
+            ),
+            "write test-plan fixture",
+        );
+        let config = config_from(
+            r#"
+            [channel]
+            kind = "wx_cli"
+
+            [ai]
+            api_key = "token"
+
+            [bot]
+            mention_names = ["@bot"]
+
+            [wx_cli]
+            bin = "/bin/false"
+            poll_args = ["poll"]
+            send_args = ["send", "--room", "{chat_id}", "--text={text}"]
+            "#,
+        );
+
+        must(
+            run_wx_cli_command(
+                WxCliCommand::TestPlan {
+                    capture_file: "unused-capture.json".into(),
+                    input: Some(path.clone()),
+                    message_id: None,
+                    chat_id: Some("room@chatroom".to_string()),
+                    text: "diagnostic".to_string(),
+                },
+                &config,
+            )
+            .await,
+            "test plan input",
+        );
+
+        must(std::fs::remove_file(path), "remove test-plan fixture");
+    }
 }
