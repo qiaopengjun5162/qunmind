@@ -118,11 +118,13 @@ pub fn wx_cli_formal_test_plan(
         None if !configured_chat_id.is_empty() => configured_chat_id,
         None => "<test_chat_id>",
     };
-    let blockers = wx_cli_test_plan_blockers(config);
+    let blockers = wx_cli_doctor_blockers(config);
+    let warnings = wx_cli_doctor_warnings(config, None);
 
     serde_json::json!({
         "ok": blockers.is_empty(),
         "blockers": blockers,
+        "warnings": warnings,
         "capture_file": capture_file,
         "message_id": message_id,
         "chat_id": chat_id,
@@ -399,25 +401,6 @@ fn has_duplicate_message_ids(messages: &[IncomingMessage]) -> bool {
     messages
         .iter()
         .any(|message| !seen.insert(message.message_id.as_str()))
-}
-
-fn wx_cli_test_plan_blockers(config: &Config) -> Vec<&'static str> {
-    let mut blockers = Vec::new();
-
-    if config.channel.kind != ChannelKind::WxCli {
-        blockers.push("channel_kind_not_wx_cli");
-    }
-    if config.wx_cli.bin.trim().is_empty() {
-        blockers.push("wx_cli_bin_empty");
-    }
-    if config.wx_cli.poll_args.is_empty() {
-        blockers.push("wx_cli_poll_args_empty");
-    }
-    if config.wx_cli.send_args.is_empty() {
-        blockers.push("wx_cli_send_args_empty");
-    }
-
-    blockers
 }
 
 fn wx_cli_reply_candidate_message_ids(
@@ -981,6 +964,9 @@ mod tests {
             [channel]
             kind = "wx_cli"
 
+            [ai]
+            api_key = "token"
+
             [wx_cli]
             bin = "wx"
             poll_args = ["poll", "--json"]
@@ -1014,6 +1000,9 @@ mod tests {
             r#"
             [channel]
             kind = "wx_cli"
+
+            [ai]
+            api_key = "token"
 
             [wx_cli]
             bin = "wx"
@@ -1056,6 +1045,37 @@ mod tests {
         assert_eq!(plan["ok"], false);
         assert!(array_contains(&plan["blockers"], "channel_kind_not_wx_cli"));
         assert!(array_contains(&plan["blockers"], "wx_cli_send_args_empty"));
+    }
+
+    #[test]
+    fn wx_cli_formal_test_plan_reuses_doctor_blockers() {
+        let config = config_from(
+            r#"
+            [channel]
+            kind = "wx_cli"
+
+            [ai]
+            api_key = "token"
+
+            [wx_cli]
+            bin = "wx"
+            poll_args = ["poll", "--json"]
+            send_args = ["send", "--chat", "room@chatroom"]
+            "#,
+        );
+
+        let plan =
+            wx_cli_formal_test_plan(&config, Path::new("wx-output.json"), None, None, "hello");
+
+        assert_eq!(plan["ok"], false);
+        assert!(array_contains(
+            &plan["blockers"],
+            "wx_cli_send_args_missing_chat_id_placeholder"
+        ));
+        assert!(array_contains(
+            &plan["blockers"],
+            "wx_cli_send_args_missing_text_placeholder"
+        ));
     }
 
     #[test]
