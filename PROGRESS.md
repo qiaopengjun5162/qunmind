@@ -4,7 +4,7 @@
 
 ### Status
 
-- MVP completion estimate: about 73%. Rust backend, WeCom/wx-cli channels, AI adapters, PostgreSQL persistence, diagnostics, wx-cli readiness doctor, replayable wx-cli capture files, wx-cli send dry-run guardrails, wx-cli handle-once no-send replay, PR-first contribution workflow, daily reports, public-source fallback, basic conversation context, per-group runtime/persona overrides, per-group daily report targets, captured wx-cli replay safety, ignored PostgreSQL integration-test coverage, and structured research/learning catalogs are implemented. AI x Web3 School Prompt/Handbook references are cataloged for future agent design. Real local WeChat validation, actually running the PostgreSQL integration test against a disposable database, durable memory/permissions, and production hardening remain the main gaps.
+- MVP completion estimate: about 74%. Rust backend, WeCom/wx-cli channels, AI adapters, PostgreSQL persistence, diagnostics, wx-cli readiness doctor, replayable wx-cli capture files, wx-cli send dry-run guardrails, wx-cli handle-once no-send replay, PR-first contribution workflow, daily reports, public-source fallback, basic conversation context, per-group runtime/persona overrides, per-group daily report targets, captured wx-cli replay safety, live PostgreSQL integration-test coverage, and structured research/learning catalogs are implemented. AI x Web3 School Prompt/Handbook references are cataloged for future agent design. Real local WeChat validation, durable memory/permissions, and production hardening remain the main gaps.
 
 ### Done
 
@@ -44,6 +44,7 @@
 - Added structured `message_id_not_found` output for wx-cli dry-run and handle-once so mistyped replay targets do not look like successful zero-message runs.
 - Moved wx-cli dry-run and handle-once replay JSON report construction into `src/diagnostic.rs` with pure Rust tests, keeping `main.rs` focused on CLI I/O.
 - Merged PR #1 into `master` after GitHub CI passed, preserving the PR-first development flow.
+- Created the local disposable `qunmind_test` PostgreSQL database and verified the ignored `postgres_store` integration test against it.
 - Added a PR-first contribution workflow, PR template, and `master` branch CI trigger so Codex changes can be pushed as branches and opened as self PRs.
 - Added optional Hacker News, CoinMarketCap, CoinGecko, DeFi Llama, Dune, GitHub Trending, and Slerf Blog fallback material for daily reports when the report group has no messages.
 - Added Rust-side research tool catalog for market data, onchain analytics, code security, community, funding-flow, and research-opinion sources.
@@ -66,7 +67,7 @@
 - `cargo run -- --config config.example.toml wx-cli doctor`：passed and reported example-config blockers/warnings without touching PG, AI, or WeChat.
 - `cargo run -- --config config.example.toml wx-cli send --chat-id room@chatroom --text "QunMind diagnostic message" --dry-run`：passed and printed the rendered wx-cli send command without touching PG, AI, or WeChat.
 - `cargo run -- --config config.example.toml wx-cli handle-once --input /dev/null --limit 1 --no-send`：passed and returned zero processed messages with `suppressed_replies = []`, without touching PG, AI, or WeChat.
-- `QUNMIND_TEST_DATABASE_URL` is currently unset in this shell, so the ignored PostgreSQL integration test was not executed against a live database.
+- `QUNMIND_TEST_DATABASE_URL="postgres://postgres:postgres@localhost:5432/qunmind_test" cargo nextest run --all-features --run-ignored only postgres_store`：1 PostgreSQL integration test passed against the local disposable `qunmind_test` database.
 - `cargo deny check`：passed with duplicate dependency warnings from the current WeCom SDK dependency stack.
 - `typos`
 
