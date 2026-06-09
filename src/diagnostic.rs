@@ -383,6 +383,9 @@ fn wx_cli_doctor_warnings(
         if has_duplicate_message_ids(messages) {
             warnings.push("capture_has_duplicate_message_ids");
         }
+        if has_unseen_group_overrides(config, messages) {
+            warnings.push("group_override_not_seen_in_capture");
+        }
         if has_unseen_daily_report_targets(config, messages) {
             warnings.push("daily_report_target_not_seen_in_capture");
         }
@@ -422,6 +425,11 @@ fn wx_cli_capture_summary(
         .iter()
         .filter(|target| matches!(target["seen_in_capture"].as_bool(), Some(true)))
         .count();
+    let group_overrides = wx_cli_group_override_statuses(config, messages);
+    let group_overrides_seen = group_overrides
+        .iter()
+        .filter(|group| matches!(group["seen_in_capture"].as_bool(), Some(true)))
+        .count();
 
     serde_json::json!({
         "total_messages": messages.len(),
@@ -431,6 +439,8 @@ fn wx_cli_capture_summary(
         "reply_candidate_message_ids": wx_cli_reply_candidate_message_ids(config, messages),
         "unique_chats": chat_counts.len(),
         "chat_counts": chat_counts,
+        "group_overrides": group_overrides,
+        "group_overrides_seen": group_overrides_seen,
         "daily_report_targets": daily_report_targets,
         "daily_report_targets_seen": daily_report_targets_seen,
         "previewed": preview.len(),
@@ -549,6 +559,36 @@ fn has_unseen_daily_report_targets(config: &Config, messages: &[IncomingMessage]
     effective_daily_report_targets(config)
         .iter()
         .any(|target| !captured_chat_ids.contains(target.chat_id.as_str()))
+}
+
+fn has_unseen_group_overrides(config: &Config, messages: &[IncomingMessage]) -> bool {
+    let captured_chat_ids = captured_chat_ids(messages);
+    config
+        .groups
+        .iter()
+        .filter(|group| !group.chat_id.trim().is_empty())
+        .any(|group| !captured_chat_ids.contains(group.chat_id.as_str()))
+}
+
+fn wx_cli_group_override_statuses(
+    config: &Config,
+    messages: &[IncomingMessage],
+) -> Vec<serde_json::Value> {
+    let captured_chat_ids = captured_chat_ids(messages);
+    config
+        .groups
+        .iter()
+        .filter(|group| !group.chat_id.trim().is_empty())
+        .map(|group| {
+            let seen_in_capture = captured_chat_ids.contains(group.chat_id.as_str());
+            serde_json::json!({
+                "chat_id": &group.chat_id,
+                "name": &group.name,
+                "enabled": group.enabled,
+                "seen_in_capture": seen_in_capture
+            })
+        })
+        .collect()
 }
 
 fn wx_cli_daily_report_target_statuses(
@@ -978,6 +1018,8 @@ mod tests {
                 }
             ])
         );
+        assert_eq!(report["capture"]["group_overrides_seen"], 0);
+        assert_eq!(report["capture"]["group_overrides"], serde_json::json!([]));
         assert_eq!(report["capture"]["items"][0]["message_id"], "m-1");
         assert!(array_contains(
             &report["warnings"],
@@ -1033,6 +1075,63 @@ mod tests {
             &report["warnings"],
             "capture_has_no_reply_candidates"
         ));
+    }
+
+    #[test]
+    fn wx_cli_doctor_warns_when_group_override_is_not_seen_in_capture() {
+        let config = config_from(
+            r#"
+            [channel]
+            kind = "wx_cli"
+
+            [ai]
+            api_key = "token"
+
+            [wx_cli]
+            bin = "wx"
+            poll_args = ["poll", "--json"]
+            send_args = ["send", "--chat", "{chat_id}", "--text", "{text}"]
+
+            [bot]
+            mention_names = ["@bot"]
+
+            [[groups]]
+            chat_id = "room@chatroom"
+            name = "联调群"
+            mention_names = ["@QunMind"]
+
+            [[groups]]
+            chat_id = "missing@chatroom"
+            name = "静默群"
+            enabled = false
+            "#,
+        );
+        let messages = vec![test_message("m-1")];
+
+        let report = wx_cli_doctor_report(&config, Some(&messages), 10);
+
+        assert!(array_contains(
+            &report["warnings"],
+            "group_override_not_seen_in_capture"
+        ));
+        assert_eq!(report["capture"]["group_overrides_seen"], 1);
+        assert_eq!(
+            report["capture"]["group_overrides"],
+            serde_json::json!([
+                {
+                    "chat_id": "room@chatroom",
+                    "name": "联调群",
+                    "enabled": true,
+                    "seen_in_capture": true
+                },
+                {
+                    "chat_id": "missing@chatroom",
+                    "name": "静默群",
+                    "enabled": false,
+                    "seen_in_capture": false
+                }
+            ])
+        );
     }
 
     #[test]
