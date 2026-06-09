@@ -664,4 +664,33 @@ mod tests {
             "send dry run",
         );
     }
+
+    #[tokio::test]
+    async fn wx_cli_test_plan_command_does_not_execute_external_commands() {
+        let config = config_from(
+            r#"
+            [channel]
+            kind = "wx_cli"
+
+            [wx_cli]
+            bin = "/bin/false"
+            poll_args = ["poll"]
+            send_args = ["send", "--room", "{chat_id}", "--text={text}"]
+            "#,
+        );
+
+        must(
+            run_wx_cli_command(
+                WxCliCommand::TestPlan {
+                    capture_file: "wx-output.json".into(),
+                    message_id: Some("m-1".to_string()),
+                    chat_id: Some("room@chatroom".to_string()),
+                    text: "diagnostic".to_string(),
+                },
+                &config,
+            )
+            .await,
+            "test plan",
+        );
+    }
 }
