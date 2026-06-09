@@ -17,11 +17,9 @@ use qunmind::channel::wx_cli::parse_wx_cli_messages_from_str;
 use qunmind::cli::{Args, CliCommand, WxCliCommand};
 use qunmind::config::{AiProvider, ChannelKind, Config};
 use qunmind::diagnostic::{
-    select_wx_cli_messages, wx_cli_doctor_report, wx_cli_dry_run_message_id_not_found_report,
-    wx_cli_dry_run_message_id_not_unique_report, wx_cli_dry_run_report, wx_cli_formal_test_plan,
-    wx_cli_handle_once_message_id_not_found_report,
-    wx_cli_handle_once_message_id_not_unique_report, wx_cli_handle_once_report,
-    wx_cli_message_id_match_count, wx_cli_message_ids,
+    select_wx_cli_messages, wx_cli_doctor_report, wx_cli_dry_run_message_id_guard_report,
+    wx_cli_dry_run_report, wx_cli_formal_test_plan, wx_cli_handle_once_message_id_guard_report,
+    wx_cli_handle_once_report, wx_cli_message_ids,
 };
 use qunmind::error::QunMindError;
 use qunmind::scheduler::daily_report::DailyReportScheduler;
@@ -387,47 +385,6 @@ async fn run_wx_cli_command(
     Ok(())
 }
 
-fn wx_cli_dry_run_message_id_guard_report(
-    messages: &[IncomingMessage],
-    total_polled: usize,
-    message_id: Option<&str>,
-) -> Option<serde_json::Value> {
-    match wx_cli_message_id_match_count(messages, message_id) {
-        Some(0) => Some(wx_cli_dry_run_message_id_not_found_report(
-            total_polled,
-            message_id,
-        )),
-        Some(matched) if matched > 1 => Some(wx_cli_dry_run_message_id_not_unique_report(
-            total_polled,
-            message_id,
-            matched,
-        )),
-        _ => None,
-    }
-}
-
-fn wx_cli_handle_once_message_id_guard_report(
-    messages: &[IncomingMessage],
-    total_polled: usize,
-    message_id: Option<&str>,
-    no_send: bool,
-) -> Option<serde_json::Value> {
-    match wx_cli_message_id_match_count(messages, message_id) {
-        Some(0) => Some(wx_cli_handle_once_message_id_not_found_report(
-            total_polled,
-            message_id,
-            no_send,
-        )),
-        Some(matched) if matched > 1 => Some(wx_cli_handle_once_message_id_not_unique_report(
-            total_polled,
-            message_id,
-            matched,
-            no_send,
-        )),
-        _ => None,
-    }
-}
-
 async fn load_wx_cli_messages(
     config: &Config,
     input: Option<&std::path::PathBuf>,
@@ -476,17 +433,6 @@ mod tests {
         match result {
             Ok(value) => value,
             Err(err) => panic!("{context}: {err}"),
-        }
-    }
-
-    fn wx_cli_message(message_id: &str, text: &str) -> IncomingMessage {
-        IncomingMessage {
-            message_id: message_id.to_string(),
-            from: "alice".to_string(),
-            chat_id: "room@chatroom".to_string(),
-            is_group: true,
-            text: Some(text.to_string()),
-            msg_type: MsgType::Text,
         }
     }
 
@@ -701,58 +647,6 @@ mod tests {
         assert_eq!(replayed[0].message_id, "m-capture");
         assert_eq!(replayed[0].text.as_deref(), Some("@bot captured hello"));
         assert!(replayed[0].is_group);
-    }
-
-    #[test]
-    fn wx_cli_dry_run_duplicate_message_id_guard_returns_structured_report() {
-        let messages = vec![
-            wx_cli_message("m-dup", "@bot first"),
-            wx_cli_message("m-dup", "@bot second"),
-        ];
-
-        let report = match wx_cli_dry_run_message_id_guard_report(
-            &messages,
-            messages.len(),
-            Some("m-dup"),
-        ) {
-            Some(report) => report,
-            None => panic!("duplicate message_id should be rejected"),
-        };
-
-        assert_eq!(report["ok"], false);
-        assert_eq!(report["error"], "message_id_not_unique");
-        assert_eq!(report["total_polled"], 2);
-        assert_eq!(report["requested_message_id"], "m-dup");
-        assert_eq!(report["matched"], 2);
-        assert_eq!(report["inspected"], 0);
-        assert_eq!(report["items"], serde_json::json!([]));
-    }
-
-    #[test]
-    fn wx_cli_handle_once_duplicate_message_id_guard_returns_structured_report() {
-        let messages = vec![
-            wx_cli_message("m-dup", "@bot first"),
-            wx_cli_message("m-dup", "@bot second"),
-        ];
-
-        let report = match wx_cli_handle_once_message_id_guard_report(
-            &messages,
-            messages.len(),
-            Some("m-dup"),
-            true,
-        ) {
-            Some(report) => report,
-            None => panic!("duplicate message_id should be rejected"),
-        };
-
-        assert_eq!(report["ok"], false);
-        assert_eq!(report["error"], "message_id_not_unique");
-        assert_eq!(report["total_polled"], 2);
-        assert_eq!(report["requested_message_id"], "m-dup");
-        assert_eq!(report["matched"], 2);
-        assert_eq!(report["processed"], 0);
-        assert_eq!(report["no_send"], true);
-        assert_eq!(report["suppressed_replies"], serde_json::json!([]));
     }
 
     #[tokio::test]
