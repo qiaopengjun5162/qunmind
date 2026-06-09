@@ -40,6 +40,7 @@
 - Reused the full `wx-cli doctor` readiness blockers in `wx-cli test-plan`, so formal test plans fail fast when AI, storage, or send placeholders are incomplete.
 - Added `wx-cli test-plan --input <json-file>` to inspect captured messages, auto-select a single reply candidate, and block ambiguous captures until an explicit `--message-id` is provided.
 - Added captured-message chat id inference to `wx-cli test-plan --input <json-file>`, so formal send dry-runs can reuse the selected message chat id when no explicit test chat id or `wx_cli.group_chat_id` is configured.
+- Added `test_chat_id_required` as a formal test-plan blocker when real-send steps would still use the `<test_chat_id>` placeholder.
 - Added command-level coverage proving `wx-cli test-plan` and `wx-cli test-plan --input` do not execute wx-cli, PostgreSQL, or AI dependencies.
 - Added `wx-cli capture --output <json-file>` to save one wx-cli poll as normalized replayable JSON for `doctor --input`, `dry-run --input`, and `handle-once --input`.
 - Added `wx-cli send --dry-run` to render the final send command without executing wx-cli before the first real diagnostic group message.
@@ -69,8 +70,8 @@
 - `taplo fmt --check --option reorder_keys=true Cargo.toml config.example.toml`
 - Current `taplo fmt --check --option reorder_keys=true Cargo.toml config.example.toml` is blocked by a local `system-configuration` panic before reading changed files; this refactor did not change TOML.
 - `cargo clippy --all-targets --all-features --tests --benches -- -D warnings`
-- `cargo nextest run --all-features`：136 tests passing, 1 ignored PostgreSQL integration test compiled and skipped by default.
-- `cargo llvm-cov nextest --all-features --summary-only`：87.42% line coverage, 136 tests passing.
+- `cargo nextest run --all-features`：137 tests passing, 1 ignored PostgreSQL integration test compiled and skipped by default.
+- `cargo llvm-cov nextest --all-features --summary-only`：87.50% line coverage, 137 tests passing.
 - `cargo run -- --config config.example.toml wx-cli doctor`：passed and reported example-config blockers/warnings without touching PG, AI, or WeChat.
 - `cargo run -- --config config.example.toml wx-cli send --chat-id room@chatroom --text "QunMind diagnostic message" --dry-run`：passed and printed the rendered wx-cli send command without touching PG, AI, or WeChat.
 - `cargo run -- --config config.example.toml wx-cli handle-once --input /dev/null --limit 1 --no-send`：passed and returned zero processed messages with `suppressed_replies = []`, without touching PG, AI, or WeChat.
