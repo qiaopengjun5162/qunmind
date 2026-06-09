@@ -383,6 +383,9 @@ fn wx_cli_doctor_warnings(
         if has_duplicate_message_ids(messages) {
             warnings.push("capture_has_duplicate_message_ids");
         }
+        if has_unseen_daily_report_targets(config, messages) {
+            warnings.push("daily_report_target_not_seen_in_capture");
+        }
         let reply_candidates = wx_cli_reply_candidate_message_ids(config, messages);
         if reply_candidates.is_empty() {
             warnings.push("capture_has_no_reply_candidates");
@@ -414,6 +417,11 @@ fn wx_cli_capture_summary(
         .iter()
         .filter(|item| matches!(item["would_reply"].as_bool(), Some(true)))
         .count();
+    let daily_report_targets = wx_cli_daily_report_target_statuses(config, messages);
+    let daily_report_targets_seen = daily_report_targets
+        .iter()
+        .filter(|target| matches!(target["seen_in_capture"].as_bool(), Some(true)))
+        .count();
 
     serde_json::json!({
         "total_messages": messages.len(),
@@ -423,6 +431,8 @@ fn wx_cli_capture_summary(
         "reply_candidate_message_ids": wx_cli_reply_candidate_message_ids(config, messages),
         "unique_chats": chat_counts.len(),
         "chat_counts": chat_counts,
+        "daily_report_targets": daily_report_targets,
+        "daily_report_targets_seen": daily_report_targets_seen,
         "previewed": preview.len(),
         "would_reply_in_preview": would_reply_count,
         "items": preview
@@ -532,6 +542,73 @@ fn has_duplicate_message_ids(messages: &[IncomingMessage]) -> bool {
     messages
         .iter()
         .any(|message| !seen.insert(message.message_id.as_str()))
+}
+
+fn has_unseen_daily_report_targets(config: &Config, messages: &[IncomingMessage]) -> bool {
+    let captured_chat_ids = captured_chat_ids(messages);
+    effective_daily_report_targets(config)
+        .iter()
+        .any(|target| !captured_chat_ids.contains(target.chat_id.as_str()))
+}
+
+fn wx_cli_daily_report_target_statuses(
+    config: &Config,
+    messages: &[IncomingMessage],
+) -> Vec<serde_json::Value> {
+    let captured_chat_ids = captured_chat_ids(messages);
+    effective_daily_report_targets(config)
+        .into_iter()
+        .map(|target| {
+            let seen_in_capture = captured_chat_ids.contains(target.chat_id.as_str());
+            serde_json::json!({
+                "chat_id": target.chat_id,
+                "name": target.name,
+                "source": target.source,
+                "seen_in_capture": seen_in_capture
+            })
+        })
+        .collect()
+}
+
+fn captured_chat_ids(messages: &[IncomingMessage]) -> BTreeSet<&str> {
+    messages
+        .iter()
+        .map(|message| message.chat_id.as_str())
+        .collect()
+}
+
+struct DiagnosticDailyReportTarget {
+    chat_id: String,
+    name: String,
+    source: &'static str,
+}
+
+fn effective_daily_report_targets(config: &Config) -> Vec<DiagnosticDailyReportTarget> {
+    if !config.schedule.daily_reports.is_empty() {
+        // Mirror scheduler behavior so readiness warnings reflect the groups that would actually receive reports.
+        return config
+            .schedule
+            .daily_reports
+            .iter()
+            .filter(|report| report.enabled && !report.chat_id.trim().is_empty())
+            .map(|report| DiagnosticDailyReportTarget {
+                chat_id: report.chat_id.clone(),
+                name: report.name.clone(),
+                source: "schedule.daily_reports",
+            })
+            .collect();
+    }
+
+    let chat_id = config.schedule.daily_report_chat_id.trim();
+    if chat_id.is_empty() {
+        return Vec::new();
+    }
+
+    vec![DiagnosticDailyReportTarget {
+        chat_id: chat_id.to_string(),
+        name: String::new(),
+        source: "schedule.daily_report_chat_id",
+    }]
 }
 
 struct FormalTestMessageId<'a> {
@@ -889,6 +966,18 @@ mod tests {
             report["capture"]["reply_candidate_message_ids"],
             serde_json::json!(["m-1", "m-2"])
         );
+        assert_eq!(report["capture"]["daily_report_targets_seen"], 1);
+        assert_eq!(
+            report["capture"]["daily_report_targets"],
+            serde_json::json!([
+                {
+                    "chat_id": "room@chatroom",
+                    "name": "",
+                    "source": "schedule.daily_report_chat_id",
+                    "seen_in_capture": true
+                }
+            ])
+        );
         assert_eq!(report["capture"]["items"][0]["message_id"], "m-1");
         assert!(array_contains(
             &report["warnings"],
@@ -944,6 +1033,69 @@ mod tests {
             &report["warnings"],
             "capture_has_no_reply_candidates"
         ));
+    }
+
+    #[test]
+    fn wx_cli_doctor_warns_when_enabled_report_target_is_not_seen_in_capture() {
+        let config = config_from(
+            r#"
+            [channel]
+            kind = "wx_cli"
+
+            [ai]
+            api_key = "token"
+
+            [wx_cli]
+            bin = "wx"
+            poll_args = ["poll", "--json"]
+            send_args = ["send", "--chat", "{chat_id}", "--text", "{text}"]
+
+            [bot]
+            mention_names = ["@bot"]
+
+            [schedule]
+            daily_report_chat_id = "legacy@chatroom"
+
+            [[schedule.daily_reports]]
+            chat_id = "room@chatroom"
+            name = "联调群日报"
+
+            [[schedule.daily_reports]]
+            chat_id = "missing@chatroom"
+            name = "未捕获群日报"
+
+            [[schedule.daily_reports]]
+            chat_id = "disabled@chatroom"
+            name = "禁用日报"
+            enabled = false
+            "#,
+        );
+        let messages = vec![test_message("m-1")];
+
+        let report = wx_cli_doctor_report(&config, Some(&messages), 10);
+
+        assert!(array_contains(
+            &report["warnings"],
+            "daily_report_target_not_seen_in_capture"
+        ));
+        assert_eq!(report["capture"]["daily_report_targets_seen"], 1);
+        assert_eq!(
+            report["capture"]["daily_report_targets"],
+            serde_json::json!([
+                {
+                    "chat_id": "room@chatroom",
+                    "name": "联调群日报",
+                    "source": "schedule.daily_reports",
+                    "seen_in_capture": true
+                },
+                {
+                    "chat_id": "missing@chatroom",
+                    "name": "未捕获群日报",
+                    "source": "schedule.daily_reports",
+                    "seen_in_capture": false
+                }
+            ])
+        );
     }
 
     #[test]
