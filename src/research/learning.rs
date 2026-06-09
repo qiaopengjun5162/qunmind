@@ -6,6 +6,7 @@ pub enum LearningResourceCategory {
     AgentFoundations,
     AgentFrameworks,
     HermesExecution,
+    WechatAgentSkills,
     LearningWorkflow,
     AiWeb3Bridge,
 }
@@ -151,6 +152,15 @@ pub const LEARNING_RESOURCES: &[LearningResource] = &[
         url: None,
     },
     LearningResource {
+        title: "wx-cli 的 AI Agent Skill 来了！让 AI 直接帮你管微信私域",
+        category: LearningResourceCategory::WechatAgentSkills,
+        provider: "CC的AI轻百科",
+        focus: "将 wx-cli 包装为 AI Agent Skill，让自然语言驱动微信私域数据分析和自动化任务",
+        format: LearningResourceFormat::Article,
+        priority: 135,
+        url: Some("https://mp.weixin.qq.com/s/djeUolNR4bms8wGsvBTAZQ"),
+    },
+    LearningResource {
         title: "AI × Web3 School Learning Agent 启动 Prompt",
         category: LearningResourceCategory::LearningWorkflow,
         provider: "AI x Web3 School",
@@ -199,6 +209,7 @@ pub fn agent_path() -> Vec<&'static LearningResource> {
                     | LearningResourceCategory::AgentFoundations
                     | LearningResourceCategory::AgentFrameworks
                     | LearningResourceCategory::HermesExecution
+                    | LearningResourceCategory::WechatAgentSkills
             )
         })
         .collect()
@@ -267,6 +278,7 @@ mod tests {
             "LangGraph Overview",
             "Hermes Agent Docs",
             "Zread.ai 解读 OpenClaw / Hermes",
+            "wx-cli 的 AI Agent Skill 来了！让 AI 直接帮你管微信私域",
             "AI × Web3 School Learning Agent 启动 Prompt",
             "AI × Web3 School Handbook",
         ] {
@@ -283,6 +295,7 @@ mod tests {
             LearningResourceCategory::AgentFoundations,
             LearningResourceCategory::AgentFrameworks,
             LearningResourceCategory::HermesExecution,
+            LearningResourceCategory::WechatAgentSkills,
             LearningResourceCategory::LearningWorkflow,
             LearningResourceCategory::AiWeb3Bridge,
         ] {
@@ -315,6 +328,7 @@ mod tests {
         assert!(titles.contains(&"LangGraph Overview"));
         assert!(titles.contains(&"Hermes Agent Docs"));
         assert!(titles.contains(&"Zread.ai 解读 OpenClaw / Hermes"));
+        assert!(titles.contains(&"wx-cli 的 AI Agent Skill 来了！让 AI 直接帮你管微信私域"));
         assert!(!titles.contains(&"Hugging Face LLM Course Chapter 1"));
     }
 
@@ -336,11 +350,16 @@ mod tests {
     fn finds_resources_with_normalized_titles() {
         let claude = resource("anthropic building with the claude api");
         let zread = resource("Zread AI OpenClaw Hermes");
+        let wx_cli_skill = resource("wx-cli 的 AI Agent Skill 来了！让 AI 直接帮你管微信私域");
         let handbook = resource("AI Web3 School Handbook");
 
         assert_eq!(claude.provider, "Anthropic");
         assert_eq!(claude.category, LearningResourceCategory::ApiCalling);
         assert_eq!(zread.category, LearningResourceCategory::HermesExecution);
+        assert_eq!(
+            wx_cli_skill.category,
+            LearningResourceCategory::WechatAgentSkills
+        );
         assert_eq!(handbook.category, LearningResourceCategory::AiWeb3Bridge);
         assert_eq!(handbook.url, Some("https://aiweb3.school/zh/handbook/"));
     }
