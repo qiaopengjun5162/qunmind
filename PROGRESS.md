@@ -50,6 +50,7 @@
 - Added Rust-side research tool catalog for market data, onchain analytics, code security, community, funding-flow, and research-opinion sources.
 - Added Rust-side AI / Agent learning resource catalog for LLM foundations, API calling, coding agents, agent frameworks, and Hermes execution-layer references.
 - Added AI x Web3 School learning-agent startup Prompt and Handbook references to the Rust learning catalog, including a dedicated AI/Web3 learning path.
+- Added the wx-cli AI Agent Skill WeChat article as a Rust-side learning/reference resource for future natural-language wx-cli tool orchestration.
 - Expanded wx-cli parsing compatibility for common WeChat export fields and explicit group flags.
 - Expanded coverage for config parsing/defaults, AI response parsing, WeCom frame conversion, wx-cli message parsing, bot reply paths, storage trait defaults, daily report prompt building, and scheduler report branches.
 - Documented project feasibility, references, and Rust / WASM implementation rules.
@@ -79,6 +80,7 @@
 - Tune CoinMarketCap top-story parsing and topic keywords after real Web3 daily report runs.
 - Prioritize automatable research connectors from `research::tools`, continuing with explorer APIs and audit-report sources.
 - Use `research::learning::ai_web3_path` as the reference map when refining AI provider integration, tool calling, skills, memory, and long-running AI/Web3 agent execution.
+- Use `research::learning::agent_path` and its wx-cli Agent Skill reference when designing future natural-language private-domain analysis tools.
 - Tune public source ranking and topic keywords after real daily report runs.
 - Add URL title fetching and link quality scoring after real message ingestion is stable.
 - Replace or patch `wecom-aibot-rust-sdk` dependency stack so `reqwest 0.11` / `rustls-pemfile 1.0.4` is no longer pulled in.

@@ -14,7 +14,7 @@
 
 `src/research/tools.rs` 维护项目投研工具目录，覆盖基础信息与行情数据、链上数据与分析、项目代码与安全、社区与社交媒体、投资与资金动向、研究报告与专家观点。新增投研来源时先归类到该目录，再决定是否实现为 `PublicNewsSource`、链上 connector 或人工辅助入口。
 
-`src/research/learning.rs` 维护 AI / Agent 学习资源目录，覆盖 LLM 基础、API 调用、coding agent、agent 框架、Hermes 执行层和 AI x Web3 参考。新增课程、文档、Prompt 或 Handbook 时先放进该目录，避免把学习资料直接耦合进微信消息处理链路。
+`src/research/learning.rs` 维护 AI / Agent 学习资源目录，覆盖 LLM 基础、API 调用、coding agent、agent 框架、Hermes 执行层、微信 Agent Skill 和 AI x Web3 参考。新增课程、文档、Prompt、Handbook 或微信私域 Agent 参考时先放进该目录，避免把学习资料直接耦合进微信消息处理链路。
 
 `src/diagnostic.rs` 维护 wx-cli 诊断和捕获消息重放的纯逻辑，包括 dry-run 输出、按 `message_id` 选择消息和群级配置预览；`main.rs` 只负责 CLI I/O、依赖初始化和命令编排。
 
@@ -105,6 +105,11 @@
   - Rust 实现的本地微信数据 CLI/daemon 参考。
   - 可作为未来个人微信历史、会话、搜索、统计、群成员等数据的只读导入通道。
   - 它不替代当前企业微信主动收发通道；主动聊天机器人能力仍需单独评估。
+
+- https://mp.weixin.qq.com/s/djeUolNR4bms8wGsvBTAZQ
+  - 文章标题：`wx-cli 的 AI Agent Skill 来了！让 AI 直接帮你管微信私域`。
+  - 可借鉴“把 wx-cli 能力包装成 AI Agent Skill，让用户用自然语言触发微信私域数据分析”的产品与交互思路。
+  - 对 QunMind 的启发是未来抽象 `Connector` / `Trigger` / `Action` / `Workflow` 和 wx-cli tool calling；当前不把 Skill 文档内容直接耦合进消息处理链路。
 
 - /Volumes/Elements/jjy/winpro
   - Panda 参与过的历史 Python/Django 连接器平台参考，只读参考，不要修改。
