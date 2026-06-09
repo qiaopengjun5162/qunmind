@@ -2,6 +2,7 @@ use crate::channel::{IncomingMessage, MsgType};
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::config::{AiProvider, ChannelKind, Config, GroupConfig};
+use serde::Serialize;
 
 pub fn select_wx_cli_messages(
     messages: Vec<IncomingMessage>,
@@ -59,6 +60,42 @@ pub fn wx_cli_handle_once_message_id_not_found_report(
         "processed": 0,
         "no_send": no_send,
         "suppressed_replies": []
+    })
+}
+
+pub fn wx_cli_dry_run_report(
+    config: &Config,
+    total_polled: usize,
+    messages: &[IncomingMessage],
+) -> serde_json::Value {
+    let items: Vec<_> = messages
+        .iter()
+        .map(|msg| wx_cli_dry_run_item(config, msg))
+        .collect();
+
+    serde_json::json!({
+        "ok": true,
+        "total_polled": total_polled,
+        "inspected": messages.len(),
+        "selected_message_ids": wx_cli_message_ids(messages),
+        "items": items
+    })
+}
+
+pub fn wx_cli_handle_once_report<T: Serialize>(
+    total_polled: usize,
+    processed: usize,
+    selected_message_ids: &[String],
+    no_send: bool,
+    suppressed_replies: &[T],
+) -> serde_json::Value {
+    serde_json::json!({
+        "ok": true,
+        "total_polled": total_polled,
+        "processed": processed,
+        "selected_message_ids": selected_message_ids,
+        "no_send": no_send,
+        "suppressed_replies": suppressed_replies
     })
 }
 
@@ -804,6 +841,45 @@ mod tests {
         assert_eq!(report["processed"], 0);
         assert_eq!(report["no_send"], true);
         assert_eq!(report["suppressed_replies"], serde_json::json!([]));
+    }
+
+    #[test]
+    fn wx_cli_dry_run_report_includes_selected_ids_and_items() {
+        let config = config_from(
+            r#"
+            [bot]
+            mention_names = ["@bot"]
+            "#,
+        );
+        let messages = vec![test_message("m-1")];
+
+        let report = wx_cli_dry_run_report(&config, 3, &messages);
+
+        assert_eq!(report["ok"], true);
+        assert_eq!(report["total_polled"], 3);
+        assert_eq!(report["inspected"], 1);
+        assert_eq!(report["selected_message_ids"], serde_json::json!(["m-1"]));
+        assert_eq!(report["items"][0]["message_id"], "m-1");
+        assert_eq!(report["items"][0]["would_reply"], true);
+    }
+
+    #[test]
+    fn wx_cli_handle_once_report_includes_selected_ids_and_suppressed_replies() {
+        let selected_message_ids = vec!["m-1".to_string()];
+        let suppressed_replies = vec![serde_json::json!({
+            "chat_id": "room@chatroom",
+            "text": "reply"
+        })];
+
+        let report =
+            wx_cli_handle_once_report(3, 1, &selected_message_ids, true, &suppressed_replies);
+
+        assert_eq!(report["ok"], true);
+        assert_eq!(report["total_polled"], 3);
+        assert_eq!(report["processed"], 1);
+        assert_eq!(report["selected_message_ids"], serde_json::json!(["m-1"]));
+        assert_eq!(report["no_send"], true);
+        assert_eq!(report["suppressed_replies"][0]["text"], "reply");
     }
 
     #[test]
