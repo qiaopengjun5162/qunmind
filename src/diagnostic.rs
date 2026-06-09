@@ -546,11 +546,14 @@ fn wx_cli_test_plan_capture_blockers(
     };
 
     if let Some(message_id) = message_id.filter(|message_id| !message_id.trim().is_empty()) {
-        if !messages
+        let matched_count = messages
             .iter()
-            .any(|message| message.message_id == message_id)
-        {
+            .filter(|message| message.message_id == message_id)
+            .count();
+        if matched_count == 0 {
             blockers.push("selected_message_id_not_found_in_capture");
+        } else if matched_count > 1 {
+            blockers.push("selected_message_id_not_unique_in_capture");
         }
     } else if reply_candidates.len() != 1 {
         blockers.push("capture_requires_explicit_message_id");
@@ -1506,6 +1509,43 @@ mod tests {
         assert!(array_contains(
             &plan["blockers"],
             "selected_message_id_not_found_in_capture"
+        ));
+    }
+
+    #[test]
+    fn wx_cli_formal_test_plan_rejects_duplicate_explicit_message_id() {
+        let config = config_from(
+            r#"
+            [channel]
+            kind = "wx_cli"
+
+            [ai]
+            api_key = "token"
+
+            [wx_cli]
+            bin = "wx"
+            poll_args = ["poll", "--json"]
+            send_args = ["send", "--chat", "{chat_id}", "--text", "{text}"]
+            "#,
+        );
+        let messages = vec![test_message("m-1"), test_message("m-1")];
+
+        let plan = wx_cli_formal_test_plan(
+            &config,
+            Path::new("config.toml"),
+            Path::new("wx-output.json"),
+            Some("m-1"),
+            None,
+            "hello",
+            Some(&messages),
+        );
+
+        assert_eq!(plan["ok"], false);
+        assert_eq!(plan["message_id"], "m-1");
+        assert_eq!(plan["message_id_source"], "explicit");
+        assert!(array_contains(
+            &plan["blockers"],
+            "selected_message_id_not_unique_in_capture"
         ));
     }
 
