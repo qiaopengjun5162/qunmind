@@ -53,7 +53,7 @@
 - Added `reply_candidate_message_ids` and capture warnings so real wx-cli replay can choose a target `message_id` before any no-send or real send run.
 - Added structured `message_id_not_found` output for wx-cli dry-run and handle-once so mistyped replay targets do not look like successful zero-message runs.
 - Added structured `message_id_not_unique` output for wx-cli dry-run and handle-once so duplicate replay targets do not silently select the first matching message.
-- Moved wx-cli dry-run and handle-once replay JSON report construction into `src/diagnostic.rs` with pure Rust tests, keeping `main.rs` focused on CLI I/O.
+- Moved wx-cli dry-run and handle-once replay JSON report and message-id guard construction into `src/diagnostic.rs` with pure Rust tests, keeping `main.rs` focused on CLI I/O.
 - Merged PR #1 into `master` after GitHub CI passed, preserving the PR-first development flow.
 - Created the local disposable `qunmind_test` PostgreSQL database and verified the ignored `postgres_store` integration test against it.
 - Added a PR-first contribution workflow, PR template, and `master` branch CI trigger so Codex changes can be pushed as branches and opened as self PRs.
@@ -77,7 +77,7 @@
 - `cargo clippy --all-targets --all-features --tests --benches -- -D warnings`
 - `cargo nextest run --all-features message_id`：15 targeted message-id tests passing.
 - `cargo nextest run --all-features`：144 tests passing, 1 ignored PostgreSQL integration test compiled and skipped by default.
-- `cargo llvm-cov nextest --all-features --summary-only`：88.36% line coverage, 144 tests passing.
+- `cargo llvm-cov nextest --all-features --summary-only`：88.31% line coverage, 144 tests passing.
 - `cargo run -- --config config.example.toml wx-cli doctor`：passed and reported example-config blockers/warnings without touching PG, AI, or WeChat.
 - `cargo run -- --config config.example.toml wx-cli test-plan --capture-file wx-output.json`：passed, preserved `config.example.toml` in generated commands, and reported the intended example-config blockers including `test_message_id_required` and `test_chat_id_required`, without touching PG, AI, or WeChat.
 - `cargo run -- --config config.example.toml wx-cli test-plan --input /dev/null --message-id m-1 --chat-id room@chatroom`：passed, preserved `config.example.toml`, skipped `capture_once`, and reported `selected_message_id_not_found_in_capture` without touching PG, AI, or WeChat.

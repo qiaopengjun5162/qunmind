@@ -101,6 +101,47 @@ pub fn wx_cli_handle_once_message_id_not_unique_report(
     })
 }
 
+pub fn wx_cli_dry_run_message_id_guard_report(
+    messages: &[IncomingMessage],
+    total_polled: usize,
+    message_id: Option<&str>,
+) -> Option<serde_json::Value> {
+    match wx_cli_message_id_match_count(messages, message_id) {
+        Some(0) => Some(wx_cli_dry_run_message_id_not_found_report(
+            total_polled,
+            message_id,
+        )),
+        Some(matched) if matched > 1 => Some(wx_cli_dry_run_message_id_not_unique_report(
+            total_polled,
+            message_id,
+            matched,
+        )),
+        _ => None,
+    }
+}
+
+pub fn wx_cli_handle_once_message_id_guard_report(
+    messages: &[IncomingMessage],
+    total_polled: usize,
+    message_id: Option<&str>,
+    no_send: bool,
+) -> Option<serde_json::Value> {
+    match wx_cli_message_id_match_count(messages, message_id) {
+        Some(0) => Some(wx_cli_handle_once_message_id_not_found_report(
+            total_polled,
+            message_id,
+            no_send,
+        )),
+        Some(matched) if matched > 1 => Some(wx_cli_handle_once_message_id_not_unique_report(
+            total_polled,
+            message_id,
+            matched,
+            no_send,
+        )),
+        _ => None,
+    }
+}
+
 pub fn wx_cli_dry_run_report(
     config: &Config,
     total_polled: usize,
@@ -1172,6 +1213,43 @@ mod tests {
         assert_eq!(report["processed"], 0);
         assert_eq!(report["no_send"], true);
         assert_eq!(report["suppressed_replies"], serde_json::json!([]));
+    }
+
+    #[test]
+    fn wx_cli_dry_run_message_id_guard_rejects_duplicate_id() {
+        let messages = vec![test_message("m-dup"), test_message("m-dup")];
+
+        let report = match wx_cli_dry_run_message_id_guard_report(
+            &messages,
+            messages.len(),
+            Some("m-dup"),
+        ) {
+            Some(report) => report,
+            None => panic!("duplicate message_id should be rejected"),
+        };
+
+        assert_eq!(report["ok"], false);
+        assert_eq!(report["error"], "message_id_not_unique");
+        assert_eq!(report["matched"], 2);
+    }
+
+    #[test]
+    fn wx_cli_handle_once_message_id_guard_rejects_missing_id() {
+        let messages = vec![test_message("m-1")];
+
+        let report = match wx_cli_handle_once_message_id_guard_report(
+            &messages,
+            messages.len(),
+            Some("missing"),
+            true,
+        ) {
+            Some(report) => report,
+            None => panic!("missing message_id should be rejected"),
+        };
+
+        assert_eq!(report["ok"], false);
+        assert_eq!(report["error"], "message_id_not_found");
+        assert_eq!(report["processed"], 0);
     }
 
     #[test]
