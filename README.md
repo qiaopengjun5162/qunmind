@@ -4,7 +4,7 @@
 [![All Contributors](https://img.shields.io/badge/all_contributors-1-orange.svg?style=flat-square)](#contributors-)
 <!-- ALL-CONTRIBUTORS-BADGE:END -->
 
-![GitHub release (latest by date)](https://img.shields.io/github/v/release/qiaopengjun5162/qunmind)
+![Version](https://img.shields.io/badge/version-0.1.0-blue)
 ![GitHub license](https://img.shields.io/github/license/qiaopengjun5162/qunmind)
 ![Rust Version](https://img.shields.io/badge/rust-%3E%3D1.85-blue)
 
