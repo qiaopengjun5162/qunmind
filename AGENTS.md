@@ -30,6 +30,8 @@
 
 `storage.database_url` 默认是 `postgres://postgres:postgres@localhost:5432/qunmind`。本地运行前需要先创建 PostgreSQL 数据库；QunMind 启动时会自动创建当前需要的表和索引。
 
+部署工程化已包含 `Dockerfile`、`docker-compose.yml`、`config.docker.example.toml` 和 `DEPLOYMENT.md`。Compose 默认启动 QunMind + PostgreSQL，并把本地 `config.toml` 只读挂载到 `/app/config.toml`；不要把 `config.toml` 复制进镜像或提交到仓库。Docker/Compose 更适合企业微信内部群、日报和 PG 持久化；普通微信 wx-cli 通道通常依赖宿主机 WeChat session 和宿主 CLI/daemon，容器化前必须先确认 socket、HTTP endpoint 或二进制挂载方案，不要默认认为容器能访问本机微信数据。
+
 重要边界：企业微信智能机器人只能按企业微信内部群通道使用，不要假定它可以进入企业微信外部群/客户群。外部群和普通微信群需要单独评估客户群 API、会话内容存档、客户端采集、托管微信号或其他非智能机器人入口。
 
 ## 常用命令
@@ -40,6 +42,11 @@
 - `just test`：使用 `cargo nextest run --all-features`
 - `just check-all`：完整检查
 - `just run`：运行本地服务
+- `just docker-build`：构建本地 Docker 镜像 `qunmind:local`
+- `just compose-config`：检查 Docker Compose 最终配置
+- `just compose-up`：使用 Docker Compose 一键启动 QunMind + PostgreSQL
+- `just compose-down`：停止 Docker Compose 服务
+- `just compose-logs`：查看 QunMind 容器日志
 - `QUNMIND_TEST_DATABASE_URL="postgres://postgres:postgres@localhost:5432/qunmind_test" cargo nextest run --all-features --run-ignored only postgres_store`：在隔离临时 schema 中运行 PostgreSQL 集成测试
 - `cargo run -- wx-cli doctor`：输出 wx-cli 正式群测前的配置体检报告
 - `cargo run -- wx-cli test-plan --capture-file wx-output.json`：输出正式群测命令顺序和真实发送边界
@@ -70,12 +77,14 @@
 - Commit message 使用 Conventional Commits，英文消息。
 - 默认使用 PR-first 工作流：从 `master` 创建 `codex/<short-topic>` 分支，提交并 push 分支，再用 `gh pr create --base master --head <branch>` 自己给自己提 PR；除非用户明确要求，后续不要直接 push 到 `master`。
 - Release 使用 tag-first 自动化：推送 `v*` tag 后，`.github/workflows/release.yml` 会用 GitHub Actions 自动创建对应 GitHub Release；正式发版前仍先确认 `master` CI 通过。
+- Release workflow 也会把镜像发布到 `ghcr.io/qiaopengjun5162/qunmind:<tag>` 和 `ghcr.io/qiaopengjun5162/qunmind:latest`；修改 Dockerfile、Compose 或部署文档时至少跑 `docker compose config`，有 Docker daemon 时继续跑 `docker build --tag qunmind:local .`。
 - 如果后续加入 Rust/WASM 前端，使用 `wasm-pack` 构建；`wasm-bindgen` 暴露函数时避免 `Option<&str>` 这类不支持的参数形态。
 
 ## 本地约束
 
 - `config.toml` 包含本地凭据，默认不要读取、修改或提交；需要示例配置时使用 `config.example.toml`。
-- `config.toml` 已被 `.gitignore` 忽略，初始化或格式化时不要把它纳入批量 TOML 格式化命令。
+- `config.toml` 已被 `.gitignore` 忽略，初始化或格式化时不要把它纳入批量 TOML 格式化命令；`just fmt` / `just fmt-check` 只覆盖 `config.example.toml` 和 `config.docker.example.toml`。
+- Docker 部署示例使用 `config.docker.example.toml`；真实部署仍复制成本地 `config.toml` 后挂载，不能把真实凭据写入 `docker-compose.yml`、Dockerfile、CI workflow 或 GHCR image layer。
 - `tests/` 已初始化，新增对外行为测试时放在这里，命名使用 `*_test.rs`。
 - PostgreSQL 集成测试默认 `#[ignore]`，通过 `QUNMIND_TEST_DATABASE_URL` 指向可丢弃测试库；测试会创建临时 schema 并用 `search_path` 隔离，不要直接使用包含真实数据的生产库 URL。
 - 本项目最终实现语言是 Rust；参考 Python/TypeScript/Next.js 项目时只吸收产品、架构和接口边界，不迁移其技术栈。

@@ -28,10 +28,18 @@ jobs:
       - name: Check formatting
         run: |
           cargo fmt --all -- --check
-          taplo fmt --check --option reorder_keys=true Cargo.toml config.example.toml
+          taplo fmt --check --option reorder_keys=true Cargo.toml config.example.toml config.docker.example.toml
 
       - name: Clippy
         run: cargo clippy --all-targets --all-features --tests --benches -- -D warnings
 
       - name: Test
         run: cargo nextest run --all-features
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: docker build --file Dockerfile --tag qunmind:ci .

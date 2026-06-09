@@ -1,0 +1,15 @@
+.git
+.github
+target
+coverage
+tarpaulin-report.html
+lcov.info
+
+config.toml
+*.log
+*.db
+*.sqlite
+*.sqlite3
+wx-output.json
+
+.DS_Store

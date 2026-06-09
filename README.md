@@ -48,6 +48,23 @@ cargo run
 
 `config.toml` is intentionally ignored by git because it contains local secrets.
 
+## Docker Deployment
+
+QunMind ships with a production-oriented Dockerfile and Docker Compose stack for
+the bot plus PostgreSQL:
+
+```bash
+cp config.docker.example.toml config.toml
+$EDITOR config.toml
+docker compose up -d --build
+docker compose logs -f qunmind
+```
+
+The Compose config mounts `config.toml` as a read-only secret-like local file and
+stores PostgreSQL data in a named volume. See [DEPLOYMENT.md](DEPLOYMENT.md) for
+the full one-server deploy path, wx-cli container boundary notes, release image
+details, and production checklist.
+
 ## wx-cli Diagnostics
 
 Before connecting a normal WeChat / external group bot loop, validate the local wx-cli commands in isolation:
@@ -132,11 +149,20 @@ full workflow and review checklist.
 
 ## Release Automation
 
-GitHub Releases are created automatically after a `v*` tag is pushed and the release workflow passes formatting, clippy, and nextest checks.
+GitHub Releases and GHCR container images are created automatically after a `v*`
+tag is pushed and the release workflow passes formatting, clippy, and nextest
+checks.
 
 ```bash
 git tag -a v0.1.0 -m "v0.1.0"
 git push origin v0.1.0
+```
+
+Release images are published as:
+
+```text
+ghcr.io/qiaopengjun5162/qunmind:<tag>
+ghcr.io/qiaopengjun5162/qunmind:latest
 ```
 
 PostgreSQL integration tests are ignored by default because they need a disposable database. Run them explicitly with an isolated test database URL:
