@@ -18,13 +18,16 @@ pub fn select_wx_cli_messages(
         .collect()
 }
 
-pub fn wx_cli_message_id_found(messages: &[IncomingMessage], message_id: Option<&str>) -> bool {
-    match message_id {
-        Some(message_id) => messages
+pub fn wx_cli_message_id_match_count(
+    messages: &[IncomingMessage],
+    message_id: Option<&str>,
+) -> Option<usize> {
+    message_id.map(|message_id| {
+        messages
             .iter()
-            .any(|message| message.message_id == message_id),
-        None => true,
-    }
+            .filter(|message| message.message_id == message_id)
+            .count()
+    })
 }
 
 pub fn wx_cli_message_ids(messages: &[IncomingMessage]) -> Vec<String> {
@@ -48,6 +51,22 @@ pub fn wx_cli_dry_run_message_id_not_found_report(
     })
 }
 
+pub fn wx_cli_dry_run_message_id_not_unique_report(
+    total_polled: usize,
+    message_id: Option<&str>,
+    matched: usize,
+) -> serde_json::Value {
+    serde_json::json!({
+        "ok": false,
+        "error": "message_id_not_unique",
+        "total_polled": total_polled,
+        "requested_message_id": message_id,
+        "matched": matched,
+        "inspected": 0,
+        "items": []
+    })
+}
+
 pub fn wx_cli_handle_once_message_id_not_found_report(
     total_polled: usize,
     message_id: Option<&str>,
@@ -58,6 +77,24 @@ pub fn wx_cli_handle_once_message_id_not_found_report(
         "error": "message_id_not_found",
         "total_polled": total_polled,
         "requested_message_id": message_id,
+        "processed": 0,
+        "no_send": no_send,
+        "suppressed_replies": []
+    })
+}
+
+pub fn wx_cli_handle_once_message_id_not_unique_report(
+    total_polled: usize,
+    message_id: Option<&str>,
+    matched: usize,
+    no_send: bool,
+) -> serde_json::Value {
+    serde_json::json!({
+        "ok": false,
+        "error": "message_id_not_unique",
+        "total_polled": total_polled,
+        "requested_message_id": message_id,
+        "matched": matched,
         "processed": 0,
         "no_send": no_send,
         "suppressed_replies": []
@@ -1056,12 +1093,26 @@ mod tests {
     }
 
     #[test]
-    fn wx_cli_message_id_found_reports_missing_requested_id() {
-        let messages = vec![test_message("m-1"), test_message("m-2")];
+    fn wx_cli_message_id_match_count_reports_duplicate_requested_id() {
+        let messages = vec![
+            test_message("m-1"),
+            test_message("m-dup"),
+            test_message("m-dup"),
+        ];
 
-        assert!(wx_cli_message_id_found(&messages, None));
-        assert!(wx_cli_message_id_found(&messages, Some("m-2")));
-        assert!(!wx_cli_message_id_found(&messages, Some("m-missing")));
+        assert_eq!(wx_cli_message_id_match_count(&messages, None), None);
+        assert_eq!(
+            wx_cli_message_id_match_count(&messages, Some("m-missing")),
+            Some(0)
+        );
+        assert_eq!(
+            wx_cli_message_id_match_count(&messages, Some("m-1")),
+            Some(1)
+        );
+        assert_eq!(
+            wx_cli_message_id_match_count(&messages, Some("m-dup")),
+            Some(2)
+        );
     }
 
     #[test]
@@ -1084,6 +1135,19 @@ mod tests {
     }
 
     #[test]
+    fn wx_cli_dry_run_message_id_not_unique_report_is_structured() {
+        let report = wx_cli_dry_run_message_id_not_unique_report(3, Some("m-dup"), 2);
+
+        assert_eq!(report["ok"], false);
+        assert_eq!(report["error"], "message_id_not_unique");
+        assert_eq!(report["total_polled"], 3);
+        assert_eq!(report["requested_message_id"], "m-dup");
+        assert_eq!(report["matched"], 2);
+        assert_eq!(report["inspected"], 0);
+        assert_eq!(report["items"], serde_json::json!([]));
+    }
+
+    #[test]
     fn wx_cli_handle_once_message_id_not_found_report_is_structured() {
         let report = wx_cli_handle_once_message_id_not_found_report(3, Some("missing"), true);
 
@@ -1091,6 +1155,20 @@ mod tests {
         assert_eq!(report["error"], "message_id_not_found");
         assert_eq!(report["total_polled"], 3);
         assert_eq!(report["requested_message_id"], "missing");
+        assert_eq!(report["processed"], 0);
+        assert_eq!(report["no_send"], true);
+        assert_eq!(report["suppressed_replies"], serde_json::json!([]));
+    }
+
+    #[test]
+    fn wx_cli_handle_once_message_id_not_unique_report_is_structured() {
+        let report = wx_cli_handle_once_message_id_not_unique_report(4, Some("m-dup"), 2, true);
+
+        assert_eq!(report["ok"], false);
+        assert_eq!(report["error"], "message_id_not_unique");
+        assert_eq!(report["total_polled"], 4);
+        assert_eq!(report["requested_message_id"], "m-dup");
+        assert_eq!(report["matched"], 2);
         assert_eq!(report["processed"], 0);
         assert_eq!(report["no_send"], true);
         assert_eq!(report["suppressed_replies"], serde_json::json!([]));
