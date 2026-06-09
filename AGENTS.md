@@ -68,6 +68,7 @@
 - 新增测试放在 `tests/`，命名使用 `*_test.rs`。
 - Commit message 使用 Conventional Commits，英文消息。
 - 默认使用 PR-first 工作流：从 `master` 创建 `codex/<short-topic>` 分支，提交并 push 分支，再用 `gh pr create --base master --head <branch>` 自己给自己提 PR；除非用户明确要求，后续不要直接 push 到 `master`。
+- Release 使用 tag-first 自动化：推送 `v*` tag 后，`.github/workflows/release.yml` 会用 GitHub Actions 自动创建对应 GitHub Release；正式发版前仍先确认 `master` CI 通过。
 - 如果后续加入 Rust/WASM 前端，使用 `wasm-pack` 构建；`wasm-bindgen` 暴露函数时避免 `Option<&str>` 这类不支持的参数形态。
 
 ## 本地约束
