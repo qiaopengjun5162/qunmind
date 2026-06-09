@@ -18,7 +18,7 @@ use qunmind::cli::{Args, CliCommand, WxCliCommand};
 use qunmind::config::{AiProvider, ChannelKind, Config};
 use qunmind::diagnostic::{
     select_wx_cli_messages, wx_cli_doctor_report, wx_cli_dry_run_message_id_not_found_report,
-    wx_cli_dry_run_report, wx_cli_handle_once_message_id_not_found_report,
+    wx_cli_dry_run_report, wx_cli_formal_test_plan, wx_cli_handle_once_message_id_not_found_report,
     wx_cli_handle_once_report, wx_cli_message_id_found, wx_cli_message_ids,
 };
 use qunmind::error::QunMindError;
@@ -207,6 +207,23 @@ async fn run_wx_cli_command(command: WxCliCommand, config: &Config) -> anyhow::R
                         "run_wx_cli_handle_once_send_with_message_id_and_limit_1"
                     ]
                 }))?
+            );
+        }
+        WxCliCommand::TestPlan {
+            capture_file,
+            message_id,
+            chat_id,
+            text,
+        } => {
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&wx_cli_formal_test_plan(
+                    config,
+                    &capture_file,
+                    message_id.as_deref(),
+                    chat_id.as_deref(),
+                    &text,
+                ))?
             );
         }
         WxCliCommand::Poll { input } => {

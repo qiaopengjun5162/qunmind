@@ -40,6 +40,21 @@ pub enum WxCliCommand {
         #[arg(long)]
         output: PathBuf,
     },
+    /// Print the safe formal-test command sequence for a real WeChat group.
+    TestPlan {
+        /// Capture file used by doctor, dry-run, and handle-once replay steps.
+        #[arg(long, default_value = "wx-output.json")]
+        capture_file: PathBuf,
+        /// Message id selected from doctor capture.reply_candidate_message_ids.
+        #[arg(long)]
+        message_id: Option<String>,
+        /// Test chat id used by wx-cli send diagnostics.
+        #[arg(long)]
+        chat_id: Option<String>,
+        /// Diagnostic text sent by wx-cli send dry-run and send steps.
+        #[arg(long, default_value = "QunMind diagnostic message")]
+        text: String,
+    },
     /// Run wx_cli.poll_args once and print normalized messages.
     Poll {
         /// Parse a local wx-cli JSON file instead of invoking wx_cli.poll_args.
@@ -145,6 +160,41 @@ mod tests {
                 command: WxCliCommand::Capture { output },
             }) => assert_eq!(output, PathBuf::from("wx-output.json")),
             _ => panic!("wx-cli capture command should parse"),
+        }
+    }
+
+    #[test]
+    fn parses_wx_cli_test_plan_command() {
+        let args = parse_args(&[
+            "qunmind",
+            "wx-cli",
+            "test-plan",
+            "--capture-file",
+            "wx-output.json",
+            "--message-id",
+            "m-1",
+            "--chat-id",
+            "room@chatroom",
+            "--text",
+            "hello",
+        ]);
+
+        match args.command {
+            Some(CliCommand::WxCli {
+                command:
+                    WxCliCommand::TestPlan {
+                        capture_file,
+                        message_id,
+                        chat_id,
+                        text,
+                    },
+            }) => {
+                assert_eq!(capture_file, PathBuf::from("wx-output.json"));
+                assert_eq!(message_id.as_deref(), Some("m-1"));
+                assert_eq!(chat_id.as_deref(), Some("room@chatroom"));
+                assert_eq!(text, "hello");
+            }
+            _ => panic!("wx-cli test-plan command should parse"),
         }
     }
 
