@@ -122,6 +122,7 @@ pub fn wx_cli_formal_test_plan(
         message_id,
         &reply_candidates,
     ));
+    blockers.extend(wx_cli_test_plan_chat_blockers(&selected_chat_id));
     let warnings = wx_cli_doctor_warnings(config, messages);
     let capture = messages.map(|messages| wx_cli_capture_summary(config, messages, 10));
 
@@ -505,6 +506,14 @@ fn wx_cli_test_plan_capture_blockers(
     }
 
     blockers
+}
+
+fn wx_cli_test_plan_chat_blockers(chat_id: &FormalTestChatId<'_>) -> Vec<&'static str> {
+    if chat_id.source == "placeholder" {
+        return vec!["test_chat_id_required"];
+    }
+
+    Vec::new()
 }
 
 fn wx_cli_reply_candidate_message_ids(
@@ -1148,6 +1157,38 @@ mod tests {
                 "<message_id_from_reply_candidate_message_ids>"
             ])
         );
+    }
+
+    #[test]
+    fn wx_cli_formal_test_plan_blocks_missing_test_chat_id() {
+        let config = config_from(
+            r#"
+            [channel]
+            kind = "wx_cli"
+
+            [ai]
+            api_key = "token"
+
+            [wx_cli]
+            bin = "wx"
+            poll_args = ["poll", "--json"]
+            send_args = ["send", "--chat", "{chat_id}", "--text", "{text}"]
+            "#,
+        );
+
+        let plan = wx_cli_formal_test_plan(
+            &config,
+            Path::new("capture.json"),
+            None,
+            None,
+            "hello",
+            None,
+        );
+
+        assert_eq!(plan["ok"], false);
+        assert_eq!(plan["chat_id"], "<test_chat_id>");
+        assert_eq!(plan["chat_id_source"], "placeholder");
+        assert!(array_contains(&plan["blockers"], "test_chat_id_required"));
     }
 
     #[test]
