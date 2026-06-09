@@ -76,6 +76,9 @@ pub enum WxCliCommand {
         chat_id: String,
         #[arg(long)]
         text: String,
+        /// Render the wx-cli send command without executing it.
+        #[arg(long)]
+        dry_run: bool,
     },
 }
 
@@ -282,10 +285,46 @@ mod tests {
 
         match args.command {
             Some(CliCommand::WxCli {
-                command: WxCliCommand::Send { chat_id, text },
+                command:
+                    WxCliCommand::Send {
+                        chat_id,
+                        text,
+                        dry_run,
+                    },
             }) => {
                 assert_eq!(chat_id, "room@chatroom");
                 assert_eq!(text, "hello");
+                assert!(!dry_run);
+            }
+            _ => panic!("wx-cli send command should parse"),
+        }
+    }
+
+    #[test]
+    fn parses_wx_cli_send_dry_run_command() {
+        let args = parse_args(&[
+            "qunmind",
+            "wx-cli",
+            "send",
+            "--chat-id",
+            "room@chatroom",
+            "--text",
+            "hello",
+            "--dry-run",
+        ]);
+
+        match args.command {
+            Some(CliCommand::WxCli {
+                command:
+                    WxCliCommand::Send {
+                        chat_id,
+                        text,
+                        dry_run,
+                    },
+            }) => {
+                assert_eq!(chat_id, "room@chatroom");
+                assert_eq!(text, "hello");
+                assert!(dry_run);
             }
             _ => panic!("wx-cli send command should parse"),
         }

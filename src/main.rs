@@ -278,8 +278,27 @@ async fn run_wx_cli_command(command: WxCliCommand, config: &Config) -> anyhow::R
                 })
             );
         }
-        WxCliCommand::Send { chat_id, text } => {
+        WxCliCommand::Send {
+            chat_id,
+            text,
+            dry_run,
+        } => {
             let channel = WxCliChannel::new(&config.wx_cli);
+            if dry_run {
+                let command = channel.rendered_send_command(&chat_id, &text)?;
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&serde_json::json!({
+                        "ok": true,
+                        "dry_run": true,
+                        "chat_id": chat_id,
+                        "bin": command.bin,
+                        "args": command.args
+                    }))?
+                );
+                return Ok(());
+            }
+
             channel.send_text(&chat_id, &text).await?;
             println!(
                 "{}",
@@ -563,5 +582,29 @@ mod tests {
         assert_eq!(replayed.len(), 1);
         assert_eq!(replayed[0].message_id, "m-polled");
         assert_eq!(replayed[0].text.as_deref(), Some("@bot polled hello"));
+    }
+
+    #[tokio::test]
+    async fn wx_cli_send_dry_run_does_not_execute_command() {
+        let config = config_from(
+            r#"
+            [wx_cli]
+            bin = "/bin/false"
+            send_args = ["send", "--room", "{chat_id}", "--text={text}"]
+            "#,
+        );
+
+        must(
+            run_wx_cli_command(
+                WxCliCommand::Send {
+                    chat_id: "room@chatroom".to_string(),
+                    text: "diagnostic".to_string(),
+                    dry_run: true,
+                },
+                &config,
+            )
+            .await,
+            "send dry run",
+        );
     }
 }

@@ -19,6 +19,12 @@ pub struct WxCliChannel {
     seen: Mutex<HashSet<String>>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct RenderedWxCliSendCommand {
+    pub bin: String,
+    pub args: Vec<String>,
+}
+
 #[derive(Debug, Clone)]
 struct WxCliMessage {
     id: String,
@@ -76,6 +82,23 @@ impl WxCliChannel {
             .iter()
             .map(|arg| arg.replace("{chat_id}", chat_id).replace("{text}", text))
             .collect()
+    }
+
+    pub fn rendered_send_command(
+        &self,
+        chat_id: &str,
+        text: &str,
+    ) -> Result<RenderedWxCliSendCommand> {
+        if self.send_args.is_empty() {
+            return Err(QunMindError::Channel(
+                "未配置 wx_cli.send_args，无法通过 wx-cli 发送消息".to_string(),
+            ));
+        }
+
+        Ok(RenderedWxCliSendCommand {
+            bin: self.bin.clone(),
+            args: self.render_send_args(chat_id, text),
+        })
     }
 }
 
@@ -149,16 +172,13 @@ impl Channel for WxCliChannel {
     }
 
     async fn send_text(&self, chat_id: &str, text: &str) -> Result<()> {
-        if self.send_args.is_empty() {
-            return Err(QunMindError::Channel(
-                "未配置 wx_cli.send_args，无法通过 wx-cli 发送消息".to_string(),
-            ));
-        }
+        let command = self.rendered_send_command(chat_id, text)?;
+        debug!(bin = %command.bin, args = ?command.args, "调用 wx-cli 发送消息");
 
-        let args = self.render_send_args(chat_id, text);
-        debug!(bin = %self.bin, args = ?args, "调用 wx-cli 发送消息");
-
-        let output = Command::new(&self.bin).args(args).output().await?;
+        let output = Command::new(&command.bin)
+            .args(command.args)
+            .output()
+            .await?;
         if output.status.success() {
             Ok(())
         } else {
@@ -595,9 +615,34 @@ mod tests {
             seen: Mutex::new(HashSet::new()),
         };
 
+        let command = match channel.rendered_send_command("room-1", "hello") {
+            Ok(command) => command,
+            Err(err) => panic!("render send command: {err}"),
+        };
+
+        assert_eq!(command.bin, "wx-cli");
         assert_eq!(
-            channel.render_send_args("room-1", "hello"),
+            command.args,
             vec!["send", "--room", "room-1", "--text=hello"]
         );
+    }
+
+    #[test]
+    fn rendered_send_command_rejects_missing_send_args() {
+        let channel = WxCliChannel {
+            bin: "wx-cli".to_string(),
+            poll_args: Vec::new(),
+            send_args: Vec::new(),
+            poll_interval: tokio::time::Duration::from_secs(1),
+            group_chat_id: String::new(),
+            seen: Mutex::new(HashSet::new()),
+        };
+
+        let err = match channel.rendered_send_command("room-1", "hello") {
+            Ok(_) => panic!("missing send args should fail"),
+            Err(err) => err,
+        };
+
+        assert!(err.to_string().contains("send_args"));
     }
 }
