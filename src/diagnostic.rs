@@ -114,12 +114,8 @@ pub fn wx_cli_formal_test_plan(
         None => Vec::new(),
     };
     let selected_message_id = select_formal_test_message_id(message_id, &reply_candidates);
-    let configured_chat_id = config.wx_cli.group_chat_id.trim();
-    let chat_id = match chat_id.filter(|chat_id| !chat_id.trim().is_empty()) {
-        Some(chat_id) => chat_id,
-        None if !configured_chat_id.is_empty() => configured_chat_id,
-        None => "<test_chat_id>",
-    };
+    let selected_chat_id =
+        select_formal_test_chat_id(config, chat_id, messages, selected_message_id.value);
     let mut blockers = wx_cli_doctor_blockers(config);
     blockers.extend(wx_cli_test_plan_capture_blockers(
         messages,
@@ -137,7 +133,8 @@ pub fn wx_cli_formal_test_plan(
         "capture_file": capture_file,
         "message_id": selected_message_id.value,
         "message_id_source": selected_message_id.source,
-        "chat_id": chat_id,
+        "chat_id": selected_chat_id.value,
+        "chat_id_source": selected_chat_id.source,
         "text": text,
         "steps": [
             {
@@ -168,12 +165,12 @@ pub fn wx_cli_formal_test_plan(
             {
                 "name": "send_dry_run",
                 "safe_to_send": false,
-                "command": ["cargo", "run", "--", "wx-cli", "send", "--chat-id", chat_id, "--text", text, "--dry-run"]
+                "command": ["cargo", "run", "--", "wx-cli", "send", "--chat-id", selected_chat_id.value, "--text", text, "--dry-run"]
             },
             {
                 "name": "send_diagnostic_text",
                 "safe_to_send": true,
-                "command": ["cargo", "run", "--", "wx-cli", "send", "--chat-id", chat_id, "--text", text]
+                "command": ["cargo", "run", "--", "wx-cli", "send", "--chat-id", selected_chat_id.value, "--text", text]
             },
             {
                 "name": "handle_once_real_send",
@@ -418,6 +415,11 @@ struct FormalTestMessageId<'a> {
     source: &'static str,
 }
 
+struct FormalTestChatId<'a> {
+    value: &'a str,
+    source: &'static str,
+}
+
 fn select_formal_test_message_id<'a>(
     message_id: Option<&'a str>,
     reply_candidates: &'a [String],
@@ -438,6 +440,46 @@ fn select_formal_test_message_id<'a>(
             value: "<message_id_from_reply_candidate_message_ids>",
             source: "placeholder",
         },
+    }
+}
+
+fn select_formal_test_chat_id<'a>(
+    config: &'a Config,
+    chat_id: Option<&'a str>,
+    messages: Option<&'a [IncomingMessage]>,
+    selected_message_id: &str,
+) -> FormalTestChatId<'a> {
+    if let Some(chat_id) = chat_id.filter(|chat_id| !chat_id.trim().is_empty()) {
+        return FormalTestChatId {
+            value: chat_id,
+            source: "explicit",
+        };
+    }
+
+    let configured_chat_id = config.wx_cli.group_chat_id.trim();
+    if !configured_chat_id.is_empty() {
+        return FormalTestChatId {
+            value: configured_chat_id,
+            source: "config",
+        };
+    }
+
+    let selected_message = match messages {
+        Some(messages) => messages
+            .iter()
+            .find(|message| message.message_id == selected_message_id),
+        None => None,
+    };
+    if let Some(message) = selected_message {
+        return FormalTestChatId {
+            value: message.chat_id.as_str(),
+            source: "selected_message",
+        };
+    }
+
+    FormalTestChatId {
+        value: "<test_chat_id>",
+        source: "placeholder",
     }
 }
 
@@ -1050,7 +1092,9 @@ mod tests {
         assert_eq!(plan["blockers"], serde_json::json!([]));
         assert_eq!(plan["capture_file"], "wx-output.json");
         assert_eq!(plan["message_id"], "m-1");
+        assert_eq!(plan["message_id_source"], "explicit");
         assert_eq!(plan["chat_id"], "room@chatroom");
+        assert_eq!(plan["chat_id_source"], "explicit");
         assert_eq!(plan["steps"][0]["name"], "doctor_config");
         assert_eq!(plan["steps"][0]["safe_to_send"], false);
         assert_eq!(plan["steps"][6]["name"], "send_diagnostic_text");
@@ -1089,6 +1133,7 @@ mod tests {
             "<message_id_from_reply_candidate_message_ids>"
         );
         assert_eq!(plan["chat_id"], "configured@chatroom");
+        assert_eq!(plan["chat_id_source"], "config");
         assert_eq!(
             plan["steps"][3]["command"],
             serde_json::json!([
@@ -1195,11 +1240,17 @@ mod tests {
         assert_eq!(plan["ok"], true);
         assert_eq!(plan["message_id"], "m-reply");
         assert_eq!(plan["message_id_source"], "single_reply_candidate");
+        assert_eq!(plan["chat_id"], "room@chatroom");
+        assert_eq!(plan["chat_id_source"], "selected_message");
         assert_eq!(
             plan["capture"]["reply_candidate_message_ids"],
             serde_json::json!(["m-reply"])
         );
         assert_eq!(plan["steps"][3]["command"][8], serde_json::json!("m-reply"));
+        assert_eq!(
+            plan["steps"][5]["command"][6],
+            serde_json::json!("room@chatroom")
+        );
     }
 
     #[test]
