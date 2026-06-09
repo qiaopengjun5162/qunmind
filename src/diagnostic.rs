@@ -106,27 +106,37 @@ pub fn wx_cli_formal_test_plan(
     message_id: Option<&str>,
     chat_id: Option<&str>,
     text: &str,
+    messages: Option<&[IncomingMessage]>,
 ) -> serde_json::Value {
     let capture_file = capture_file.display().to_string();
-    let message_id = message_id.map_or(
-        "<message_id_from_reply_candidate_message_ids>",
-        std::convert::identity,
-    );
+    let reply_candidates = match messages {
+        Some(messages) => wx_cli_reply_candidate_message_ids(config, messages),
+        None => Vec::new(),
+    };
+    let selected_message_id = select_formal_test_message_id(message_id, &reply_candidates);
     let configured_chat_id = config.wx_cli.group_chat_id.trim();
     let chat_id = match chat_id.filter(|chat_id| !chat_id.trim().is_empty()) {
         Some(chat_id) => chat_id,
         None if !configured_chat_id.is_empty() => configured_chat_id,
         None => "<test_chat_id>",
     };
-    let blockers = wx_cli_doctor_blockers(config);
-    let warnings = wx_cli_doctor_warnings(config, None);
+    let mut blockers = wx_cli_doctor_blockers(config);
+    blockers.extend(wx_cli_test_plan_capture_blockers(
+        messages,
+        message_id,
+        &reply_candidates,
+    ));
+    let warnings = wx_cli_doctor_warnings(config, messages);
+    let capture = messages.map(|messages| wx_cli_capture_summary(config, messages, 10));
 
     serde_json::json!({
         "ok": blockers.is_empty(),
         "blockers": blockers,
         "warnings": warnings,
+        "capture": capture,
         "capture_file": capture_file,
-        "message_id": message_id,
+        "message_id": selected_message_id.value,
+        "message_id_source": selected_message_id.source,
         "chat_id": chat_id,
         "text": text,
         "steps": [
@@ -148,12 +158,12 @@ pub fn wx_cli_formal_test_plan(
             {
                 "name": "dry_run_selected_message",
                 "safe_to_send": false,
-                "command": ["cargo", "run", "--", "wx-cli", "dry-run", "--input", capture_file, "--message-id", message_id]
+                "command": ["cargo", "run", "--", "wx-cli", "dry-run", "--input", capture_file, "--message-id", selected_message_id.value]
             },
             {
                 "name": "handle_once_no_send",
                 "safe_to_send": false,
-                "command": ["cargo", "run", "--", "wx-cli", "handle-once", "--input", capture_file, "--message-id", message_id, "--limit", "1", "--no-send"]
+                "command": ["cargo", "run", "--", "wx-cli", "handle-once", "--input", capture_file, "--message-id", selected_message_id.value, "--limit", "1", "--no-send"]
             },
             {
                 "name": "send_dry_run",
@@ -168,7 +178,7 @@ pub fn wx_cli_formal_test_plan(
             {
                 "name": "handle_once_real_send",
                 "safe_to_send": true,
-                "command": ["cargo", "run", "--", "wx-cli", "handle-once", "--input", capture_file, "--message-id", message_id, "--limit", "1"]
+                "command": ["cargo", "run", "--", "wx-cli", "handle-once", "--input", capture_file, "--message-id", selected_message_id.value, "--limit", "1"]
             }
         ]
     })
@@ -401,6 +411,58 @@ fn has_duplicate_message_ids(messages: &[IncomingMessage]) -> bool {
     messages
         .iter()
         .any(|message| !seen.insert(message.message_id.as_str()))
+}
+
+struct FormalTestMessageId<'a> {
+    value: &'a str,
+    source: &'static str,
+}
+
+fn select_formal_test_message_id<'a>(
+    message_id: Option<&'a str>,
+    reply_candidates: &'a [String],
+) -> FormalTestMessageId<'a> {
+    if let Some(message_id) = message_id.filter(|message_id| !message_id.trim().is_empty()) {
+        return FormalTestMessageId {
+            value: message_id,
+            source: "explicit",
+        };
+    }
+
+    match reply_candidates {
+        [message_id] => FormalTestMessageId {
+            value: message_id.as_str(),
+            source: "single_reply_candidate",
+        },
+        _ => FormalTestMessageId {
+            value: "<message_id_from_reply_candidate_message_ids>",
+            source: "placeholder",
+        },
+    }
+}
+
+fn wx_cli_test_plan_capture_blockers(
+    messages: Option<&[IncomingMessage]>,
+    message_id: Option<&str>,
+    reply_candidates: &[String],
+) -> Vec<&'static str> {
+    let mut blockers = Vec::new();
+    let Some(messages) = messages else {
+        return blockers;
+    };
+
+    if let Some(message_id) = message_id.filter(|message_id| !message_id.trim().is_empty()) {
+        if !messages
+            .iter()
+            .any(|message| message.message_id == message_id)
+        {
+            blockers.push("selected_message_id_not_found_in_capture");
+        }
+    } else if reply_candidates.len() != 1 {
+        blockers.push("capture_requires_explicit_message_id");
+    }
+
+    blockers
 }
 
 fn wx_cli_reply_candidate_message_ids(
@@ -981,6 +1043,7 @@ mod tests {
             Some("m-1"),
             Some("room@chatroom"),
             "hello",
+            None,
         );
 
         assert_eq!(plan["ok"], true);
@@ -1012,7 +1075,14 @@ mod tests {
             "#,
         );
 
-        let plan = wx_cli_formal_test_plan(&config, Path::new("capture.json"), None, None, "hello");
+        let plan = wx_cli_formal_test_plan(
+            &config,
+            Path::new("capture.json"),
+            None,
+            None,
+            "hello",
+            None,
+        );
 
         assert_eq!(
             plan["message_id"],
@@ -1039,8 +1109,14 @@ mod tests {
     fn wx_cli_formal_test_plan_reports_config_blockers() {
         let config = config_from("");
 
-        let plan =
-            wx_cli_formal_test_plan(&config, Path::new("wx-output.json"), None, None, "hello");
+        let plan = wx_cli_formal_test_plan(
+            &config,
+            Path::new("wx-output.json"),
+            None,
+            None,
+            "hello",
+            None,
+        );
 
         assert_eq!(plan["ok"], false);
         assert!(array_contains(&plan["blockers"], "channel_kind_not_wx_cli"));
@@ -1064,8 +1140,14 @@ mod tests {
             "#,
         );
 
-        let plan =
-            wx_cli_formal_test_plan(&config, Path::new("wx-output.json"), None, None, "hello");
+        let plan = wx_cli_formal_test_plan(
+            &config,
+            Path::new("wx-output.json"),
+            None,
+            None,
+            "hello",
+            None,
+        );
 
         assert_eq!(plan["ok"], false);
         assert!(array_contains(
@@ -1075,6 +1157,119 @@ mod tests {
         assert!(array_contains(
             &plan["blockers"],
             "wx_cli_send_args_missing_text_placeholder"
+        ));
+    }
+
+    #[test]
+    fn wx_cli_formal_test_plan_auto_selects_single_capture_candidate() {
+        let config = config_from(
+            r#"
+            [channel]
+            kind = "wx_cli"
+
+            [ai]
+            api_key = "token"
+
+            [bot]
+            mention_names = ["@bot"]
+
+            [wx_cli]
+            bin = "wx"
+            poll_args = ["poll", "--json"]
+            send_args = ["send", "--chat", "{chat_id}", "--text", "{text}"]
+            "#,
+        );
+        let mut ignored = test_message("m-ignored");
+        ignored.text = Some("plain group chatter".to_string());
+        let messages = vec![test_message("m-reply"), ignored];
+
+        let plan = wx_cli_formal_test_plan(
+            &config,
+            Path::new("wx-output.json"),
+            None,
+            None,
+            "hello",
+            Some(&messages),
+        );
+
+        assert_eq!(plan["ok"], true);
+        assert_eq!(plan["message_id"], "m-reply");
+        assert_eq!(plan["message_id_source"], "single_reply_candidate");
+        assert_eq!(
+            plan["capture"]["reply_candidate_message_ids"],
+            serde_json::json!(["m-reply"])
+        );
+        assert_eq!(plan["steps"][3]["command"][8], serde_json::json!("m-reply"));
+    }
+
+    #[test]
+    fn wx_cli_formal_test_plan_requires_message_id_for_ambiguous_capture() {
+        let config = config_from(
+            r#"
+            [channel]
+            kind = "wx_cli"
+
+            [ai]
+            api_key = "token"
+
+            [wx_cli]
+            bin = "wx"
+            poll_args = ["poll", "--json"]
+            send_args = ["send", "--chat", "{chat_id}", "--text", "{text}"]
+            "#,
+        );
+        let messages = vec![test_message("m-1"), test_message("m-2")];
+
+        let plan = wx_cli_formal_test_plan(
+            &config,
+            Path::new("wx-output.json"),
+            None,
+            None,
+            "hello",
+            Some(&messages),
+        );
+
+        assert_eq!(plan["ok"], false);
+        assert_eq!(plan["message_id_source"], "placeholder");
+        assert!(array_contains(
+            &plan["blockers"],
+            "capture_requires_explicit_message_id"
+        ));
+    }
+
+    #[test]
+    fn wx_cli_formal_test_plan_rejects_missing_explicit_message_id() {
+        let config = config_from(
+            r#"
+            [channel]
+            kind = "wx_cli"
+
+            [ai]
+            api_key = "token"
+
+            [wx_cli]
+            bin = "wx"
+            poll_args = ["poll", "--json"]
+            send_args = ["send", "--chat", "{chat_id}", "--text", "{text}"]
+            "#,
+        );
+        let messages = vec![test_message("m-1")];
+
+        let plan = wx_cli_formal_test_plan(
+            &config,
+            Path::new("wx-output.json"),
+            Some("m-missing"),
+            None,
+            "hello",
+            Some(&messages),
+        );
+
+        assert_eq!(plan["ok"], false);
+        assert_eq!(plan["message_id"], "m-missing");
+        assert_eq!(plan["message_id_source"], "explicit");
+        assert!(array_contains(
+            &plan["blockers"],
+            "selected_message_id_not_found_in_capture"
         ));
     }
 

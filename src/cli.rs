@@ -45,6 +45,9 @@ pub enum WxCliCommand {
         /// Capture file used by doctor, dry-run, and handle-once replay steps.
         #[arg(long, default_value = "wx-output.json")]
         capture_file: PathBuf,
+        /// Parse a captured wx-cli JSON file and auto-select one safe reply candidate when possible.
+        #[arg(long)]
+        input: Option<PathBuf>,
         /// Message id selected from doctor capture.reply_candidate_message_ids.
         #[arg(long)]
         message_id: Option<String>,
@@ -184,17 +187,50 @@ mod tests {
                 command:
                     WxCliCommand::TestPlan {
                         capture_file,
+                        input,
                         message_id,
                         chat_id,
                         text,
                     },
             }) => {
                 assert_eq!(capture_file, PathBuf::from("wx-output.json"));
+                assert!(input.is_none());
                 assert_eq!(message_id.as_deref(), Some("m-1"));
                 assert_eq!(chat_id.as_deref(), Some("room@chatroom"));
                 assert_eq!(text, "hello");
             }
             _ => panic!("wx-cli test-plan command should parse"),
+        }
+    }
+
+    #[test]
+    fn parses_wx_cli_test_plan_input_file() {
+        let args = parse_args(&[
+            "qunmind",
+            "wx-cli",
+            "test-plan",
+            "--input",
+            "wx-output.json",
+        ]);
+
+        match args.command {
+            Some(CliCommand::WxCli {
+                command:
+                    WxCliCommand::TestPlan {
+                        capture_file,
+                        input: Some(input),
+                        message_id,
+                        chat_id,
+                        text,
+                    },
+            }) => {
+                assert_eq!(capture_file, PathBuf::from("wx-output.json"));
+                assert_eq!(input, PathBuf::from("wx-output.json"));
+                assert!(message_id.is_none());
+                assert!(chat_id.is_none());
+                assert_eq!(text, "QunMind diagnostic message");
+            }
+            _ => panic!("wx-cli test-plan input command should parse"),
         }
     }
 
