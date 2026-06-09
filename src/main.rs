@@ -2,6 +2,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 use anyhow::Context;
+use async_trait::async_trait;
 use clap::Parser;
 use qunmind::ai;
 use qunmind::ai::hermes::HermesClient;
@@ -29,8 +30,57 @@ use qunmind::source::hacker_news::HackerNewsSource;
 use qunmind::source::slerf_blog::SlerfBlogSource;
 use qunmind::storage::MessageStore;
 use qunmind::storage::postgres::PostgresMessageStore;
+use serde::Serialize;
+use tokio::sync::Mutex;
 use tracing::{error, info};
 use tracing_subscriber::EnvFilter;
+
+#[derive(Debug, Clone, Serialize)]
+struct SuppressedReply {
+    chat_id: String,
+    text: String,
+}
+
+struct SuppressedSendChannel {
+    name: &'static str,
+    replies: Mutex<Vec<SuppressedReply>>,
+}
+
+impl SuppressedSendChannel {
+    fn new(name: &'static str) -> Self {
+        Self {
+            name,
+            replies: Mutex::new(Vec::new()),
+        }
+    }
+
+    async fn replies(&self) -> Vec<SuppressedReply> {
+        self.replies.lock().await.clone()
+    }
+}
+
+#[async_trait]
+impl Channel for SuppressedSendChannel {
+    fn name(&self) -> &str {
+        self.name
+    }
+
+    async fn start(&self, _handler: Arc<dyn MessageHandler>) -> qunmind::error::Result<()> {
+        Ok(())
+    }
+
+    async fn send_text(&self, chat_id: &str, text: &str) -> qunmind::error::Result<()> {
+        self.replies.lock().await.push(SuppressedReply {
+            chat_id: chat_id.to_string(),
+            text: text.to_string(),
+        });
+        Ok(())
+    }
+
+    async fn shutdown(&self) -> qunmind::error::Result<()> {
+        Ok(())
+    }
+}
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -233,6 +283,7 @@ async fn run_wx_cli_command(command: WxCliCommand, config: &Config) -> anyhow::R
             input,
             message_id,
             limit,
+            no_send,
         } => {
             // handle-once exercises the real reply pipeline, so the default limit stays low to avoid chat spam.
             let wx_channel = Arc::new(WxCliChannel::new(&config.wx_cli));
@@ -246,16 +297,26 @@ async fn run_wx_cli_command(command: WxCliCommand, config: &Config) -> anyhow::R
             if messages.is_empty() {
                 println!(
                     "{}",
-                    serde_json::json!({
+                    serde_json::to_string_pretty(&serde_json::json!({
                         "ok": true,
                         "total_polled": total_polled,
-                        "processed": 0
-                    })
+                        "processed": 0,
+                        "no_send": no_send,
+                        "suppressed_replies": []
+                    }))?
                 );
                 return Ok(());
             }
 
-            let channel: Arc<dyn Channel> = wx_channel.clone();
+            let suppressed_channel = if no_send {
+                Some(Arc::new(SuppressedSendChannel::new("wx_cli")))
+            } else {
+                None
+            };
+            let channel: Arc<dyn Channel> = match suppressed_channel.as_ref() {
+                Some(channel) => channel.clone(),
+                None => wx_channel.clone(),
+            };
             let message_store = build_message_store(config).await?;
             let ai_client = build_ai_client(config)?;
             let handler = BotHandler::new(
@@ -269,13 +330,19 @@ async fn run_wx_cli_command(command: WxCliCommand, config: &Config) -> anyhow::R
             for message in messages {
                 handler.on_message(message).await?;
             }
+            let suppressed_replies = match suppressed_channel {
+                Some(channel) => channel.replies().await,
+                None => Vec::new(),
+            };
             println!(
                 "{}",
-                serde_json::json!({
+                serde_json::to_string_pretty(&serde_json::json!({
                     "ok": true,
                     "total_polled": total_polled,
-                    "processed": processed
-                })
+                    "processed": processed,
+                    "no_send": no_send,
+                    "suppressed_replies": suppressed_replies
+                }))?
             );
         }
         WxCliCommand::Send {
@@ -370,6 +437,22 @@ mod tests {
         };
 
         assert!(err.to_string().contains("ai.api_key"));
+    }
+
+    #[tokio::test]
+    async fn suppressed_send_channel_records_replies_without_external_send() {
+        let channel = SuppressedSendChannel::new("wx_cli");
+
+        must(
+            channel.send_text("room@chatroom", "diagnostic reply").await,
+            "suppress send",
+        );
+        let replies = channel.replies().await;
+
+        assert_eq!(channel.name(), "wx_cli");
+        assert_eq!(replies.len(), 1);
+        assert_eq!(replies[0].chat_id, "room@chatroom");
+        assert_eq!(replies[0].text, "diagnostic reply");
     }
 
     #[test]

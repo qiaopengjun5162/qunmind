@@ -55,12 +55,13 @@ cargo run -- wx-cli dry-run --input wx-output.json --limit 10
 cargo run -- wx-cli dry-run --input wx-output.json --message-id "m-123"
 cargo run -- wx-cli handle-once --limit 1
 cargo run -- wx-cli handle-once --input wx-output.json --limit 1
+cargo run -- wx-cli handle-once --input wx-output.json --message-id "m-123" --limit 1 --no-send
 cargo run -- wx-cli handle-once --input wx-output.json --message-id "m-123" --limit 1
 cargo run -- wx-cli send --chat-id "room@chatroom" --text "QunMind 诊断消息" --dry-run
 cargo run -- wx-cli send --chat-id "room@chatroom" --text "QunMind 诊断消息"
 ```
 
-`doctor`、`capture`、`poll`、`dry-run` 和 `send --dry-run` 只读取配置，不会初始化 PostgreSQL、AI 客户端或机器人主循环。`doctor` 用于真实群测前检查 wx-cli 就绪度，包括发送参数占位符、AI 配置、@ 触发安全性，以及可选捕获消息里的群聊和 message_id 信号。`capture` 会执行一次 `wx_cli.poll_args`，把归一化后的可复放消息写入 JSON 文件。`doctor`、`poll`、`dry-run` 或 `handle-once` 加 `--input <json-file>` 时，会解析已捕获的 wx-cli JSON 输出文件，不会再次调用 wx-cli。`dry-run` 会按 `bot.mention_names` 输出哪些消息会触发回复，但不会保存、调用 AI 或发送。`send --dry-run` 会渲染最终 `wx_cli.send_args` 命令但不向微信发送，第一次真实诊断发送前先跑它。`handle-once` 会写入 PostgreSQL，执行群聊 @ 过滤，在命中时调用已配置的 AI，并通过 `wx_cli.send_args` 回复。捕获文件里有多条消息时，可以用 `--message-id` 精确预检或重放一条。第一次真实群测建议保持 `--limit 1`，避免误刷屏。
+`doctor`、`capture`、`poll`、`dry-run` 和 `send --dry-run` 只读取配置，不会初始化 PostgreSQL、AI 客户端或机器人主循环。`doctor` 用于真实群测前检查 wx-cli 就绪度，包括发送参数占位符、AI 配置、@ 触发安全性，以及可选捕获消息里的群聊和 message_id 信号。`capture` 会执行一次 `wx_cli.poll_args`，把归一化后的可复放消息写入 JSON 文件。`doctor`、`poll`、`dry-run` 或 `handle-once` 加 `--input <json-file>` 时，会解析已捕获的 wx-cli JSON 输出文件，不会再次调用 wx-cli。`dry-run` 会按 `bot.mention_names` 输出哪些消息会触发回复，但不会保存、调用 AI 或发送。`send --dry-run` 会渲染最终 `wx_cli.send_args` 命令但不向微信发送，第一次真实诊断发送前先跑它。`handle-once --no-send` 仍会写入 PostgreSQL 并调用已配置的 AI，但会把回复捕获到 JSON 输出里，不通过 wx-cli 发到微信。普通 `handle-once` 会写入 PostgreSQL，执行群聊 @ 过滤，在命中时调用已配置的 AI，并通过 `wx_cli.send_args` 回复。捕获文件里有多条消息时，可以用 `--message-id` 精确预检或重放一条。第一次真实群测建议保持 `--limit 1`，避免误刷屏。
 
 ## 公共信息日报
 
@@ -111,6 +112,12 @@ just test
 ```
 
 项目测试使用 `cargo nextest`，不要用 `cargo test` 替代。
+
+## 贡献方式
+
+QunMind 默认采用 PR-first 工作流。每个改动先创建 `codex/<short-topic>`
+分支，保持 PR 聚焦，运行 `just clippy` 和 `just test`，push 分支后再向
+`master` 提 pull request。完整流程和检查清单见 [CONTRIBUTING.md](CONTRIBUTING.md)。
 
 PostgreSQL 集成测试默认被 ignore，因为它需要一个可丢弃的测试数据库。需要真实验证 `PostgresMessageStore` 时显式运行：
 

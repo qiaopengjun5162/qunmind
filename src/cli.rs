@@ -69,6 +69,9 @@ pub enum WxCliCommand {
         /// Maximum number of messages to process; defaults low to avoid noisy real chats.
         #[arg(long, default_value_t = 1)]
         limit: usize,
+        /// Run the real persistence and AI pipeline but suppress wx-cli replies.
+        #[arg(long)]
+        no_send: bool,
     },
     /// Send one diagnostic text message through wx_cli.send_args.
     Send {
@@ -234,8 +237,12 @@ mod tests {
                         input: None,
                         message_id: None,
                         limit,
+                        no_send,
                     },
-            }) => assert_eq!(limit, 3),
+            }) => {
+                assert_eq!(limit, 3);
+                assert!(!no_send);
+            }
             _ => panic!("wx-cli handle-once command should parse"),
         }
     }
@@ -261,11 +268,45 @@ mod tests {
                         input: Some(input),
                         message_id: Some(message_id),
                         limit,
+                        no_send,
                     },
             }) => {
                 assert_eq!(input, PathBuf::from("wx-output.json"));
                 assert_eq!(message_id, "m-2");
                 assert_eq!(limit, 2);
+                assert!(!no_send);
+            }
+            _ => panic!("wx-cli handle-once command should parse"),
+        }
+    }
+
+    #[test]
+    fn parses_wx_cli_handle_once_no_send_option() {
+        let args = parse_args(&[
+            "qunmind",
+            "wx-cli",
+            "handle-once",
+            "--input",
+            "wx-output.json",
+            "--message-id",
+            "m-2",
+            "--no-send",
+        ]);
+
+        match args.command {
+            Some(CliCommand::WxCli {
+                command:
+                    WxCliCommand::HandleOnce {
+                        input: Some(input),
+                        message_id: Some(message_id),
+                        limit,
+                        no_send,
+                    },
+            }) => {
+                assert_eq!(input, PathBuf::from("wx-output.json"));
+                assert_eq!(message_id, "m-2");
+                assert_eq!(limit, 1);
+                assert!(no_send);
             }
             _ => panic!("wx-cli handle-once command should parse"),
         }

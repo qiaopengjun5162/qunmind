@@ -4,7 +4,7 @@
 
 ### Status
 
-- MVP completion estimate: about 70%. Rust backend, WeCom/wx-cli channels, AI adapters, PostgreSQL persistence, diagnostics, wx-cli readiness doctor, replayable wx-cli capture files, wx-cli send dry-run guardrails, daily reports, public-source fallback, basic conversation context, per-group runtime/persona overrides, per-group daily report targets, captured wx-cli replay safety, ignored PostgreSQL integration-test coverage, and structured research/learning catalogs are implemented. AI x Web3 School Prompt/Handbook references are cataloged for future agent design. Real local WeChat validation, actually running the PostgreSQL integration test against a disposable database, durable memory/permissions, and production hardening remain the main gaps.
+- MVP completion estimate: about 71%. Rust backend, WeCom/wx-cli channels, AI adapters, PostgreSQL persistence, diagnostics, wx-cli readiness doctor, replayable wx-cli capture files, wx-cli send dry-run guardrails, wx-cli handle-once no-send replay, PR-first contribution workflow, daily reports, public-source fallback, basic conversation context, per-group runtime/persona overrides, per-group daily report targets, captured wx-cli replay safety, ignored PostgreSQL integration-test coverage, and structured research/learning catalogs are implemented. AI x Web3 School Prompt/Handbook references are cataloged for future agent design. Real local WeChat validation, actually running the PostgreSQL integration test against a disposable database, durable memory/permissions, and production hardening remain the main gaps.
 
 ### Done
 
@@ -38,6 +38,8 @@
 - Added `wx-cli doctor` readiness reports with blockers, warnings, captured-message summaries, reply-trigger previews, and next-step guidance before touching a real WeChat group.
 - Added `wx-cli capture --output <json-file>` to save one wx-cli poll as normalized replayable JSON for `doctor --input`, `dry-run --input`, and `handle-once --input`.
 - Added `wx-cli send --dry-run` to render the final send command without executing wx-cli before the first real diagnostic group message.
+- Added `wx-cli handle-once --no-send` to exercise PostgreSQL persistence, mention filtering, and AI replies while suppressing real wx-cli sends.
+- Added a PR-first contribution workflow, PR template, and `master` branch CI trigger so Codex changes can be pushed as branches and opened as self PRs.
 - Added optional Hacker News, CoinMarketCap, CoinGecko, DeFi Llama, Dune, GitHub Trending, and Slerf Blog fallback material for daily reports when the report group has no messages.
 - Added Rust-side research tool catalog for market data, onchain analytics, code security, community, funding-flow, and research-opinion sources.
 - Added Rust-side AI / Agent learning resource catalog for LLM foundations, API calling, coding agents, agent frameworks, and Hermes execution-layer references.
@@ -54,10 +56,11 @@
 - `taplo fmt --check --option reorder_keys=true Cargo.toml config.example.toml`
 - Current `taplo fmt --check --option reorder_keys=true Cargo.toml config.example.toml` is blocked by a local `system-configuration` panic before reading changed files; this refactor did not change TOML.
 - `cargo clippy --all-targets --all-features --tests --benches -- -D warnings`
-- `cargo nextest run --all-features`：115 tests passing, 1 ignored PostgreSQL integration test compiled and skipped by default.
-- `cargo llvm-cov nextest --all-features --summary-only`：85.79% line coverage, 115 tests passing.
+- `cargo nextest run --all-features`：117 tests passing, 1 ignored PostgreSQL integration test compiled and skipped by default.
+- `cargo llvm-cov nextest --all-features --summary-only`：85.58% line coverage, 117 tests passing.
 - `cargo run -- --config config.example.toml wx-cli doctor`：passed and reported example-config blockers/warnings without touching PG, AI, or WeChat.
 - `cargo run -- --config config.example.toml wx-cli send --chat-id room@chatroom --text "QunMind diagnostic message" --dry-run`：passed and printed the rendered wx-cli send command without touching PG, AI, or WeChat.
+- `cargo run -- --config config.example.toml wx-cli handle-once --input /dev/null --limit 1 --no-send`：passed and returned zero processed messages with `suppressed_replies = []`, without touching PG, AI, or WeChat.
 - `QUNMIND_TEST_DATABASE_URL` is currently unset in this shell, so the ignored PostgreSQL integration test was not executed against a live database.
 - `cargo deny check`：passed with duplicate dependency warnings from the current WeCom SDK dependency stack.
 - `typos`
