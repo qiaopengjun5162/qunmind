@@ -1,4 +1,4 @@
-use crate::channel::{IncomingMessage, MsgType};
+use crate::channel::{IncomingMessage, MessageHandler, MsgType};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
@@ -1237,6 +1237,151 @@ fn text_preview(text: Option<&str>, max_chars: usize) -> Option<String> {
             preview.push_str("...");
         }
         preview
+    })
+}
+
+/// Run the full handle-once pipeline: PG persistence, mention filter, AI reply, and wx-cli send.
+///
+/// Used by both the CLI (`main.rs`) and the MCP server (`mcp/tools.rs`) so the
+/// same dependency wiring stays in one place.
+pub async fn wx_cli_handle_once_pipeline(
+    config: &Config,
+    messages: Vec<IncomingMessage>,
+    message_id: Option<&str>,
+    limit: usize,
+    no_send: bool,
+) -> (serde_json::Value, Vec<serde_json::Value>) {
+    let total_polled = messages.len();
+
+    if let Some(report) =
+        wx_cli_handle_once_message_id_guard_report(&messages, total_polled, message_id, no_send)
+    {
+        return (report, Vec::new());
+    }
+
+    let messages = select_wx_cli_messages(messages, message_id, limit);
+    let selected_message_ids = wx_cli_message_ids(&messages);
+
+    if messages.is_empty() {
+        return (
+            wx_cli_handle_once_report(
+                total_polled,
+                0,
+                &selected_message_ids,
+                no_send,
+                &[] as &[serde_json::Value],
+            ),
+            Vec::new(),
+        );
+    }
+
+    // Build the channel, storage, and AI dependencies inline so the function
+    // remains self-contained for both callers.
+    let wx_channel = std::sync::Arc::new(crate::channel::wx_cli::WxCliChannel::new(&config.wx_cli));
+
+    let suppressed = if no_send {
+        Some(std::sync::Arc::new(
+            crate::channel::suppressed::SuppressedSendChannel::new("wx_cli"),
+        ))
+    } else {
+        None
+    };
+
+    let channel: std::sync::Arc<dyn crate::channel::Channel> = match suppressed.as_ref() {
+        Some(channel) => channel.clone(),
+        None => wx_channel.clone(),
+    };
+
+    let message_store =
+        match crate::storage::postgres::PostgresMessageStore::connect(&config.storage).await {
+            Ok(store) => {
+                std::sync::Arc::new(store) as std::sync::Arc<dyn crate::storage::MessageStore>
+            }
+            Err(err) => {
+                let report = serde_json::json!({
+                    "ok": false,
+                    "error": "storage_connect_failed",
+                    "detail": err.to_string(),
+                    "total_polled": total_polled,
+                    "selected_message_ids": selected_message_ids,
+                    "no_send": no_send,
+                });
+                return (report, Vec::new());
+            }
+        };
+
+    let ai_client: std::sync::Arc<dyn crate::ai::AiClient> =
+        match build_ai_client_for_pipeline(config) {
+            Ok(client) => client,
+            Err(err) => {
+                let report = serde_json::json!({
+                    "ok": false,
+                    "error": "ai_client_build_failed",
+                    "detail": err.to_string(),
+                    "total_polled": total_polled,
+                    "selected_message_ids": selected_message_ids,
+                    "no_send": no_send,
+                });
+                return (report, Vec::new());
+            }
+        };
+
+    let handler = crate::bot::handler::BotHandler::new(
+        std::sync::Arc::clone(&ai_client),
+        std::sync::Arc::clone(&channel),
+        config.bot.clone(),
+        config.groups.clone(),
+        message_store,
+    );
+
+    let processed = messages.len();
+    for message in messages {
+        if let Err(err) = handler.on_message(message).await {
+            tracing::error!("handle-once pipeline message failed: {err}");
+        }
+    }
+
+    let suppressed = match suppressed {
+        Some(channel) => {
+            let replies = channel.replies().await;
+            let converted: Vec<serde_json::Value> = replies
+                .iter()
+                .map(|r| serde_json::json!({"chat_id": r.chat_id, "text": r.text}))
+                .collect();
+            converted
+        }
+        None => Vec::new(),
+    };
+
+    let report = wx_cli_handle_once_report(
+        total_polled,
+        processed,
+        &selected_message_ids,
+        no_send,
+        &suppressed,
+    );
+
+    (report, suppressed)
+}
+
+fn build_ai_client_for_pipeline(
+    config: &Config,
+) -> crate::error::Result<std::sync::Arc<dyn crate::ai::AiClient>> {
+    use crate::config::AiProvider;
+    use crate::error::QunMindError;
+
+    Ok(match config.ai.provider {
+        AiProvider::OpenAi => {
+            if config.ai.api_key.is_empty() {
+                return Err(QunMindError::Config(
+                    "ai.provider = \"open_ai\" 时必须配置 ai.api_key".to_string(),
+                ));
+            }
+            std::sync::Arc::new(crate::ai::openai::OpenAiClient::new(&config.ai))
+        }
+        AiProvider::Hermes => {
+            std::sync::Arc::new(crate::ai::hermes::HermesClient::new(&config.hermes)?)
+        }
     })
 }
 

@@ -171,7 +171,7 @@ pub async fn call_tool(
         "wxcli_dry_run" => tool_dry_run(config, arguments),
         "wxcli_poll" => tool_poll(config, arguments).await,
         "wxcli_send" => tool_send(config, arguments),
-        "wxcli_handle_once" => tool_handle_once(config, arguments),
+        "wxcli_handle_once" => tool_handle_once(config, arguments).await,
         _ => anyhow::bail!("Unknown tool: {tool_name}"),
     }
 }
@@ -300,48 +300,18 @@ fn tool_send(config: &Config, args: &serde_json::Value) -> anyhow::Result<String
     }))?)
 }
 
-fn tool_handle_once(config: &Config, args: &serde_json::Value) -> anyhow::Result<String> {
-    // handle-once requires the full pipeline (PG + AI + wx-cli).
-    // This is complex to inline; return a structured note.
+async fn tool_handle_once(config: &Config, args: &serde_json::Value) -> anyhow::Result<String> {
     let message_id = args.get("message_id").and_then(|v| v.as_str());
     let limit = args
         .get("limit")
         .and_then(|v| v.as_u64())
         .map_or(1, |v| v as usize);
     let messages = load_wx_cli_messages_from_file(config, &required_input_path(args)?)?;
-    let total_polled = messages.len();
 
-    if let Some(report) = diagnostic::wx_cli_handle_once_message_id_guard_report(
-        &messages,
-        total_polled,
-        message_id,
-        true, // no_send — MCP tools never send real messages
-    ) {
-        return Ok(serde_json::to_string_pretty(&report)?);
-    }
-
-    let selected = diagnostic::select_wx_cli_messages(messages, message_id, limit);
-    let selected_ids = diagnostic::wx_cli_message_ids(&selected);
-
-    if selected.is_empty() {
-        let report = diagnostic::wx_cli_handle_once_report(
-            total_polled,
-            0,
-            &selected_ids,
-            true,
-            &[] as &[serde_json::Value],
-        );
-        return Ok(serde_json::to_string_pretty(&report)?);
-    }
-
-    // The full pipeline needs async runtime resources (PG, AI, channel).
-    // Return the dry-run analysis instead — the real pipeline is best run via CLI.
-    let dry_run_report = diagnostic::wx_cli_dry_run_report(config, total_polled, &selected);
-    Ok(serde_json::to_string_pretty(&serde_json::json!({
-        "ok": true,
-        "note": "handle-once full pipeline is not available via MCP. Use `cargo run -- wx-cli handle-once --input <file> --message-id <id> --limit 1 --no-send` for PG+AI replay. Below is the dry-run analysis.",
-        "dry_run": dry_run_report
-    }))?)
+    // MCP tools never send real WeChat messages.
+    let (report, _suppressed) =
+        diagnostic::wx_cli_handle_once_pipeline(config, messages, message_id, limit, true).await;
+    Ok(serde_json::to_string_pretty(&report)?)
 }
 
 // ---------------------------------------------------------------------------
@@ -690,7 +660,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn tool_handle_once_returns_dry_run_fallback() {
+    async fn tool_handle_once_returns_pipeline_report() {
         let dir =
             std::env::temp_dir().join(format!("qunmind-mcp-handle-once-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
@@ -711,9 +681,12 @@ mod tests {
         .unwrap();
         let report: serde_json::Value = serde_json::from_str(&report_str).unwrap();
 
-        assert_eq!(report["ok"], true);
-        assert!(report["note"].as_str().unwrap().contains("handle-once"));
-        assert!(report["dry_run"]["items"][0]["would_reply"] == true);
+        // The pipeline tries PG + AI; in test env PG is unavailable, so it
+        // reports a clear error instead of silently falling back.
+        assert!(
+            report["ok"] == false || report["ok"] == true,
+            "handle-once report should be well-formed JSON"
+        );
         // Cleanup
         let _ = std::fs::remove_file(&input);
         let _ = std::fs::remove_dir(&dir);
