@@ -21,6 +21,9 @@ pub enum CliCommand {
         #[command(subcommand)]
         command: WxCliCommand,
     },
+    /// Start an MCP (Model Context Protocol) server on stdio so AI agents can drive diagnostics.
+    #[command(name = "mcp")]
+    Mcp,
 }
 
 #[derive(Debug, Subcommand)]

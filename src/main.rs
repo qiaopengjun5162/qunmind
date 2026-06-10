@@ -32,6 +32,7 @@ use qunmind::source::defillama::DeFiLlamaProtocolsSource;
 use qunmind::source::dune::DuneQuerySource;
 use qunmind::source::github_trending::GitHubTrendingSource;
 use qunmind::source::hacker_news::HackerNewsSource;
+use qunmind::source::hn_daily::HnDailySource;
 use qunmind::source::slerf_blog::SlerfBlogSource;
 use qunmind::storage::MessageStore;
 use qunmind::storage::postgres::PostgresMessageStore;
@@ -157,6 +158,9 @@ fn build_public_news_source(config: &Config) -> anyhow::Result<Option<Arc<dyn Pu
     if public_sources.slerf_blog_enabled {
         sources.push(Arc::new(SlerfBlogSource::new(public_sources)?));
     }
+    if public_sources.hn_daily_enabled {
+        sources.push(Arc::new(HnDailySource::new(public_sources)?));
+    }
 
     if sources.is_empty() {
         return Ok(None);
@@ -176,6 +180,10 @@ async fn run_diagnostic_command(
 ) -> anyhow::Result<()> {
     match command {
         CliCommand::WxCli { command } => run_wx_cli_command(command, config, config_path).await,
+        CliCommand::Mcp => {
+            qunmind::mcp::run(config_path.to_path_buf()).await?;
+            Ok(())
+        }
     }
 }
 
@@ -204,7 +212,12 @@ async fn run_wx_cli_command(
             write_wx_cli_capture(&output, &messages)?;
             println!(
                 "{}",
-                serde_json::to_string_pretty(&wx_cli_capture_report(config, &output, &messages))?
+                serde_json::to_string_pretty(&wx_cli_capture_report(
+                    config,
+                    config_path,
+                    &output,
+                    &messages
+                ))?
             );
         }
         WxCliCommand::TestPlan {

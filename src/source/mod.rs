@@ -4,6 +4,7 @@ pub mod defillama;
 pub mod dune;
 pub mod github_trending;
 pub mod hacker_news;
+pub mod hn_daily;
 pub mod slerf_blog;
 
 use async_trait::async_trait;

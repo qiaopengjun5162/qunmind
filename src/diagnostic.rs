@@ -180,6 +180,7 @@ pub fn wx_cli_handle_once_report<T: Serialize>(
 
 pub fn wx_cli_capture_report(
     config: &Config,
+    config_path: &Path,
     output: &Path,
     messages: &[IncomingMessage],
 ) -> serde_json::Value {
@@ -188,6 +189,7 @@ pub fn wx_cli_capture_report(
         "output": output.display().to_string(),
         "captured": messages.len(),
         "formal_test_readiness": wx_cli_formal_test_readiness(config, messages),
+        "recommended_commands": wx_cli_capture_recommended_commands(config, config_path, output, messages),
         "next_steps": wx_cli_capture_next_steps(config, messages)
     })
 }
@@ -674,6 +676,45 @@ fn wx_cli_capture_next_steps(config: &Config, messages: &[IncomingMessage]) -> V
     }
 
     next_steps
+}
+
+fn wx_cli_capture_recommended_commands(
+    config: &Config,
+    config_path: &Path,
+    output: &Path,
+    messages: &[IncomingMessage],
+) -> Vec<serde_json::Value> {
+    let config_path = config_path.display().to_string();
+    let output = output.display().to_string();
+    let mut commands = vec![
+        serde_json::json!({
+            "name": "doctor_capture",
+            "safe_to_send": false,
+            "command": wx_cli_cargo_command(&config_path, &["doctor", "--input", &output])
+        }),
+        serde_json::json!({
+            "name": "test_plan_capture",
+            "safe_to_send": false,
+            "command": wx_cli_cargo_command(&config_path, &["test-plan", "--input", &output])
+        }),
+    ];
+
+    if let [message_id] = wx_cli_group_reply_candidate_message_ids(config, messages).as_slice() {
+        commands.extend([
+            serde_json::json!({
+                "name": "dry_run_recommended_message",
+                "safe_to_send": false,
+                "command": wx_cli_cargo_command(&config_path, &["dry-run", "--input", &output, "--message-id", message_id])
+            }),
+            serde_json::json!({
+                "name": "handle_once_no_send_recommended_message",
+                "safe_to_send": false,
+                "command": wx_cli_cargo_command(&config_path, &["handle-once", "--input", &output, "--message-id", message_id, "--limit", "1", "--no-send"])
+            }),
+        ]);
+    }
+
+    commands
 }
 
 fn wx_cli_formal_test_readiness(
@@ -1682,7 +1723,12 @@ mod tests {
         );
         let messages = vec![test_message("m-1")];
 
-        let report = wx_cli_capture_report(&config, Path::new("wx-output.json"), &messages);
+        let report = wx_cli_capture_report(
+            &config,
+            Path::new("local.toml"),
+            Path::new("wx-output.json"),
+            &messages,
+        );
 
         assert_eq!(report["ok"], true);
         assert_eq!(report["output"], "wx-output.json");
@@ -1709,6 +1755,31 @@ mod tests {
                 "run_wx_cli_handle_once_send_with_recommended_message_id_and_limit_1"
             ])
         );
+        assert_eq!(
+            report["recommended_commands"],
+            serde_json::json!([
+                {
+                    "name": "doctor_capture",
+                    "safe_to_send": false,
+                    "command": ["cargo", "run", "--", "--config", "local.toml", "wx-cli", "doctor", "--input", "wx-output.json"]
+                },
+                {
+                    "name": "test_plan_capture",
+                    "safe_to_send": false,
+                    "command": ["cargo", "run", "--", "--config", "local.toml", "wx-cli", "test-plan", "--input", "wx-output.json"]
+                },
+                {
+                    "name": "dry_run_recommended_message",
+                    "safe_to_send": false,
+                    "command": ["cargo", "run", "--", "--config", "local.toml", "wx-cli", "dry-run", "--input", "wx-output.json", "--message-id", "m-1"]
+                },
+                {
+                    "name": "handle_once_no_send_recommended_message",
+                    "safe_to_send": false,
+                    "command": ["cargo", "run", "--", "--config", "local.toml", "wx-cli", "handle-once", "--input", "wx-output.json", "--message-id", "m-1", "--limit", "1", "--no-send"]
+                }
+            ])
+        );
     }
 
     #[test]
@@ -1721,7 +1792,12 @@ mod tests {
         );
         let messages = vec![test_message("m-1"), test_message("m-2")];
 
-        let report = wx_cli_capture_report(&config, Path::new("wx-output.json"), &messages);
+        let report = wx_cli_capture_report(
+            &config,
+            Path::new("local.toml"),
+            Path::new("wx-output.json"),
+            &messages,
+        );
 
         assert_eq!(
             report["formal_test_readiness"],
@@ -1740,6 +1816,10 @@ mod tests {
                 "run_wx_cli_test_plan_with_input_file",
                 "select_group_reply_message_id_before_replay"
             ])
+        );
+        assert_eq!(
+            report["recommended_commands"].as_array().map(Vec::len),
+            Some(2)
         );
     }
 
@@ -1760,7 +1840,12 @@ mod tests {
             msg_type: MsgType::Text,
         }];
 
-        let report = wx_cli_capture_report(&config, Path::new("wx-output.json"), &messages);
+        let report = wx_cli_capture_report(
+            &config,
+            Path::new("local.toml"),
+            Path::new("wx-output.json"),
+            &messages,
+        );
 
         assert_eq!(
             report["formal_test_readiness"],

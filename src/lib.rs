@@ -6,6 +6,7 @@ pub mod config;
 pub mod diagnostic;
 pub mod error;
 pub mod intelligence;
+pub mod mcp;
 pub mod research;
 pub mod scheduler;
 pub mod source;
