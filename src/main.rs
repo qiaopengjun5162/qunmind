@@ -18,8 +18,8 @@ use qunmind::cli::{Args, CliCommand, WxCliCommand};
 use qunmind::config::{AiProvider, ChannelKind, Config};
 use qunmind::diagnostic::{
     select_wx_cli_messages, wx_cli_doctor_report, wx_cli_dry_run_message_id_guard_report,
-    wx_cli_dry_run_report, wx_cli_formal_test_plan, wx_cli_handle_once_message_id_guard_report,
-    wx_cli_handle_once_report, wx_cli_message_ids,
+    wx_cli_dry_run_report, wx_cli_formal_test_plan, wx_cli_formal_test_plan_shell_script,
+    wx_cli_handle_once_message_id_guard_report, wx_cli_handle_once_report, wx_cli_message_ids,
 };
 use qunmind::error::QunMindError;
 use qunmind::scheduler::daily_report::DailyReportScheduler;
@@ -223,6 +223,7 @@ async fn run_wx_cli_command(
             message_id,
             chat_id,
             text,
+            shell,
         } => {
             let messages = match input.as_ref() {
                 Some(input) => Some(load_wx_cli_messages(config, Some(input)).await?),
@@ -232,18 +233,20 @@ async fn run_wx_cli_command(
                 Some(input) => input,
                 None => &capture_file,
             };
-            println!(
-                "{}",
-                serde_json::to_string_pretty(&wx_cli_formal_test_plan(
-                    config,
-                    config_path,
-                    capture_file,
-                    message_id.as_deref(),
-                    chat_id.as_deref(),
-                    &text,
-                    messages.as_deref(),
-                ))?
+            let plan = wx_cli_formal_test_plan(
+                config,
+                config_path,
+                capture_file,
+                message_id.as_deref(),
+                chat_id.as_deref(),
+                &text,
+                messages.as_deref(),
             );
+            if shell {
+                println!("{}", wx_cli_formal_test_plan_shell_script(&plan));
+            } else {
+                println!("{}", serde_json::to_string_pretty(&plan)?);
+            }
         }
         WxCliCommand::Poll { input } => {
             let messages = load_wx_cli_messages(config, input.as_ref()).await?;
@@ -738,6 +741,7 @@ mod tests {
                     message_id: Some("m-1".to_string()),
                     chat_id: Some("room@chatroom".to_string()),
                     text: "diagnostic".to_string(),
+                    shell: false,
                 },
                 &config,
                 test_config_path(),
@@ -795,6 +799,7 @@ mod tests {
                     message_id: None,
                     chat_id: Some("room@chatroom".to_string()),
                     text: "diagnostic".to_string(),
+                    shell: false,
                 },
                 &config,
                 test_config_path(),

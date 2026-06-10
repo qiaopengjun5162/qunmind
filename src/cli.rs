@@ -57,6 +57,9 @@ pub enum WxCliCommand {
         /// Diagnostic text sent by wx-cli send dry-run and send steps.
         #[arg(long, default_value = "QunMind diagnostic message")]
         text: String,
+        /// Print a shell script instead of JSON. Real-send steps stay commented.
+        #[arg(long)]
+        shell: bool,
     },
     /// Run wx_cli.poll_args once and print normalized messages.
     Poll {
@@ -191,6 +194,7 @@ mod tests {
                         message_id,
                         chat_id,
                         text,
+                        shell,
                     },
             }) => {
                 assert_eq!(capture_file, PathBuf::from("wx-output.json"));
@@ -198,6 +202,7 @@ mod tests {
                 assert_eq!(message_id.as_deref(), Some("m-1"));
                 assert_eq!(chat_id.as_deref(), Some("room@chatroom"));
                 assert_eq!(text, "hello");
+                assert!(!shell);
             }
             _ => panic!("wx-cli test-plan command should parse"),
         }
@@ -222,6 +227,7 @@ mod tests {
                         message_id,
                         chat_id,
                         text,
+                        shell,
                     },
             }) => {
                 assert_eq!(capture_file, PathBuf::from("wx-output.json"));
@@ -229,8 +235,21 @@ mod tests {
                 assert!(message_id.is_none());
                 assert!(chat_id.is_none());
                 assert_eq!(text, "QunMind diagnostic message");
+                assert!(!shell);
             }
             _ => panic!("wx-cli test-plan input command should parse"),
+        }
+    }
+
+    #[test]
+    fn parses_wx_cli_test_plan_shell_option() {
+        let args = parse_args(&["qunmind", "wx-cli", "test-plan", "--shell"]);
+
+        match args.command {
+            Some(CliCommand::WxCli {
+                command: WxCliCommand::TestPlan { shell, .. },
+            }) => assert!(shell),
+            _ => panic!("wx-cli test-plan shell option should parse"),
         }
     }
 
