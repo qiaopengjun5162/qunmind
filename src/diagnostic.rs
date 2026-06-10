@@ -628,6 +628,7 @@ fn wx_cli_capture_summary(
         "text_messages": messages.iter().filter(|message| message.msg_type == MsgType::Text).count(),
         "reply_candidate_message_ids": wx_cli_reply_candidate_message_ids(config, messages),
         "group_reply_candidate_message_ids": wx_cli_group_reply_candidate_message_ids(config, messages),
+        "formal_test_readiness": wx_cli_formal_test_readiness(config, messages),
         "unique_chats": chat_counts.len(),
         "chat_counts": chat_counts,
         "group_overrides": group_overrides,
@@ -637,6 +638,32 @@ fn wx_cli_capture_summary(
         "previewed": preview.len(),
         "would_reply_in_preview": would_reply_count,
         "items": preview
+    })
+}
+
+fn wx_cli_formal_test_readiness(
+    config: &Config,
+    messages: &[IncomingMessage],
+) -> serde_json::Value {
+    let group_reply_candidates = wx_cli_group_reply_candidate_message_ids(config, messages);
+    let (ready_for_group_replay, recommended_message_id, message_id_required, reason) =
+        match group_reply_candidates.as_slice() {
+            [message_id] => (
+                true,
+                Some(message_id.as_str()),
+                false,
+                "single_group_reply_candidate",
+            ),
+            [] => (false, None, true, "no_group_reply_candidate"),
+            _ => (false, None, true, "multiple_group_reply_candidates"),
+        };
+
+    serde_json::json!({
+        "ready_for_group_replay": ready_for_group_replay,
+        "recommended_message_id": recommended_message_id,
+        "message_id_required": message_id_required,
+        "group_reply_candidate_count": group_reply_candidates.len(),
+        "reason": reason
     })
 }
 
@@ -1262,6 +1289,16 @@ mod tests {
             report["capture"]["group_reply_candidate_message_ids"],
             serde_json::json!(["m-1"])
         );
+        assert_eq!(
+            report["capture"]["formal_test_readiness"],
+            serde_json::json!({
+                "ready_for_group_replay": true,
+                "recommended_message_id": "m-1",
+                "message_id_required": false,
+                "group_reply_candidate_count": 1,
+                "reason": "single_group_reply_candidate"
+            })
+        );
         assert_eq!(report["capture"]["daily_report_targets_seen"], 1);
         assert_eq!(
             report["capture"]["daily_report_targets"],
@@ -1379,6 +1416,16 @@ mod tests {
             report["capture"]["group_reply_candidate_message_ids"],
             serde_json::json!([])
         );
+        assert_eq!(
+            report["capture"]["formal_test_readiness"],
+            serde_json::json!({
+                "ready_for_group_replay": false,
+                "recommended_message_id": null,
+                "message_id_required": true,
+                "group_reply_candidate_count": 0,
+                "reason": "no_group_reply_candidate"
+            })
+        );
         assert!(array_contains(
             &report["warnings"],
             "capture_has_no_group_messages"
@@ -1419,6 +1466,16 @@ mod tests {
         assert_eq!(
             report["capture"]["group_reply_candidate_message_ids"],
             serde_json::json!(["m-1", "m-2"])
+        );
+        assert_eq!(
+            report["capture"]["formal_test_readiness"],
+            serde_json::json!({
+                "ready_for_group_replay": false,
+                "recommended_message_id": null,
+                "message_id_required": true,
+                "group_reply_candidate_count": 2,
+                "reason": "multiple_group_reply_candidates"
+            })
         );
         assert!(array_contains(
             &report["warnings"],
