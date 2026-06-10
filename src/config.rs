@@ -225,6 +225,14 @@ pub struct PublicSourcesConfig {
     pub slerf_blog_max_items: usize,
     #[serde(default = "default_slerf_blog_timeout_secs")]
     pub slerf_blog_timeout_secs: u64,
+    #[serde(default)]
+    pub hn_daily_enabled: bool,
+    #[serde(default = "default_hn_daily_url")]
+    pub hn_daily_url: String,
+    #[serde(default = "default_hn_daily_max_items")]
+    pub hn_daily_max_items: usize,
+    #[serde(default = "default_hn_daily_timeout_secs")]
+    pub hn_daily_timeout_secs: u64,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -427,6 +435,18 @@ fn default_slerf_blog_timeout_secs() -> u64 {
     10
 }
 
+fn default_hn_daily_url() -> String {
+    "https://www.daemonology.net/hn-daily/".to_string()
+}
+
+fn default_hn_daily_max_items() -> usize {
+    10
+}
+
+fn default_hn_daily_timeout_secs() -> u64 {
+    10
+}
+
 fn default_bot_context_messages() -> usize {
     8
 }
@@ -525,6 +545,10 @@ impl Default for PublicSourcesConfig {
             slerf_blog_urls: default_slerf_blog_urls(),
             slerf_blog_max_items: default_slerf_blog_max_items(),
             slerf_blog_timeout_secs: default_slerf_blog_timeout_secs(),
+            hn_daily_enabled: false,
+            hn_daily_url: default_hn_daily_url(),
+            hn_daily_max_items: default_hn_daily_max_items(),
+            hn_daily_timeout_secs: default_hn_daily_timeout_secs(),
         }
     }
 }
@@ -659,6 +683,13 @@ mod tests {
             config.public_sources.slerf_blog_urls,
             vec!["https://blog.slerf.tools/".to_string()]
         );
+        assert!(!config.public_sources.hn_daily_enabled);
+        assert_eq!(
+            config.public_sources.hn_daily_url,
+            "https://www.daemonology.net/hn-daily/"
+        );
+        assert_eq!(config.public_sources.hn_daily_max_items, 10);
+        assert_eq!(config.public_sources.hn_daily_timeout_secs, 10);
         assert!(config.bot.mention_names.is_empty());
         assert_eq!(config.bot.context_messages, 8);
         assert!(config.groups.is_empty());

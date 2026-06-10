@@ -9,8 +9,6 @@ use qunmind::ai::openai::OpenAiClient;
 use qunmind::bot::handler::BotHandler;
 use qunmind::channel::Channel;
 use qunmind::channel::IncomingMessage;
-use qunmind::channel::MessageHandler;
-use qunmind::channel::suppressed::SuppressedSendChannel;
 use qunmind::channel::wecom::WeComChannel;
 use qunmind::channel::wx_cli::WxCliChannel;
 use qunmind::channel::wx_cli::parse_wx_cli_messages_from_str;
@@ -19,8 +17,7 @@ use qunmind::config::{AiProvider, ChannelKind, Config};
 use qunmind::diagnostic::{
     select_wx_cli_messages, wx_cli_capture_report, wx_cli_doctor_report,
     wx_cli_dry_run_message_id_guard_report, wx_cli_dry_run_report, wx_cli_formal_test_plan,
-    wx_cli_formal_test_plan_shell_script, wx_cli_handle_once_message_id_guard_report,
-    wx_cli_handle_once_report, wx_cli_message_ids,
+    wx_cli_formal_test_plan_shell_script,
 };
 use qunmind::error::QunMindError;
 use qunmind::scheduler::daily_report::DailyReportScheduler;
@@ -32,6 +29,7 @@ use qunmind::source::defillama::DeFiLlamaProtocolsSource;
 use qunmind::source::dune::DuneQuerySource;
 use qunmind::source::github_trending::GitHubTrendingSource;
 use qunmind::source::hacker_news::HackerNewsSource;
+use qunmind::source::hn_daily::HnDailySource;
 use qunmind::source::slerf_blog::SlerfBlogSource;
 use qunmind::storage::MessageStore;
 use qunmind::storage::postgres::PostgresMessageStore;
@@ -157,6 +155,9 @@ fn build_public_news_source(config: &Config) -> anyhow::Result<Option<Arc<dyn Pu
     if public_sources.slerf_blog_enabled {
         sources.push(Arc::new(SlerfBlogSource::new(public_sources)?));
     }
+    if public_sources.hn_daily_enabled {
+        sources.push(Arc::new(HnDailySource::new(public_sources)?));
+    }
 
     if sources.is_empty() {
         return Ok(None);
@@ -176,6 +177,10 @@ async fn run_diagnostic_command(
 ) -> anyhow::Result<()> {
     match command {
         CliCommand::WxCli { command } => run_wx_cli_command(command, config, config_path).await,
+        CliCommand::Mcp => {
+            qunmind::mcp::run(config_path.to_path_buf()).await?;
+            Ok(())
+        }
     }
 }
 
@@ -204,7 +209,12 @@ async fn run_wx_cli_command(
             write_wx_cli_capture(&output, &messages)?;
             println!(
                 "{}",
-                serde_json::to_string_pretty(&wx_cli_capture_report(config, &output, &messages))?
+                serde_json::to_string_pretty(&wx_cli_capture_report(
+                    config,
+                    config_path,
+                    &output,
+                    &messages
+                ))?
             );
         }
         WxCliCommand::TestPlan {
@@ -280,68 +290,16 @@ async fn run_wx_cli_command(
             } else {
                 wx_channel.poll_once().await?
             };
-            let total_polled = messages.len();
-            if let Some(report) = wx_cli_handle_once_message_id_guard_report(
-                &messages,
-                total_polled,
-                message_id.as_deref(),
-                no_send,
-            ) {
-                println!("{}", serde_json::to_string_pretty(&report)?);
-                return Ok(());
-            }
-            let messages = select_wx_cli_messages(messages, message_id.as_deref(), limit);
-            let selected_message_ids = wx_cli_message_ids(&messages);
-            if messages.is_empty() {
-                println!(
-                    "{}",
-                    serde_json::to_string_pretty(&wx_cli_handle_once_report(
-                        total_polled,
-                        0,
-                        &selected_message_ids,
-                        no_send,
-                        &[] as &[serde_json::Value]
-                    ))?
-                );
-                return Ok(());
-            }
 
-            let suppressed_channel = if no_send {
-                Some(Arc::new(SuppressedSendChannel::new("wx_cli")))
-            } else {
-                None
-            };
-            let channel: Arc<dyn Channel> = match suppressed_channel.as_ref() {
-                Some(channel) => channel.clone(),
-                None => wx_channel.clone(),
-            };
-            let message_store = build_message_store(config).await?;
-            let ai_client = build_ai_client(config)?;
-            let handler = BotHandler::new(
-                Arc::clone(&ai_client),
-                Arc::clone(&channel),
-                config.bot.clone(),
-                config.groups.clone(),
-                message_store,
-            );
-            let processed = messages.len();
-            for message in messages {
-                handler.on_message(message).await?;
-            }
-            let suppressed_replies = match suppressed_channel {
-                Some(channel) => channel.replies().await,
-                None => Vec::new(),
-            };
-            println!(
-                "{}",
-                serde_json::to_string_pretty(&wx_cli_handle_once_report(
-                    total_polled,
-                    processed,
-                    &selected_message_ids,
-                    no_send,
-                    &suppressed_replies
-                ))?
-            );
+            let (report, _suppressed_replies) = qunmind::diagnostic::wx_cli_handle_once_pipeline(
+                config,
+                messages,
+                message_id.as_deref(),
+                limit,
+                no_send,
+            )
+            .await;
+            println!("{}", serde_json::to_string_pretty(&report)?);
         }
         WxCliCommand::Send {
             chat_id,
