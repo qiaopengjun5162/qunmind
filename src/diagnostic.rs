@@ -209,6 +209,8 @@ pub fn wx_cli_formal_test_plan(
     blockers.extend(wx_cli_test_plan_chat_blockers(&selected_chat_id));
     let warnings = wx_cli_doctor_warnings(config, messages);
     let capture = messages.map(|messages| wx_cli_capture_summary(config, messages, 10));
+    let selected_message =
+        selected_formal_test_message_summary(config, messages, selected_message_id.value);
     let steps = wx_cli_formal_test_steps(
         &config_path,
         &capture_file,
@@ -227,6 +229,7 @@ pub fn wx_cli_formal_test_plan(
         "capture_file": capture_file,
         "message_id": selected_message_id.value,
         "message_id_source": selected_message_id.source,
+        "selected_message": selected_message,
         "chat_id": selected_chat_id.value,
         "chat_id_source": selected_chat_id.source,
         "text": text,
@@ -240,6 +243,7 @@ pub fn wx_cli_formal_test_plan_shell_script(plan: &serde_json::Value) -> String 
     script.push_str("# Real-send steps are commented and require manual confirmation.\n\n");
 
     push_shell_plan_metadata(&mut script, plan);
+    push_shell_plan_selected_message(&mut script, plan);
     push_shell_plan_blockers(&mut script, plan);
     push_shell_plan_warnings(&mut script, plan);
     push_shell_plan_steps(&mut script, plan);
@@ -293,6 +297,49 @@ fn push_shell_plan_metadata(script: &mut String, plan: &serde_json::Value) {
         }
     }
     script.push('\n');
+}
+
+fn push_shell_plan_selected_message(script: &mut String, plan: &serde_json::Value) {
+    let Some(message) = plan
+        .get("selected_message")
+        .filter(|message| !message.is_null())
+    else {
+        return;
+    };
+
+    script.push_str("# Selected message:\n");
+    for (label, key) in [
+        ("message_id", "message_id"),
+        ("chat_id", "chat_id"),
+        ("from", "from"),
+        ("reason", "reason"),
+    ] {
+        if let Some(value) = json_string(message, key) {
+            push_shell_comment_value(script, label, value);
+        }
+    }
+    if let Some(value) = json_string(message, "text_preview") {
+        push_shell_comment_value(script, "text_preview", value);
+    }
+    script.push('\n');
+}
+
+fn push_shell_comment_value(script: &mut String, label: &str, value: &str) {
+    script.push_str("# ");
+    script.push_str(label);
+    script.push_str(": ");
+    script.push_str(&single_line_comment_value(value));
+    script.push('\n');
+}
+
+fn single_line_comment_value(value: &str) -> String {
+    value
+        .chars()
+        .map(|ch| match ch {
+            '\n' | '\r' => ' ',
+            _ => ch,
+        })
+        .collect()
 }
 
 fn push_shell_plan_blockers(script: &mut String, plan: &serde_json::Value) {
@@ -656,6 +703,27 @@ fn wx_cli_formal_test_steps(
     ]);
 
     steps
+}
+
+fn selected_formal_test_message_summary(
+    config: &Config,
+    messages: Option<&[IncomingMessage]>,
+    message_id: &str,
+) -> serde_json::Value {
+    let Some(messages) = messages else {
+        return serde_json::Value::Null;
+    };
+    let mut matching = messages
+        .iter()
+        .filter(|message| message.message_id == message_id);
+    let Some(message) = matching.next() else {
+        return serde_json::Value::Null;
+    };
+    if matching.next().is_some() {
+        return serde_json::Value::Null;
+    }
+
+    wx_cli_dry_run_item(config, message)
 }
 
 fn wx_cli_cargo_command(config_path: &str, args: &[&str]) -> Vec<String> {
@@ -1704,6 +1772,7 @@ mod tests {
         assert_eq!(plan["capture_file"], "wx-output.json");
         assert_eq!(plan["message_id"], "m-1");
         assert_eq!(plan["message_id_source"], "explicit");
+        assert_eq!(plan["selected_message"], serde_json::Value::Null);
         assert_eq!(plan["chat_id"], "room@chatroom");
         assert_eq!(plan["chat_id_source"], "explicit");
         assert_eq!(plan["steps"][0]["name"], "doctor_config");
@@ -1758,6 +1827,9 @@ mod tests {
 
         assert!(script.starts_with("#!/usr/bin/env bash\nset -euo pipefail"));
         assert!(script.contains("# Real-send steps are commented"));
+        assert!(script.contains("# Selected message:"));
+        assert!(script.contains("# message_id: m-1"));
+        assert!(script.contains("# text_preview: @bot hello"));
         assert!(script.contains("'dry-run'"));
         assert!(script.contains("'Bob'\"'\"'s diagnostic'"));
         assert!(script.contains("# REAL_SEND: review the dry-run output before uncommenting."));
@@ -2014,6 +2086,10 @@ mod tests {
         assert_eq!(plan["ok"], true);
         assert_eq!(plan["message_id"], "m-reply");
         assert_eq!(plan["message_id_source"], "single_reply_candidate");
+        assert_eq!(plan["selected_message"]["message_id"], "m-reply");
+        assert_eq!(plan["selected_message"]["chat_id"], "room@chatroom");
+        assert_eq!(plan["selected_message"]["would_reply"], true);
+        assert_eq!(plan["selected_message"]["reason"], "mention_matched");
         assert_eq!(plan["chat_id"], "room@chatroom");
         assert_eq!(plan["chat_id_source"], "selected_message");
         assert_eq!(
@@ -2066,6 +2142,7 @@ mod tests {
 
         assert_eq!(plan["ok"], false);
         assert_eq!(plan["message_id_source"], "placeholder");
+        assert_eq!(plan["selected_message"], serde_json::Value::Null);
         assert!(array_contains(
             &plan["blockers"],
             "capture_requires_explicit_message_id"
@@ -2103,6 +2180,7 @@ mod tests {
         assert_eq!(plan["ok"], false);
         assert_eq!(plan["message_id"], "m-missing");
         assert_eq!(plan["message_id_source"], "explicit");
+        assert_eq!(plan["selected_message"], serde_json::Value::Null);
         assert!(array_contains(
             &plan["blockers"],
             "selected_message_id_not_found_in_capture"
@@ -2140,6 +2218,7 @@ mod tests {
         assert_eq!(plan["ok"], false);
         assert_eq!(plan["message_id"], "m-1");
         assert_eq!(plan["message_id_source"], "explicit");
+        assert_eq!(plan["selected_message"], serde_json::Value::Null);
         assert!(array_contains(
             &plan["blockers"],
             "selected_message_id_not_unique_in_capture"
