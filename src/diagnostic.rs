@@ -980,6 +980,15 @@ fn wx_cli_test_plan_selected_message_blockers(
 ) -> Vec<&'static str> {
     if matches!(
         selected_message
+            .get("is_group")
+            .and_then(|value| value.as_bool()),
+        Some(false)
+    ) {
+        return vec!["selected_message_not_group"];
+    }
+
+    if matches!(
+        selected_message
             .get("would_reply")
             .and_then(|value| value.as_bool()),
         Some(false)
@@ -2207,6 +2216,55 @@ mod tests {
         assert!(array_contains(
             &plan["blockers"],
             "selected_message_would_not_reply"
+        ));
+    }
+
+    #[test]
+    fn wx_cli_formal_test_plan_blocks_selected_direct_message_for_group_test() {
+        let config = config_from(
+            r#"
+            [channel]
+            kind = "wx_cli"
+
+            [ai]
+            api_key = "token"
+
+            [bot]
+            mention_names = ["@bot"]
+
+            [wx_cli]
+            bin = "wx"
+            poll_args = ["poll", "--json"]
+            send_args = ["send", "--chat", "{chat_id}", "--text", "{text}"]
+            "#,
+        );
+        let message = IncomingMessage {
+            message_id: "dm-1".to_string(),
+            from: "alice".to_string(),
+            chat_id: "alice".to_string(),
+            is_group: false,
+            text: Some("hello".to_string()),
+            msg_type: MsgType::Text,
+        };
+        let messages = vec![message];
+
+        let plan = wx_cli_formal_test_plan(
+            &config,
+            Path::new("config.toml"),
+            Path::new("wx-output.json"),
+            Some("dm-1"),
+            None,
+            "hello",
+            Some(&messages),
+        );
+
+        assert_eq!(plan["ok"], false);
+        assert_eq!(plan["selected_message"]["message_id"], "dm-1");
+        assert_eq!(plan["selected_message"]["is_group"], false);
+        assert_eq!(plan["selected_message"]["would_reply"], true);
+        assert!(array_contains(
+            &plan["blockers"],
+            "selected_message_not_group"
         ));
     }
 
