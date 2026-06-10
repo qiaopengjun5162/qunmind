@@ -17,9 +17,10 @@ use qunmind::channel::wx_cli::parse_wx_cli_messages_from_str;
 use qunmind::cli::{Args, CliCommand, WxCliCommand};
 use qunmind::config::{AiProvider, ChannelKind, Config};
 use qunmind::diagnostic::{
-    select_wx_cli_messages, wx_cli_doctor_report, wx_cli_dry_run_message_id_guard_report,
-    wx_cli_dry_run_report, wx_cli_formal_test_plan, wx_cli_formal_test_plan_shell_script,
-    wx_cli_handle_once_message_id_guard_report, wx_cli_handle_once_report, wx_cli_message_ids,
+    select_wx_cli_messages, wx_cli_capture_report, wx_cli_doctor_report,
+    wx_cli_dry_run_message_id_guard_report, wx_cli_dry_run_report, wx_cli_formal_test_plan,
+    wx_cli_formal_test_plan_shell_script, wx_cli_handle_once_message_id_guard_report,
+    wx_cli_handle_once_report, wx_cli_message_ids,
 };
 use qunmind::error::QunMindError;
 use qunmind::scheduler::daily_report::DailyReportScheduler;
@@ -203,18 +204,7 @@ async fn run_wx_cli_command(
             write_wx_cli_capture(&output, &messages)?;
             println!(
                 "{}",
-                serde_json::to_string_pretty(&serde_json::json!({
-                    "ok": true,
-                    "output": output,
-                    "captured": messages.len(),
-                    "next_steps": [
-                        "run_wx_cli_doctor_with_input_file",
-                        "run_wx_cli_dry_run_with_message_id",
-                        "run_wx_cli_handle_once_no_send_with_message_id_and_limit_1",
-                        "run_wx_cli_send_dry_run_to_test_chat",
-                        "run_wx_cli_handle_once_send_with_message_id_and_limit_1"
-                    ]
-                }))?
+                serde_json::to_string_pretty(&wx_cli_capture_report(config, &output, &messages))?
             );
         }
         WxCliCommand::TestPlan {
