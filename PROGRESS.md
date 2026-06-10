@@ -4,7 +4,7 @@
 
 ### Status
 
-- MVP completion estimate: about 84%. Rust backend, WeCom/wx-cli channels, AI adapters, PostgreSQL persistence, diagnostics, wx-cli readiness doctor, capture-aware wx-cli test plan output with full readiness blockers, selected-message previews, selected-message group guards, and selected-message reply guards, replayable wx-cli capture files, wx-cli test-plan shell script output, wx-cli send dry-run guardrails, wx-cli handle-once no-send replay, PR-first contribution workflow, Docker/Compose deployment packaging, release image publishing, daily reports, public-source fallback, basic conversation context, per-group runtime/persona overrides, per-group daily report targets, captured wx-cli replay safety, wx-cli group/report target readiness, live PostgreSQL integration-test coverage, and structured research/learning catalogs are implemented. AI x Web3 School Prompt/Handbook references are cataloged for future agent design. Real local WeChat validation, durable memory/permissions, real server deployment validation, and production hardening remain the main gaps.
+- MVP completion estimate: about 84%. Rust backend, WeCom/wx-cli channels, AI adapters, PostgreSQL persistence, diagnostics, wx-cli readiness doctor, capture-aware wx-cli test plan output with full readiness blockers, group-only candidate auto-selection, selected-message previews, selected-message group guards, and selected-message reply guards, replayable wx-cli capture files, wx-cli test-plan shell script output, wx-cli send dry-run guardrails, wx-cli handle-once no-send replay, PR-first contribution workflow, Docker/Compose deployment packaging, release image publishing, daily reports, public-source fallback, basic conversation context, per-group runtime/persona overrides, per-group daily report targets, captured wx-cli replay safety, wx-cli group/report target readiness, live PostgreSQL integration-test coverage, and structured research/learning catalogs are implemented. AI x Web3 School Prompt/Handbook references are cataloged for future agent design. Real local WeChat validation, durable memory/permissions, real server deployment validation, and production hardening remain the main gaps.
 
 ### Done
 
@@ -38,7 +38,8 @@
 - Added `wx-cli doctor` readiness reports with blockers, warnings, captured-message summaries, reply-trigger previews, and next-step guidance before touching a real WeChat group.
 - Added `wx-cli test-plan` to print the formal real-group test sequence with explicit `safe_to_send` boundaries.
 - Reused the full `wx-cli doctor` readiness blockers in `wx-cli test-plan`, so formal test plans fail fast when AI, storage, or send placeholders are incomplete.
-- Added `wx-cli test-plan --input <json-file>` to inspect captured messages, auto-select a single reply candidate, and block ambiguous captures until an explicit `--message-id` is provided.
+- Added `wx-cli test-plan --input <json-file>` to inspect captured messages, auto-select a single group reply candidate, and block ambiguous captures until an explicit `--message-id` is provided.
+- Added `group_reply_candidate_message_ids` to formal wx-cli test plans, so private-chat reply candidates do not force manual selection when exactly one group reply candidate exists.
 - Added `wx-cli test-plan --shell` to render the formal WeChat test plan as an executable shell script while keeping real-send steps commented until manual confirmation.
 - Added selected-message previews to `wx-cli test-plan --input <json-file>` and shell output, so real replay reviews show the exact candidate message metadata and text preview instead of only a `message_id`.
 - Added `selected_message_not_group` as a formal test-plan blocker when a captured direct-message candidate is selected for the real group test flow.
@@ -83,11 +84,11 @@
 - Current `taplo fmt --check --option reorder_keys=true Cargo.toml config.example.toml config.docker.example.toml` is blocked by a local `system-configuration` panic before reading changed files; CI runs the same check on Ubuntu.
 - `cargo clippy --all-targets --all-features --tests --benches -- -D warnings`
 - `cargo nextest run --all-features wx_cli_doctor`：7 targeted wx-cli doctor tests passing.
-- `cargo nextest run --all-features wx_cli_formal_test_plan`：14 targeted formal wx-cli test-plan tests passing.
+- `cargo nextest run --all-features wx_cli_formal_test_plan`：15 targeted formal wx-cli test-plan tests passing.
 - `cargo nextest run --all-features parses_wx_cli_test_plan`：3 targeted CLI parsing tests passing.
 - `cargo nextest run --all-features message_id`：15 targeted message-id tests passing.
-- `cargo nextest run --all-features`：151 tests passing, 1 ignored PostgreSQL integration test compiled and skipped by default.
-- `cargo llvm-cov nextest --all-features --summary-only`：89.14% line coverage, 151 tests passing.
+- `cargo nextest run --all-features`：152 tests passing, 1 ignored PostgreSQL integration test compiled and skipped by default.
+- `cargo llvm-cov nextest --all-features --summary-only`：89.26% line coverage, 152 tests passing.
 - Panic-prone direct extraction scan across Rust source, tests, and project docs: no matches.
 - `docker compose config`：validates the QunMind + PostgreSQL Compose stack.
 - `cargo run -- --config config.docker.example.toml wx-cli doctor`：passed and parsed the Docker example config without touching PG, AI, or WeChat.

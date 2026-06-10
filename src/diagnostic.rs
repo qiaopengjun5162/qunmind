@@ -193,14 +193,18 @@ pub fn wx_cli_formal_test_plan(
         Some(messages) => wx_cli_reply_candidate_message_ids(config, messages),
         None => Vec::new(),
     };
-    let selected_message_id = select_formal_test_message_id(message_id, &reply_candidates);
+    let group_reply_candidates = match messages {
+        Some(messages) => wx_cli_group_reply_candidate_message_ids(config, messages),
+        None => Vec::new(),
+    };
+    let selected_message_id = select_formal_test_message_id(message_id, &group_reply_candidates);
     let selected_chat_id =
         select_formal_test_chat_id(config, chat_id, messages, selected_message_id.value);
     let mut blockers = wx_cli_doctor_blockers(config);
     blockers.extend(wx_cli_test_plan_capture_blockers(
         messages,
         message_id,
-        &reply_candidates,
+        &group_reply_candidates,
     ));
     blockers.extend(wx_cli_test_plan_message_blockers(
         messages,
@@ -228,6 +232,8 @@ pub fn wx_cli_formal_test_plan(
         "blockers": blockers,
         "warnings": warnings,
         "capture": capture,
+        "reply_candidate_message_ids": reply_candidates,
+        "group_reply_candidate_message_ids": group_reply_candidates,
         "config_path": config_path,
         "capture_file": capture_file,
         "message_id": selected_message_id.value,
@@ -880,7 +886,7 @@ fn select_formal_test_message_id<'a>(
     match reply_candidates {
         [message_id] => FormalTestMessageId {
             value: message_id.as_str(),
-            source: "single_reply_candidate",
+            source: "single_group_reply_candidate",
         },
         _ => FormalTestMessageId {
             value: "<message_id_from_reply_candidate_message_ids>",
@@ -1005,6 +1011,22 @@ fn wx_cli_reply_candidate_message_ids(
 ) -> Vec<String> {
     messages
         .iter()
+        .filter(|message| {
+            let effective = effective_bot_config(config, message);
+            let (would_reply, _) = wx_cli_dry_run_decision(&effective, message);
+            would_reply
+        })
+        .map(|message| message.message_id.clone())
+        .collect()
+}
+
+fn wx_cli_group_reply_candidate_message_ids(
+    config: &Config,
+    messages: &[IncomingMessage],
+) -> Vec<String> {
+    messages
+        .iter()
+        .filter(|message| message.is_group)
         .filter(|message| {
             let effective = effective_bot_config(config, message);
             let (would_reply, _) = wx_cli_dry_run_decision(&effective, message);
@@ -2112,7 +2134,7 @@ mod tests {
 
         assert_eq!(plan["ok"], true);
         assert_eq!(plan["message_id"], "m-reply");
-        assert_eq!(plan["message_id_source"], "single_reply_candidate");
+        assert_eq!(plan["message_id_source"], "single_group_reply_candidate");
         assert_eq!(plan["selected_message"]["message_id"], "m-reply");
         assert_eq!(plan["selected_message"]["chat_id"], "room@chatroom");
         assert_eq!(plan["selected_message"]["would_reply"], true);
@@ -2121,6 +2143,10 @@ mod tests {
         assert_eq!(plan["chat_id_source"], "selected_message");
         assert_eq!(
             plan["capture"]["reply_candidate_message_ids"],
+            serde_json::json!(["m-reply"])
+        );
+        assert_eq!(
+            plan["group_reply_candidate_message_ids"],
             serde_json::json!(["m-reply"])
         );
         assert_eq!(plan["steps"][1]["name"], "doctor_capture");
@@ -2137,6 +2163,59 @@ mod tests {
             plan["steps"][4]["command"][8],
             serde_json::json!("room@chatroom")
         );
+    }
+
+    #[test]
+    fn wx_cli_formal_test_plan_auto_selects_single_group_candidate_over_direct_reply() {
+        let config = config_from(
+            r#"
+            [channel]
+            kind = "wx_cli"
+
+            [ai]
+            api_key = "token"
+
+            [bot]
+            mention_names = ["@bot"]
+
+            [wx_cli]
+            bin = "wx"
+            poll_args = ["poll", "--json"]
+            send_args = ["send", "--chat", "{chat_id}", "--text", "{text}"]
+            "#,
+        );
+        let direct_message = IncomingMessage {
+            message_id: "dm-1".to_string(),
+            from: "alice".to_string(),
+            chat_id: "alice".to_string(),
+            is_group: false,
+            text: Some("direct hello".to_string()),
+            msg_type: MsgType::Text,
+        };
+        let messages = vec![direct_message, test_message("group-1")];
+
+        let plan = wx_cli_formal_test_plan(
+            &config,
+            Path::new("config.toml"),
+            Path::new("wx-output.json"),
+            None,
+            None,
+            "hello",
+            Some(&messages),
+        );
+
+        assert_eq!(plan["ok"], true);
+        assert_eq!(plan["message_id"], "group-1");
+        assert_eq!(plan["message_id_source"], "single_group_reply_candidate");
+        assert_eq!(
+            plan["capture"]["reply_candidate_message_ids"],
+            serde_json::json!(["dm-1", "group-1"])
+        );
+        assert_eq!(
+            plan["group_reply_candidate_message_ids"],
+            serde_json::json!(["group-1"])
+        );
+        assert_eq!(plan["selected_message"]["is_group"], true);
     }
 
     #[test]
