@@ -211,6 +211,9 @@ pub fn wx_cli_formal_test_plan(
     let capture = messages.map(|messages| wx_cli_capture_summary(config, messages, 10));
     let selected_message =
         selected_formal_test_message_summary(config, messages, selected_message_id.value);
+    blockers.extend(wx_cli_test_plan_selected_message_blockers(
+        &selected_message,
+    ));
     let steps = wx_cli_formal_test_steps(
         &config_path,
         &capture_file,
@@ -967,6 +970,21 @@ fn wx_cli_test_plan_message_blockers(
 fn wx_cli_test_plan_chat_blockers(chat_id: &FormalTestChatId<'_>) -> Vec<&'static str> {
     if chat_id.source == "placeholder" {
         return vec!["test_chat_id_required"];
+    }
+
+    Vec::new()
+}
+
+fn wx_cli_test_plan_selected_message_blockers(
+    selected_message: &serde_json::Value,
+) -> Vec<&'static str> {
+    if matches!(
+        selected_message
+            .get("would_reply")
+            .and_then(|value| value.as_bool()),
+        Some(false)
+    ) {
+        return vec!["selected_message_would_not_reply"];
     }
 
     Vec::new()
@@ -2146,6 +2164,49 @@ mod tests {
         assert!(array_contains(
             &plan["blockers"],
             "capture_requires_explicit_message_id"
+        ));
+    }
+
+    #[test]
+    fn wx_cli_formal_test_plan_blocks_selected_message_that_would_not_reply() {
+        let config = config_from(
+            r#"
+            [channel]
+            kind = "wx_cli"
+
+            [ai]
+            api_key = "token"
+
+            [bot]
+            mention_names = ["@bot"]
+
+            [wx_cli]
+            bin = "wx"
+            poll_args = ["poll", "--json"]
+            send_args = ["send", "--chat", "{chat_id}", "--text", "{text}"]
+            "#,
+        );
+        let mut message = test_message("m-plain");
+        message.text = Some("plain group chatter".to_string());
+        let messages = vec![message];
+
+        let plan = wx_cli_formal_test_plan(
+            &config,
+            Path::new("config.toml"),
+            Path::new("wx-output.json"),
+            Some("m-plain"),
+            None,
+            "hello",
+            Some(&messages),
+        );
+
+        assert_eq!(plan["ok"], false);
+        assert_eq!(plan["selected_message"]["message_id"], "m-plain");
+        assert_eq!(plan["selected_message"]["would_reply"], false);
+        assert_eq!(plan["selected_message"]["reason"], "mention_not_matched");
+        assert!(array_contains(
+            &plan["blockers"],
+            "selected_message_would_not_reply"
         ));
     }
 
