@@ -178,6 +178,20 @@ pub fn wx_cli_handle_once_report<T: Serialize>(
     })
 }
 
+pub fn wx_cli_capture_report(
+    config: &Config,
+    output: &Path,
+    messages: &[IncomingMessage],
+) -> serde_json::Value {
+    serde_json::json!({
+        "ok": true,
+        "output": output.display().to_string(),
+        "captured": messages.len(),
+        "formal_test_readiness": wx_cli_formal_test_readiness(config, messages),
+        "next_steps": wx_cli_capture_next_steps(config, messages)
+    })
+}
+
 pub fn wx_cli_formal_test_plan(
     config: &Config,
     config_path: &Path,
@@ -639,6 +653,27 @@ fn wx_cli_capture_summary(
         "would_reply_in_preview": would_reply_count,
         "items": preview
     })
+}
+
+fn wx_cli_capture_next_steps(config: &Config, messages: &[IncomingMessage]) -> Vec<&'static str> {
+    let mut next_steps = vec![
+        "run_wx_cli_doctor_with_input_file",
+        "run_wx_cli_test_plan_with_input_file",
+    ];
+    let group_reply_candidates = wx_cli_group_reply_candidate_message_ids(config, messages);
+    match group_reply_candidates.len() {
+        0 => next_steps.push("capture_group_mention_message_before_replay"),
+        1 => next_steps.extend([
+            "run_wx_cli_dry_run_with_recommended_message_id",
+            "run_wx_cli_handle_once_no_send_with_recommended_message_id_and_limit_1",
+            "run_wx_cli_send_dry_run_to_test_chat",
+            "run_wx_cli_send_to_test_chat",
+            "run_wx_cli_handle_once_send_with_recommended_message_id_and_limit_1",
+        ]),
+        _ => next_steps.push("select_group_reply_message_id_before_replay"),
+    }
+
+    next_steps
 }
 
 fn wx_cli_formal_test_readiness(
@@ -1633,6 +1668,116 @@ mod tests {
                 "run_wx_cli_doctor_with_input_file",
                 "run_wx_cli_dry_run_with_message_id",
                 "run_wx_cli_handle_once_no_send_with_message_id_and_limit_1"
+            ])
+        );
+    }
+
+    #[test]
+    fn wx_cli_capture_report_recommends_single_group_reply_candidate() {
+        let config = config_from(
+            r#"
+            [bot]
+            mention_names = ["@bot"]
+            "#,
+        );
+        let messages = vec![test_message("m-1")];
+
+        let report = wx_cli_capture_report(&config, Path::new("wx-output.json"), &messages);
+
+        assert_eq!(report["ok"], true);
+        assert_eq!(report["output"], "wx-output.json");
+        assert_eq!(report["captured"], 1);
+        assert_eq!(
+            report["formal_test_readiness"],
+            serde_json::json!({
+                "ready_for_group_replay": true,
+                "recommended_message_id": "m-1",
+                "message_id_required": false,
+                "group_reply_candidate_count": 1,
+                "reason": "single_group_reply_candidate"
+            })
+        );
+        assert_eq!(
+            report["next_steps"],
+            serde_json::json!([
+                "run_wx_cli_doctor_with_input_file",
+                "run_wx_cli_test_plan_with_input_file",
+                "run_wx_cli_dry_run_with_recommended_message_id",
+                "run_wx_cli_handle_once_no_send_with_recommended_message_id_and_limit_1",
+                "run_wx_cli_send_dry_run_to_test_chat",
+                "run_wx_cli_send_to_test_chat",
+                "run_wx_cli_handle_once_send_with_recommended_message_id_and_limit_1"
+            ])
+        );
+    }
+
+    #[test]
+    fn wx_cli_capture_report_requires_selection_for_multiple_group_reply_candidates() {
+        let config = config_from(
+            r#"
+            [bot]
+            mention_names = ["@bot"]
+            "#,
+        );
+        let messages = vec![test_message("m-1"), test_message("m-2")];
+
+        let report = wx_cli_capture_report(&config, Path::new("wx-output.json"), &messages);
+
+        assert_eq!(
+            report["formal_test_readiness"],
+            serde_json::json!({
+                "ready_for_group_replay": false,
+                "recommended_message_id": null,
+                "message_id_required": true,
+                "group_reply_candidate_count": 2,
+                "reason": "multiple_group_reply_candidates"
+            })
+        );
+        assert_eq!(
+            report["next_steps"],
+            serde_json::json!([
+                "run_wx_cli_doctor_with_input_file",
+                "run_wx_cli_test_plan_with_input_file",
+                "select_group_reply_message_id_before_replay"
+            ])
+        );
+    }
+
+    #[test]
+    fn wx_cli_capture_report_guides_empty_group_reply_capture() {
+        let config = config_from(
+            r#"
+            [bot]
+            mention_names = ["@bot"]
+            "#,
+        );
+        let messages = vec![IncomingMessage {
+            message_id: "m-1".to_string(),
+            from: "alice".to_string(),
+            chat_id: "room@chatroom".to_string(),
+            is_group: true,
+            text: Some("ordinary group message".to_string()),
+            msg_type: MsgType::Text,
+        }];
+
+        let report = wx_cli_capture_report(&config, Path::new("wx-output.json"), &messages);
+
+        assert_eq!(
+            report["formal_test_readiness"],
+            serde_json::json!({
+                "ready_for_group_replay": false,
+                "recommended_message_id": null,
+                "message_id_required": true,
+                "group_reply_candidate_count": 0,
+                "reason": "no_group_reply_candidate"
+            })
+        );
+        assert_eq!(
+            report["next_steps"],
+            serde_json::json!([
+                "run_wx_cli_doctor_with_input_file",
+                "run_wx_cli_test_plan_with_input_file",
+                "capture_group_mention_message_before_replay"
             ])
         );
     }
