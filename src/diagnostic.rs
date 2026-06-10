@@ -579,6 +579,12 @@ fn wx_cli_doctor_warnings(
         } else if reply_candidates.len() > 1 {
             warnings.push("capture_has_multiple_reply_candidates_select_message_id");
         }
+        let group_reply_candidates = wx_cli_group_reply_candidate_message_ids(config, messages);
+        if group_reply_candidates.is_empty() {
+            warnings.push("capture_has_no_group_reply_candidates");
+        } else if group_reply_candidates.len() > 1 {
+            warnings.push("capture_has_multiple_group_reply_candidates_select_message_id");
+        }
     }
 
     warnings
@@ -621,6 +627,7 @@ fn wx_cli_capture_summary(
         "direct_messages": messages.iter().filter(|message| !message.is_group).count(),
         "text_messages": messages.iter().filter(|message| message.msg_type == MsgType::Text).count(),
         "reply_candidate_message_ids": wx_cli_reply_candidate_message_ids(config, messages),
+        "group_reply_candidate_message_ids": wx_cli_group_reply_candidate_message_ids(config, messages),
         "unique_chats": chat_counts.len(),
         "chat_counts": chat_counts,
         "group_overrides": group_overrides,
@@ -1251,6 +1258,10 @@ mod tests {
             report["capture"]["reply_candidate_message_ids"],
             serde_json::json!(["m-1", "m-2"])
         );
+        assert_eq!(
+            report["capture"]["group_reply_candidate_message_ids"],
+            serde_json::json!(["m-1"])
+        );
         assert_eq!(report["capture"]["daily_report_targets_seen"], 1);
         assert_eq!(
             report["capture"]["daily_report_targets"],
@@ -1269,6 +1280,10 @@ mod tests {
         assert!(array_contains(
             &report["warnings"],
             "capture_has_multiple_reply_candidates_select_message_id"
+        ));
+        assert!(!array_contains(
+            &report["warnings"],
+            "capture_has_multiple_group_reply_candidates_select_message_id"
         ));
         assert_eq!(
             report["next_steps"],
@@ -1319,6 +1334,95 @@ mod tests {
         assert!(array_contains(
             &report["warnings"],
             "capture_has_no_reply_candidates"
+        ));
+        assert!(array_contains(
+            &report["warnings"],
+            "capture_has_no_group_reply_candidates"
+        ));
+    }
+
+    #[test]
+    fn wx_cli_doctor_warns_when_capture_only_has_direct_reply_candidates() {
+        let config = config_from(
+            r#"
+            [channel]
+            kind = "wx_cli"
+
+            [ai]
+            api_key = "token"
+
+            [wx_cli]
+            bin = "wx"
+            poll_args = ["poll", "--json"]
+            send_args = ["send", "--chat", "{chat_id}", "--text", "{text}"]
+
+            [bot]
+            mention_names = ["@bot"]
+            "#,
+        );
+        let messages = vec![IncomingMessage {
+            message_id: "dm-1".to_string(),
+            from: "alice".to_string(),
+            chat_id: "alice".to_string(),
+            is_group: false,
+            text: Some("direct hello".to_string()),
+            msg_type: MsgType::Text,
+        }];
+
+        let report = wx_cli_doctor_report(&config, Some(&messages), 10);
+
+        assert_eq!(
+            report["capture"]["reply_candidate_message_ids"],
+            serde_json::json!(["dm-1"])
+        );
+        assert_eq!(
+            report["capture"]["group_reply_candidate_message_ids"],
+            serde_json::json!([])
+        );
+        assert!(array_contains(
+            &report["warnings"],
+            "capture_has_no_group_messages"
+        ));
+        assert!(array_contains(
+            &report["warnings"],
+            "capture_has_no_group_reply_candidates"
+        ));
+    }
+
+    #[test]
+    fn wx_cli_doctor_warns_when_capture_has_multiple_group_reply_candidates() {
+        let config = config_from(
+            r#"
+            [channel]
+            kind = "wx_cli"
+
+            [ai]
+            api_key = "token"
+
+            [wx_cli]
+            bin = "wx"
+            poll_args = ["poll", "--json"]
+            send_args = ["send", "--chat", "{chat_id}", "--text", "{text}"]
+
+            [bot]
+            mention_names = ["@bot"]
+            "#,
+        );
+        let messages = vec![test_message("m-1"), test_message("m-2")];
+
+        let report = wx_cli_doctor_report(&config, Some(&messages), 10);
+
+        assert_eq!(
+            report["capture"]["reply_candidate_message_ids"],
+            serde_json::json!(["m-1", "m-2"])
+        );
+        assert_eq!(
+            report["capture"]["group_reply_candidate_message_ids"],
+            serde_json::json!(["m-1", "m-2"])
+        );
+        assert!(array_contains(
+            &report["warnings"],
+            "capture_has_multiple_group_reply_candidates_select_message_id"
         ));
     }
 
