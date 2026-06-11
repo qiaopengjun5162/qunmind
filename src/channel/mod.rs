@@ -1,4 +1,5 @@
 pub mod suppressed;
+pub mod wechat_db;
 pub mod wecom;
 pub mod wx_cli;
 

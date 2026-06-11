@@ -315,8 +315,7 @@ async fn run_wx_cli_command(
                         "ok": true,
                         "dry_run": true,
                         "chat_id": chat_id,
-                        "bin": command.bin,
-                        "args": command.args
+                        "command": command.command
                     }))?
                 );
                 return Ok(());
