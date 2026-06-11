@@ -295,8 +295,7 @@ fn tool_send(config: &Config, args: &serde_json::Value) -> anyhow::Result<String
         "ok": true,
         "dry_run": true,
         "chat_id": chat_id,
-        "bin": command.bin,
-        "args": command.args
+        "command": command.command
     }))?)
 }
 
@@ -566,7 +565,7 @@ mod tests {
 
         assert_eq!(report["ok"], true);
         assert_eq!(report["dry_run"], true);
-        assert_eq!(report["bin"], "/bin/echo");
+        assert!(report["command"].as_str().unwrap().contains("osascript"));
     }
 
     #[tokio::test]
