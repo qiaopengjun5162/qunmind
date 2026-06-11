@@ -10,7 +10,7 @@ use std::fs;
 use std::path::PathBuf;
 
 use aes::cipher::{BlockDecryptMut, KeyIvInit};
-#[cfg_attr(not(target_os = "macos"), allow(unused_imports))]
+#[cfg(target_os = "macos")]
 use regex::Regex;
 use tracing::{debug, warn};
 
@@ -39,14 +39,13 @@ fn wechat_data_dir() -> Option<PathBuf> {
         if base.exists()
             && let Ok(entries) = std::fs::read_dir(&base)
         {
-                for entry in entries.flatten() {
-                    if entry.file_type().map(|t| t.is_dir()).unwrap_or(false)
-                        && entry.file_name().to_string_lossy().starts_with("wxid_")
-                    {
-                        let db = entry.path().join("db_storage/message");
-                        if db.exists() {
-                            return Some(db);
-                        }
+            for entry in entries.flatten() {
+                if entry.file_type().map(|t| t.is_dir()).unwrap_or(false)
+                    && entry.file_name().to_string_lossy().starts_with("wxid_")
+                {
+                    let db = entry.path().join("db_storage/message");
+                    if db.exists() {
+                        return Some(db);
                     }
                 }
             }

@@ -14,9 +14,6 @@ pub struct WxCliChannel {
     group_chat_id: String,
     poll_interval: tokio::time::Duration,
     seen: Mutex<HashSet<String>>,
-    /// Cached SQLCipher key — populated on first successful memory scan.
-    #[allow(dead_code)]
-    db_key: Mutex<Option<String>>,
     /// Last seen local_id for incremental polling.
     last_local_id: Mutex<i64>,
     // Legacy shell-out fallback — used when native memory scan is unavailable.
@@ -35,7 +32,6 @@ impl WxCliChannel {
             group_chat_id: config.group_chat_id.clone(),
             poll_interval: tokio::time::Duration::from_secs(config.poll_interval_secs),
             seen: Mutex::new(HashSet::new()),
-            db_key: Mutex::new(None),
             last_local_id: Mutex::new(0),
             bin: config.bin.clone(),
             poll_args: config.poll_args.clone(),
