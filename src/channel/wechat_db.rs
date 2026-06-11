@@ -11,7 +11,6 @@ use std::path::PathBuf;
 
 use aes::cipher::{BlockDecryptMut, KeyIvInit};
 #[cfg(target_os = "macos")]
-use regex::Regex;
 use tracing::{debug, warn};
 
 use crate::error::{QunMindError, Result};
@@ -28,7 +27,6 @@ type Aes256Cbc = cbc::Decryptor<aes::Aes256>;
 
 const WECHAT_CONTAINERS: &[&str] = &["com.tencent.xinWeChat", "com.tencent.xinWeChat.beta"];
 
-#[allow(clippy::collapsible_if)]
 fn wechat_data_dir() -> Option<PathBuf> {
     let home = std::env::var("HOME").ok().map(PathBuf::from)?;
     let containers = home.join("Library/Containers");
@@ -37,17 +35,20 @@ fn wechat_data_dir() -> Option<PathBuf> {
         let base = containers
             .join(container)
             .join("Data/Documents/xwechat_files");
-        if base.exists() {
-            if let Ok(entries) = std::fs::read_dir(&base) {
-                for entry in entries.flatten() {
-                    if entry.file_type().map(|t| t.is_dir()).unwrap_or(false)
-                        && entry.file_name().to_string_lossy().starts_with("wxid_")
-                    {
-                        let db = entry.path().join("db_storage/message");
-                        if db.exists() {
-                            return Some(db);
-                        }
-                    }
+        if !base.exists() {
+            continue;
+        }
+        let entries = match std::fs::read_dir(&base) {
+            Ok(e) => e,
+            Err(_) => continue,
+        };
+        for entry in entries.flatten() {
+            if entry.file_type().map(|t| t.is_dir()).unwrap_or(false)
+                && entry.file_name().to_string_lossy().starts_with("wxid_")
+            {
+                let db = entry.path().join("db_storage/message");
+                if db.exists() {
+                    return Some(db);
                 }
             }
         }
@@ -97,6 +98,7 @@ pub fn extract_db_key() -> Result<String> {
     use mach2::vm_prot::VM_PROT_READ;
     use mach2::vm_region::{VM_REGION_BASIC_INFO_64, vm_region_basic_info_64};
     use mach2::vm_types::{mach_vm_address_t, mach_vm_size_t};
+    use regex::Regex;
 
     let pid = find_wechat_pid()?;
     let mut task: mach2::port::mach_port_t = 0;
