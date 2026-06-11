@@ -28,6 +28,7 @@ type Aes256Cbc = cbc::Decryptor<aes::Aes256>;
 
 const WECHAT_CONTAINERS: &[&str] = &["com.tencent.xinWeChat", "com.tencent.xinWeChat.beta"];
 
+#[allow(clippy::collapsible_if)]
 fn wechat_data_dir() -> Option<PathBuf> {
     let home = std::env::var("HOME").ok().map(PathBuf::from)?;
     let containers = home.join("Library/Containers");
