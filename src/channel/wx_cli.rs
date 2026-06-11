@@ -14,7 +14,8 @@ pub struct WxCliChannel {
     group_chat_id: String,
     poll_interval: tokio::time::Duration,
     seen: Mutex<HashSet<String>>,
-    /// Cached SQLCipher key extracted from WeChat process memory.
+    /// Cached SQLCipher key — populated on first successful memory scan.
+    #[allow(dead_code)]
     db_key: Mutex<Option<String>>,
     /// Last seen local_id for incremental polling.
     last_local_id: Mutex<i64>,
