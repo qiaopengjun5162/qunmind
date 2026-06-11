@@ -10,7 +10,6 @@ use std::fs;
 use std::path::PathBuf;
 
 use aes::cipher::{BlockDecryptMut, KeyIvInit};
-#[cfg(target_os = "macos")]
 use tracing::{debug, warn};
 
 use crate::error::{QunMindError, Result};
