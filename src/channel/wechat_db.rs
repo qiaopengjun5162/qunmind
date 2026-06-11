@@ -36,16 +36,16 @@ fn wechat_data_dir() -> Option<PathBuf> {
         let base = containers
             .join(container)
             .join("Data/Documents/xwechat_files");
-        if base.exists()
-            && let Ok(entries) = std::fs::read_dir(&base)
-        {
-            for entry in entries.flatten() {
-                if entry.file_type().map(|t| t.is_dir()).unwrap_or(false)
-                    && entry.file_name().to_string_lossy().starts_with("wxid_")
-                {
-                    let db = entry.path().join("db_storage/message");
-                    if db.exists() {
-                        return Some(db);
+        if base.exists() {
+            if let Ok(entries) = std::fs::read_dir(&base) {
+                for entry in entries.flatten() {
+                    if entry.file_type().map(|t| t.is_dir()).unwrap_or(false)
+                        && entry.file_name().to_string_lossy().starts_with("wxid_")
+                    {
+                        let db = entry.path().join("db_storage/message");
+                        if db.exists() {
+                            return Some(db);
+                        }
                     }
                 }
             }
