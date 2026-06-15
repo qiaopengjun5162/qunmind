@@ -21,7 +21,7 @@ const SALT_SIZE: usize = 16;
 
 fn aes_cbc_decrypt(key: &[u8; 32], iv: &[u8; 16], data: &[u8]) -> Result<Vec<u8>> {
     use aes::cipher::Block;
-    if data.is_empty() || data.len() % 16 != 0 {
+    if data.is_empty() || !data.len().is_multiple_of(16) {
         return Err(QunMindError::Channel(format!(
             "密文长度不是 AES 块大小的倍数: {}",
             data.len()
@@ -540,20 +540,19 @@ fn extract_keys_via_lldb() -> Result<Vec<String>> {
                 None => continue,
             };
             let key_hex: String = key.iter().map(|b| format!("{b:02x}")).collect();
-            if let Ok(enc) = fs::read(db_path) {
-                if enc.len() >= PAGE_SIZE {
-                    let iv: &[u8; 16] = enc
-                        [PAGE_SIZE - RESERVE_SIZE..PAGE_SIZE - RESERVE_SIZE + 16]
-                        .try_into()
-                        .unwrap();
-                    if let Ok(dec) =
-                        aes_cbc_decrypt(&key, iv, &enc[SALT_SIZE..PAGE_SIZE - RESERVE_SIZE])
-                    {
-                        if dec.len() >= 16 && &dec[..15] == b"SQLite format 3" {
-                            info!(path=%db_path.display(), "LLDB+PBKDF2 解密成功");
-                            results.push(format!("{key_hex}{ds_hex}"));
-                        }
-                    }
+            if let Ok(enc) = fs::read(db_path)
+                && enc.len() >= PAGE_SIZE
+            {
+                let iv: &[u8; 16] = enc[PAGE_SIZE - RESERVE_SIZE..PAGE_SIZE - RESERVE_SIZE + 16]
+                    .try_into()
+                    .unwrap();
+                if let Ok(dec) =
+                    aes_cbc_decrypt(&key, iv, &enc[SALT_SIZE..PAGE_SIZE - RESERVE_SIZE])
+                    && dec.len() >= 16
+                    && &dec[..15] == b"SQLite format 3"
+                {
+                    info!(path=%db_path.display(), "LLDB+PBKDF2 解密成功");
+                    results.push(format!("{key_hex}{ds_hex}"));
                 }
             }
         }
@@ -721,10 +720,11 @@ fn try_key_on_page1(key_hex: &str, encrypted: &[u8]) -> bool {
             .try_into()
             .unwrap();
         let enc = &page[SALT_SIZE..PAGE_SIZE - RESERVE_SIZE];
-        if let Ok(dec) = aes_cbc_decrypt(aes_key, iv, enc) {
-            if dec.len() >= 16 && &dec[..15] == b"SQLite format 3" {
-                return true;
-            }
+        if let Ok(dec) = aes_cbc_decrypt(aes_key, iv, enc)
+            && dec.len() >= 16
+            && &dec[..15] == b"SQLite format 3"
+        {
+            return true;
         }
 
         // Fallback: PBKDF2-derive the raw key with the DB's salt (last 32 chars of 96-char key)
@@ -732,14 +732,13 @@ fn try_key_on_page1(key_hex: &str, encrypted: &[u8]) -> bool {
         if key_hex.len() >= 96 {
             let key_part = &key_hex[..64];
             let salt_part = &key_hex[64..96];
-            if let Some(derived) = pbkdf2_derive_openssl(key_part, salt_part) {
-                if derived != *aes_key {
-                    if let Ok(dec) = aes_cbc_decrypt(&derived, iv, enc) {
-                        if dec.len() >= 16 && &dec[..15] == b"SQLite format 3" {
-                            return true;
-                        }
-                    }
-                }
+            if let Some(derived) = pbkdf2_derive_openssl(key_part, salt_part)
+                && derived != *aes_key
+                && let Ok(dec) = aes_cbc_decrypt(&derived, iv, enc)
+                && dec.len() >= 16
+                && &dec[..15] == b"SQLite format 3"
+            {
+                return true;
             }
         }
     }
