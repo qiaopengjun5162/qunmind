@@ -445,6 +445,7 @@ pub fn lldb_extract_keys() -> Result<Vec<String>> {
     ))
 }
 
+#[cfg(target_os = "macos")]
 fn extract_keys_via_lldb() -> Result<Vec<String>> {
     use std::io::{BufRead, BufReader};
     use std::process::{Command, Stdio};
