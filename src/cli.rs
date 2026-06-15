@@ -114,6 +114,11 @@ pub enum WxCliCommand {
     KeysExtract,
     /// Show whether a key cache file exists and how many keys it contains.
     KeysStatus,
+    /// Read-only: resolve keys, decrypt the newest message shard, and print its real table schema.
+    ///
+    /// Touches no AI / PostgreSQL / send paths. Use it to locate where the receive
+    /// pipeline breaks: key extraction, decryption, or the WeChat 4.x table schema.
+    Probe,
 }
 
 #[cfg(test)]
@@ -484,5 +489,17 @@ mod tests {
             }
             _ => panic!("wx-cli send command should parse"),
         }
+    }
+
+    #[test]
+    fn parses_wx_cli_probe_command() {
+        let args = parse_args(&["qunmind", "wx-cli", "probe"]);
+
+        assert!(matches!(
+            args.command,
+            Some(CliCommand::WxCli {
+                command: WxCliCommand::Probe
+            })
+        ));
     }
 }

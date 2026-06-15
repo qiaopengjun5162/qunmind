@@ -953,6 +953,137 @@ pub fn query_new_messages(
 }
 
 // ---------------------------------------------------------------------------
+// Read-only pipeline probe
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, serde::Serialize)]
+pub struct TableInfo {
+    pub name: String,
+    pub rows: i64,
+    pub sql: String,
+}
+
+#[derive(Debug, serde::Serialize)]
+pub struct DbProbe {
+    pub path: String,
+    pub salt: String,
+    pub decrypted: bool,
+    pub error: Option<String>,
+    pub tables: Vec<TableInfo>,
+}
+
+#[derive(Debug, serde::Serialize)]
+pub struct ProbeReport {
+    pub candidate_keys: usize,
+    pub key_source: String,
+    pub total_db_shards: usize,
+    pub databases: Vec<DbProbe>,
+}
+
+fn db_salt_hex(path: &std::path::Path) -> String {
+    use std::io::Read;
+    let mut f = match fs::File::open(path) {
+        Ok(f) => f,
+        Err(_) => return String::new(),
+    };
+    let mut salt = [0u8; SALT_SIZE];
+    if f.read_exact(&mut salt).is_ok() {
+        salt.iter().map(|b| format!("{b:02x}")).collect()
+    } else {
+        String::new()
+    }
+}
+
+fn table_schemas(conn: &rusqlite::Connection) -> Vec<TableInfo> {
+    let mut stmt = match conn
+        .prepare("SELECT name, sql FROM sqlite_master WHERE type='table' ORDER BY name")
+    {
+        Ok(s) => s,
+        Err(_) => return Vec::new(),
+    };
+    let defs: Vec<(String, String)> = match stmt.query_map([], |row| {
+        Ok((
+            row.get::<_, String>(0)?,
+            row.get::<_, Option<String>>(1)?.unwrap_or_default(),
+        ))
+    }) {
+        Ok(rows) => rows.flatten().collect(),
+        Err(_) => return Vec::new(),
+    };
+    drop(stmt);
+
+    defs.into_iter()
+        .map(|(name, sql)| {
+            let quoted = name.replace('"', "\"\"");
+            let rows = conn
+                .query_row(&format!("SELECT count(*) FROM \"{quoted}\""), [], |r| {
+                    r.get(0)
+                })
+                .unwrap_or(-1);
+            TableInfo { name, rows, sql }
+        })
+        .collect()
+}
+
+/// Read-only diagnostic: resolve keys, decrypt the newest message shard,
+/// and dump its real table schema. Touches no AI / PostgreSQL / send paths.
+///
+/// Lets the caller see exactly where the receive pipeline breaks:
+/// `candidate_keys == 0` → key extraction; `decrypted == false` → decryption
+/// (key mismatch); decrypted but no usable message table → 4.x schema.
+pub fn probe() -> ProbeReport {
+    let (keys, key_source) = match extract_all_db_keys() {
+        Ok(k) => {
+            save_keys(&k);
+            (k, "memory_scan")
+        }
+        Err(_) => {
+            let cached = load_cached_keys();
+            let src = if cached.is_empty() {
+                "none"
+            } else {
+                "disk_cache"
+            };
+            (cached, src)
+        }
+    };
+
+    let shards = message_db_paths();
+    let mut databases = Vec::new();
+    if let Some(path) = shards.first() {
+        let mut entry = DbProbe {
+            path: path.display().to_string(),
+            salt: db_salt_hex(path),
+            decrypted: false,
+            error: None,
+            tables: Vec::new(),
+        };
+        match decrypt_db(path, &keys) {
+            Ok(plain) => {
+                match open_decrypted_db(&plain) {
+                    Ok(conn) => {
+                        entry.decrypted = true;
+                        entry.tables = table_schemas(&conn);
+                    }
+                    Err(e) => entry.error = Some(e.to_string()),
+                }
+                // Decrypted plaintext contains private chats — never leave it on disk.
+                let _ = fs::remove_file(&plain);
+            }
+            Err(e) => entry.error = Some(e.to_string()),
+        }
+        databases.push(entry);
+    }
+
+    ProbeReport {
+        candidate_keys: keys.len(),
+        key_source: key_source.to_string(),
+        total_db_shards: shards.len(),
+        databases,
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
@@ -978,5 +1109,22 @@ mod tests {
     fn message_db_paths_returns_vec() {
         let paths = message_db_paths();
         assert!(paths.is_empty() || !paths.is_empty());
+    }
+
+    #[test]
+    fn table_schemas_lists_tables_and_rows() {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE ChatMessage(local_id INTEGER, Message TEXT);
+             INSERT INTO ChatMessage VALUES (1, 'hi'), (2, 'yo');",
+        )
+        .unwrap();
+        let infos = table_schemas(&conn);
+        let cm = infos
+            .iter()
+            .find(|t| t.name == "ChatMessage")
+            .expect("ChatMessage table present");
+        assert_eq!(cm.rows, 2);
+        assert!(cm.sql.contains("Message"));
     }
 }

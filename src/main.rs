@@ -360,6 +360,11 @@ async fn run_wx_cli_command(
                 }))?
             );
         }
+        WxCliCommand::Probe => {
+            use qunmind::channel::wechat_db;
+            let report = wechat_db::probe();
+            println!("{}", serde_json::to_string_pretty(&report)?);
+        }
     }
 
     Ok(())
