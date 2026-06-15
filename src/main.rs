@@ -330,6 +330,36 @@ async fn run_wx_cli_command(
                 })
             );
         }
+        WxCliCommand::KeysExtract => {
+            use qunmind::channel::wechat_db;
+            info!("通过 LLDB 提取微信数据库密钥（将重启微信，请在手机上确认登录）...");
+            let keys = wechat_db::lldb_extract_keys()?;
+            wechat_db::save_keys(&keys);
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&serde_json::json!({
+                    "ok": true,
+                    "keys_extracted": keys.len(),
+                    "cache": "~/.qunmind/db_keys.cache"
+                }))?
+            );
+        }
+        WxCliCommand::KeysStatus => {
+            use qunmind::channel::wechat_db;
+            let cached = wechat_db::load_cached_keys();
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&serde_json::json!({
+                    "cached_keys": cached.len(),
+                    "cache_path": "~/.qunmind/db_keys.cache",
+                    "hint": if cached.is_empty() {
+                        "运行 `wx-cli keys-extract` 或以 sudo 运行一次 `wx-cli poll` 来建立缓存"
+                    } else {
+                        "密钥缓存可用，poll 命令无需 sudo"
+                    }
+                }))?
+            );
+        }
     }
 
     Ok(())

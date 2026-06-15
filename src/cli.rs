@@ -107,6 +107,13 @@ pub enum WxCliCommand {
         #[arg(long)]
         dry_run: bool,
     },
+    /// Extract and cache the SQLCipher database key via LLDB (requires WeChat restart).
+    ///
+    /// Use this when memory scan is blocked by SIP / missing entitlement.
+    /// The key is saved to ~/.qunmind/db_keys.cache and reused in future polls.
+    KeysExtract,
+    /// Show whether a key cache file exists and how many keys it contains.
+    KeysStatus,
 }
 
 #[cfg(test)]

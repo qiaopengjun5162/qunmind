@@ -81,14 +81,31 @@ impl WxCliChannel {
     }
 
     async fn poll_messages(&self) -> Result<Vec<RawWechatMessage>> {
-        // Try native memory scan; fall back to legacy shell-out for CI/test environments.
-        let db_key = match wechat_db::extract_db_key() {
-            Ok(key) => key,
-            Err(_) if self.has_legacy_config() => {
-                return self.poll_legacy().await;
+        // Key resolution: live memory scan → cached keys on disk → legacy shell fallback.
+        let db_keys = match wechat_db::extract_all_db_keys() {
+            Ok(keys) => {
+                // Persist so future runs survive binary rebuilds / SIP restarts.
+                wechat_db::save_keys(&keys);
+                keys
             }
-            Err(e) => return Err(e),
+            Err(scan_err) => {
+                let cached = wechat_db::load_cached_keys();
+                if !cached.is_empty() {
+                    info!("内存扫描失败 ({scan_err}), 使用磁盘缓存密钥");
+                    cached
+                } else if self.has_legacy_config() {
+                    debug!("内存扫描失败且无缓存密钥, 回退到 shell 路径");
+                    return self.poll_legacy().await;
+                } else {
+                    return Err(QunMindError::Channel(format!(
+                        "无法获取数据库密钥 (内存扫描: {scan_err})。\
+                        请以 sudo 运行一次以建立密钥缓存，或用 `wx-cli keys-extract` 命令提取。"
+                    )));
+                }
+            }
         };
+
+        tracing::debug!("找到 {} 个候选密钥", db_keys.len());
 
         let db_paths = wechat_db::message_db_paths();
         if db_paths.is_empty() {
@@ -97,40 +114,45 @@ impl WxCliChannel {
             ));
         }
 
-        let mut all_messages = Vec::new();
         let mut last_id = *self.last_local_id.lock().await;
 
-        // Decrypt each shard in pure Rust, query for new messages.
-        for db_path in &db_paths {
-            let plain_path = wechat_db::decrypt_db(db_path, &db_key)?;
-            let conn = wechat_db::open_decrypted_db(&plain_path)?;
-
-            match wechat_db::query_new_messages(&conn, last_id, 200) {
-                Ok(messages) => {
-                    if !messages.is_empty() {
-                        if let Some(max_msg) = messages.iter().max_by_key(|m| m.local_id) {
-                            let new_max = max_msg.local_id;
-                            if new_max > last_id {
-                                last_id = new_max;
+        // Helper to decrypt + query with given keys
+        let try_keys = |keys: &[String], last_id: &mut i64| -> Vec<RawWechatMessage> {
+            let mut msgs = Vec::new();
+            for db_path in &db_paths {
+                let plain_path = match wechat_db::decrypt_db(db_path, keys) {
+                    Ok(p) => p,
+                    Err(e) => { warn!("跳过数据库 (密钥未匹配): {e}"); continue; }
+                };
+                let conn = match wechat_db::open_decrypted_db(&plain_path) {
+                    Ok(c) => c,
+                    Err(e) => { warn!(path = %db_path.display(), "无法打开解密数据库: {e}"); continue; }
+                };
+                match wechat_db::query_new_messages(&conn, *last_id, 200) {
+                    Ok(messages) => {
+                        if !messages.is_empty() {
+                            if let Some(max_msg) = messages.iter().max_by_key(|m| m.local_id) {
+                                let new_max = max_msg.local_id;
+                                if new_max > *last_id { *last_id = new_max; }
                             }
+                            msgs.extend(messages);
                         }
-                        all_messages.extend(messages);
                     }
+                    Err(e) => warn!(path = %db_path.display(), "查询消息失败: {e}"),
                 }
-                Err(e) => warn!(path = %db_path.display(), "查询微信消息失败: {e}"),
+                drop(conn);
+                let _ = std::fs::remove_file(&plain_path);
+                if let Some(parent) = plain_path.parent() {
+                    let _ = std::fs::remove_dir(parent);
+                }
             }
+            msgs
+        };
 
-            // Clean up temp file.
-            drop(conn);
-            let _ = std::fs::remove_file(&plain_path);
-            if let Some(parent) = plain_path.parent() {
-                let _ = std::fs::remove_dir(parent);
-            }
-        }
+        let mut all_messages = try_keys(&db_keys, &mut last_id);
 
         all_messages.sort_by_key(|m| m.local_id);
         *self.last_local_id.lock().await = last_id;
-
         Ok(all_messages)
     }
 
