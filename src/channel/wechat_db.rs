@@ -570,6 +570,7 @@ fn extract_keys_via_lldb() -> Result<Vec<String>> {
     }
 }
 
+#[cfg(target_os = "macos")]
 fn extract_field(line: &str, prefix: &str) -> String {
     line.split_whitespace()
         .find(|s| s.starts_with(prefix))
@@ -727,6 +728,7 @@ fn try_key_on_page1(key_hex: &str, encrypted: &[u8]) -> bool {
         }
 
         // Fallback: PBKDF2-derive the raw key with the DB's salt (last 32 chars of 96-char key)
+        #[cfg(target_os = "macos")]
         if key_hex.len() >= 96 {
             let key_part = &key_hex[..64];
             let salt_part = &key_hex[64..96];
