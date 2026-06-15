@@ -122,18 +122,26 @@ impl WxCliChannel {
             for db_path in &db_paths {
                 let plain_path = match wechat_db::decrypt_db(db_path, keys) {
                     Ok(p) => p,
-                    Err(e) => { warn!("跳过数据库 (密钥未匹配): {e}"); continue; }
+                    Err(e) => {
+                        warn!("跳过数据库 (密钥未匹配): {e}");
+                        continue;
+                    }
                 };
                 let conn = match wechat_db::open_decrypted_db(&plain_path) {
                     Ok(c) => c,
-                    Err(e) => { warn!(path = %db_path.display(), "无法打开解密数据库: {e}"); continue; }
+                    Err(e) => {
+                        warn!(path = %db_path.display(), "无法打开解密数据库: {e}");
+                        continue;
+                    }
                 };
                 match wechat_db::query_new_messages(&conn, *last_id, 200) {
                     Ok(messages) => {
                         if !messages.is_empty() {
                             if let Some(max_msg) = messages.iter().max_by_key(|m| m.local_id) {
                                 let new_max = max_msg.local_id;
-                                if new_max > *last_id { *last_id = new_max; }
+                                if new_max > *last_id {
+                                    *last_id = new_max;
+                                }
                             }
                             msgs.extend(messages);
                         }

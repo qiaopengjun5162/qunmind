@@ -9,8 +9,8 @@
 use std::fs;
 use std::path::PathBuf;
 
-use aes::cipher::{BlockDecryptMut, KeyIvInit};
 use aes::Aes256;
+use aes::cipher::{BlockDecryptMut, KeyIvInit};
 use tracing::{debug, info, warn};
 
 use crate::error::{QunMindError, Result};
@@ -139,8 +139,11 @@ pub fn extract_all_db_keys() -> Result<Vec<String>> {
             data: *mut usize,
             data_cnt: *mut u32,
         ) -> i32;
-        fn mach_vm_deallocate(task: mach_port_t, addr: mach_vm_address_t, size: mach_vm_size_t)
-            -> i32;
+        fn mach_vm_deallocate(
+            task: mach_port_t,
+            addr: mach_vm_address_t,
+            size: mach_vm_size_t,
+        ) -> i32;
     }
 
     const CHUNK_SIZE: u64 = 2 * 1024 * 1024;
@@ -193,19 +196,14 @@ pub fn extract_all_db_keys() -> Result<Vec<String>> {
                     let cs = (end - ca).min(CHUNK_SIZE);
                     let mut data_ptr: usize = 0;
                     let mut data_cnt: u32 = 0;
-                    let kr =
-                        unsafe { mach_vm_read(task, ca, cs, &mut data_ptr, &mut data_cnt) };
+                    let kr = unsafe { mach_vm_read(task, ca, cs, &mut data_ptr, &mut data_cnt) };
                     if kr == KERN_SUCCESS && data_cnt > 0 {
                         let buf = unsafe {
                             std::slice::from_raw_parts(data_ptr as *const u8, data_cnt as usize)
                         };
                         search_key_pattern(buf, &mut all_keys);
                         unsafe {
-                            mach_vm_deallocate(
-                                mach_task_self(),
-                                data_ptr as u64,
-                                data_cnt as u64,
-                            );
+                            mach_vm_deallocate(mach_task_self(), data_ptr as u64, data_cnt as u64);
                         }
                     }
                     ca += if cs > OVERLAP { cs - OVERLAP } else { cs };
@@ -232,9 +230,10 @@ pub fn extract_all_db_keys() -> Result<Vec<String>> {
 /// Find the key for a specific db.
 #[cfg(target_os = "macos")]
 pub fn extract_db_key() -> Result<String> {
-    extract_all_db_keys()?.into_iter().next().ok_or_else(|| {
-        QunMindError::Channel("未找到任何数据库密钥".to_string())
-    })
+    extract_all_db_keys()?
+        .into_iter()
+        .next()
+        .ok_or_else(|| QunMindError::Channel("未找到任何数据库密钥".to_string()))
 }
 
 #[cfg(not(target_os = "macos"))]
@@ -300,10 +299,7 @@ fn search_key_pattern(buf: &[u8], keys: &mut Vec<String>) {
 
         // Find end of hex run (up to reasonable max)
         let mut hex_end = hex_start;
-        while hex_end < buf.len()
-            && hex_end - hex_start < 200
-            && buf[hex_end].is_ascii_hexdigit()
-        {
+        while hex_end < buf.len() && hex_end - hex_start < 200 && buf[hex_end].is_ascii_hexdigit() {
             hex_end += 1;
         }
         if hex_end >= buf.len() || buf[hex_end] != b'\'' {
@@ -319,15 +315,19 @@ fn search_key_pattern(buf: &[u8], keys: &mut Vec<String>) {
         }
 
         // Extract key (first 64 hex) and optionally salt (last 32 hex)
-        let key_part = String::from_utf8_lossy(&buf[hex_start..hex_start + 64])
-            .to_ascii_lowercase();
+        let key_part =
+            String::from_utf8_lossy(&buf[hex_start..hex_start + 64]).to_ascii_lowercase();
 
         if hex_len >= 96 {
             let _salt_start = hex_end - 32;
-            let full = String::from_utf8_lossy(&buf[hex_start..hex_start + 96])
-                .to_ascii_lowercase();
+            let full =
+                String::from_utf8_lossy(&buf[hex_start..hex_start + 96]).to_ascii_lowercase();
             if !keys.iter().any(|k| k == &full) {
-                debug!(key_prefix = &key_part[..16], key_salt = &full[64..96], "发现密钥(96)");
+                debug!(
+                    key_prefix = &key_part[..16],
+                    key_salt = &full[64..96],
+                    "发现密钥(96)"
+                );
                 keys.push(full);
             }
         } else {
@@ -351,41 +351,75 @@ fn search_key_pattern(buf: &[u8], keys: &mut Vec<String>) {
 #[cfg(target_os = "macos")]
 fn search_codec_ctx(buf: &[u8], keys: &mut Vec<String>) {
     let targets: &[(&[u8; 16], &str)] = &[
-        (&[0xc0,0x10,0xb8,0x02,0xac,0x01,0x1a,0x2a,0x07,0xeb,0x16,0xee,0x59,0x4f,0x8b,0x2c], "msg0"),
-        (&[0xb9,0x29,0xc9,0xfb,0x7d,0x15,0x9e,0x90,0x68,0x28,0x58,0xe7,0xf0,0x99,0x1c,0x79], "msg1"),
+        (
+            &[
+                0xc0, 0x10, 0xb8, 0x02, 0xac, 0x01, 0x1a, 0x2a, 0x07, 0xeb, 0x16, 0xee, 0x59, 0x4f,
+                0x8b, 0x2c,
+            ],
+            "msg0",
+        ),
+        (
+            &[
+                0xb9, 0x29, 0xc9, 0xfb, 0x7d, 0x15, 0x9e, 0x90, 0x68, 0x28, 0x58, 0xe7, 0xf0, 0x99,
+                0x1c, 0x79,
+            ],
+            "msg1",
+        ),
     ];
 
     for (needle, label) in targets {
-        if buf.len() < 80 { continue; }
+        if buf.len() < 80 {
+            continue;
+        }
         let first = needle[0];
         let mut pos = 0;
         while pos + 80 <= buf.len() {
-            if buf[pos] != first { pos += 1; continue; }
-            if &buf[pos..pos+16] != needle.as_slice() { pos += 1; continue; }
+            if buf[pos] != first {
+                pos += 1;
+                continue;
+            }
+            if &buf[pos..pos + 16] != needle.as_slice() {
+                pos += 1;
+                continue;
+            }
 
             // Salt at pos. Try key at offsets: -48, -32, -16, 0, +16, +32, +48
             let key_offsets: &[isize] = &[-48, -32, -16, 0, 16, 32, 48];
             for &off in key_offsets {
                 let key_pos = match off {
                     o if o >= 0 => pos + o as usize,
-                    o => match pos.checked_sub((-o) as usize) { Some(p) => p, None => continue },
+                    o => match pos.checked_sub((-o) as usize) {
+                        Some(p) => p,
+                        None => continue,
+                    },
                 };
-                if key_pos + 32 > buf.len() { continue; }
-                let ck: &[u8; 32] = buf[key_pos..key_pos+32].try_into().unwrap();
+                if key_pos + 32 > buf.len() {
+                    continue;
+                }
+                let ck: &[u8; 32] = buf[key_pos..key_pos + 32].try_into().unwrap();
 
                 // Skip salt itself (off=0 gives salt, not a key)
-                if off == 0 { continue; }
+                if off == 0 {
+                    continue;
+                }
                 // Skip if looks like ASCII text (real AES keys have <25% printable ASCII)
-                let ascii = ck.iter().filter(|&&b| b.is_ascii_graphic() || b == 0x20 || b == 0x00).count();
-                if ascii > 16 { continue; }
+                let ascii = ck
+                    .iter()
+                    .filter(|&&b| b.is_ascii_graphic() || b == 0x20 || b == 0x00)
+                    .count();
+                if ascii > 16 {
+                    continue;
+                }
                 // Skip if more than half zero bytes
-                if ck.iter().filter(|&&b| b == 0).count() > 20 { continue; }
+                if ck.iter().filter(|&&b| b == 0).count() > 20 {
+                    continue;
+                }
 
                 let kh: String = ck.iter().map(|b| format!("{b:02x}")).collect();
                 let sh: String = needle.iter().map(|b| format!("{b:02x}")).collect();
                 let full = format!("{kh}{sh}");
                 if !keys.iter().any(|k| k == &full) {
-                    debug!(label, off, key_prefix=&kh[..16], "codec_ctx候选");
+                    debug!(label, off, key_prefix = &kh[..16], "codec_ctx候选");
                     keys.push(full);
                 }
             }
@@ -421,47 +455,85 @@ fn extract_keys_via_lldb() -> Result<Vec<String>> {
     }
     let mut db_salts: Vec<([u8; 16], PathBuf)> = Vec::new();
     for p in &db_paths {
-        let mut f = match fs::File::open(p) { Ok(f) => f, Err(_) => continue };
+        let mut f = match fs::File::open(p) {
+            Ok(f) => f,
+            Err(_) => continue,
+        };
         let mut s = [0u8; 16];
         use std::io::Read;
-        if f.read_exact(&mut s).is_ok() { db_salts.push((s, p.clone())); }
+        if f.read_exact(&mut s).is_ok() {
+            db_salts.push((s, p.clone()));
+        }
     }
 
     let tmp = std::env::temp_dir().join("qunmind_lldb");
     let _ = fs::create_dir_all(&tmp);
     let py = tmp.join("hook.py");
-    fs::write(&py, LLDB_HOOK_SCRIPT).map_err(|e| QunMindError::Channel(format!("lldb脚本: {e}")))?;
+    fs::write(&py, LLDB_HOOK_SCRIPT)
+        .map_err(|e| QunMindError::Channel(format!("lldb脚本: {e}")))?;
 
     // Force kill all WeChat processes
-    let _ = Command::new("pkill").arg("-9").arg("-f").arg("WeChat").output();
+    let _ = Command::new("pkill")
+        .arg("-9")
+        .arg("-f")
+        .arg("WeChat")
+        .output();
     for _ in 0..10 {
-        if Command::new("pgrep").arg("-x").arg("WeChat").output()
-            .map(|o| String::from_utf8_lossy(&o.stdout).trim().is_empty()).unwrap_or(true) { break; }
+        if Command::new("pgrep")
+            .arg("-x")
+            .arg("WeChat")
+            .output()
+            .map(|o| String::from_utf8_lossy(&o.stdout).trim().is_empty())
+            .unwrap_or(true)
+        {
+            break;
+        }
         std::thread::sleep(std::time::Duration::from_millis(500));
     }
-    let _ = Command::new("pkill").arg("-9").arg("-f").arg("WeChatAppEx").output();
+    let _ = Command::new("pkill")
+        .arg("-9")
+        .arg("-f")
+        .arg("WeChatAppEx")
+        .output();
     std::thread::sleep(std::time::Duration::from_millis(500));
 
     info!("微信已关闭，等待重启。请在手机上确认登录...");
 
     let mut lldb = Command::new("lldb")
-        .args(["-w", "-n", "WeChat", "-o", &format!("command script import {}", py.display()), "-o", "go"])
-        .stdout(Stdio::piped()).stderr(Stdio::piped())
-        .spawn().map_err(|e| QunMindError::Channel(format!("lldb: {e}")))?;
+        .args([
+            "-w",
+            "-n",
+            "WeChat",
+            "-o",
+            &format!("command script import {}", py.display()),
+            "-o",
+            "go",
+        ])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|e| QunMindError::Channel(format!("lldb: {e}")))?;
 
     std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = Command::new("open").arg("-a").arg("WeChat").output();
 
     let mut results: Vec<String> = Vec::new();
     for line in BufReader::new(lldb.stdout.take().unwrap()).lines() {
-        let line = match line { Ok(l) => l, Err(_) => break };
-        if !line.starts_with("[QUNMIND_KEY]") { continue; }
+        let line = match line {
+            Ok(l) => l,
+            Err(_) => break,
+        };
+        if !line.starts_with("[QUNMIND_KEY]") {
+            continue;
+        }
         let pwd = extract_field(&line, "pwd=");
         let salt_hex = extract_field(&line, "salt=");
         debug!(pwd_len = pwd.len(), salt_hex, "LLDB 捕获到 PBKDF2 密钥");
         for (db_salt, db_path) in &db_salts {
             let ds_hex: String = db_salt.iter().map(|b| format!("{b:02x}")).collect();
-            if salt_hex != ds_hex || results.iter().any(|k| k.ends_with(&ds_hex)) { continue; }
+            if salt_hex != ds_hex || results.iter().any(|k| k.ends_with(&ds_hex)) {
+                continue;
+            }
             let key = match pbkdf2_derive_openssl(&pwd, &ds_hex) {
                 Some(k) => k,
                 None => continue,
@@ -469,8 +541,13 @@ fn extract_keys_via_lldb() -> Result<Vec<String>> {
             let key_hex: String = key.iter().map(|b| format!("{b:02x}")).collect();
             if let Ok(enc) = fs::read(db_path) {
                 if enc.len() >= PAGE_SIZE {
-                    let iv: &[u8; 16] = enc[PAGE_SIZE - RESERVE_SIZE..PAGE_SIZE - RESERVE_SIZE + 16].try_into().unwrap();
-                    if let Ok(dec) = aes_cbc_decrypt(&key, iv, &enc[SALT_SIZE..PAGE_SIZE - RESERVE_SIZE]) {
+                    let iv: &[u8; 16] = enc
+                        [PAGE_SIZE - RESERVE_SIZE..PAGE_SIZE - RESERVE_SIZE + 16]
+                        .try_into()
+                        .unwrap();
+                    if let Ok(dec) =
+                        aes_cbc_decrypt(&key, iv, &enc[SALT_SIZE..PAGE_SIZE - RESERVE_SIZE])
+                    {
                         if dec.len() >= 16 && &dec[..15] == b"SQLite format 3" {
                             info!(path=%db_path.display(), "LLDB+PBKDF2 解密成功");
                             results.push(format!("{key_hex}{ds_hex}"));
@@ -479,15 +556,24 @@ fn extract_keys_via_lldb() -> Result<Vec<String>> {
                 }
             }
         }
-        if results.len() >= db_salts.len() { break; }
+        if results.len() >= db_salts.len() {
+            break;
+        }
     }
     let _ = lldb.kill();
     let _ = fs::remove_file(&py);
-    if results.is_empty() { Err(QunMindError::Channel("LLDB未捕获到PBKDF2密钥".to_string())) } else { Ok(results) }
+    if results.is_empty() {
+        Err(QunMindError::Channel("LLDB未捕获到PBKDF2密钥".to_string()))
+    } else {
+        Ok(results)
+    }
 }
 
 fn extract_field(line: &str, prefix: &str) -> String {
-    line.split_whitespace().find(|s| s.starts_with(prefix)).map(|s| s[prefix.len()..].to_string()).unwrap_or_default()
+    line.split_whitespace()
+        .find(|s| s.starts_with(prefix))
+        .map(|s| s[prefix.len()..].to_string())
+        .unwrap_or_default()
 }
 
 /// PBKDF2-HMAC-SHA512 via macOS built-in openssl (zero extra deps).
@@ -495,16 +581,30 @@ fn extract_field(line: &str, prefix: &str) -> String {
 fn pbkdf2_derive_openssl(password_hex: &str, salt_hex: &str) -> Option<[u8; 32]> {
     use std::process::Command;
     let out = Command::new("openssl")
-        .args(["kdf", "-keylen", "32", "-kdfopt", "digest:SHA512",
-               "-kdfopt", "iter:256000",
-               "-kdfopt", &format!("hexsalt:{salt_hex}"),
-               "-kdfopt", &format!("hexpass:{password_hex}"),
-               "PBKDF2"])
-        .output().ok()?;
-    if !out.status.success() { return None; }
+        .args([
+            "kdf",
+            "-keylen",
+            "32",
+            "-kdfopt",
+            "digest:SHA512",
+            "-kdfopt",
+            "iter:256000",
+            "-kdfopt",
+            &format!("hexsalt:{salt_hex}"),
+            "-kdfopt",
+            &format!("hexpass:{password_hex}"),
+            "PBKDF2",
+        ])
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
     let hex = String::from_utf8_lossy(&out.stdout).trim().to_string();
     let bytes = hex_decode(&hex).ok()?;
-    if bytes.len() < 32 { return None; }
+    if bytes.len() < 32 {
+        return None;
+    }
     let mut k = [0u8; 32];
     k.copy_from_slice(&bytes[..32]);
     Some(k)
@@ -564,38 +664,65 @@ pub fn decrypt_db(encrypted_path: &std::path::Path, all_keys: &[String]) -> Resu
     }
 
     // Strategy 1: salt-based match for 96-char keys
-    if let Some(k) = all_keys.iter().find(|k| k.len() == 96 && k[64..] == file_salt) {
+    if let Some(k) = all_keys
+        .iter()
+        .find(|k| k.len() == 96 && k[64..] == file_salt)
+    {
         return decrypt_with_key(encrypted_path, k, &encrypted);
     }
 
     // Strategy 2: brute-force try every key against page 1
     let total = all_keys.len();
     for (i, k) in all_keys.iter().enumerate() {
-        if k.len() != 64 && k.len() != 96 { continue; }
-        debug!("[{}/{}] 尝试密钥 {}...", i + 1, total, &k[..16.min(k.len())]);
+        if k.len() != 64 && k.len() != 96 {
+            continue;
+        }
+        debug!(
+            "[{}/{}] 尝试密钥 {}...",
+            i + 1,
+            total,
+            &k[..16.min(k.len())]
+        );
         if try_key_on_page1(k, &encrypted) {
-            info!("[{}/{}] 密钥 {} 解密成功!", i + 1, total, &k[..16.min(k.len())]);
+            info!(
+                "[{}/{}] 密钥 {} 解密成功!",
+                i + 1,
+                total,
+                &k[..16.min(k.len())]
+            );
             return decrypt_with_key(encrypted_path, k, &encrypted);
         }
     }
 
-    let cand_info: Vec<String> = all_keys.iter().map(|k| format!("{}..", &k[..16.min(k.len())])).collect();
+    let cand_info: Vec<String> = all_keys
+        .iter()
+        .map(|k| format!("{}..", &k[..16.min(k.len())]))
+        .collect();
     Err(QunMindError::Channel(format!(
         "内存中未找到匹配数据库 {} 的密钥 (salt={}, candidates=[{}])",
-        encrypted_path.display(), &file_salt, cand_info.join(", ")
+        encrypted_path.display(),
+        &file_salt,
+        cand_info.join(", ")
     )))
 }
 
 fn try_key_on_page1(key_hex: &str, encrypted: &[u8]) -> bool {
     // Direct try: use key bytes as-is
-    let key_bytes = match hex_decode(&key_hex[..64.min(key_hex.len())]) { Ok(b) => b, Err(_) => return false };
+    let key_bytes = match hex_decode(&key_hex[..64.min(key_hex.len())]) {
+        Ok(b) => b,
+        Err(_) => return false,
+    };
     if key_bytes.len() >= 32 {
         let aes_key: &[u8; 32] = key_bytes[..32].try_into().unwrap();
         let page = &encrypted[..PAGE_SIZE];
-        let iv: &[u8; 16] = page[PAGE_SIZE - RESERVE_SIZE..PAGE_SIZE - RESERVE_SIZE + 16].try_into().unwrap();
+        let iv: &[u8; 16] = page[PAGE_SIZE - RESERVE_SIZE..PAGE_SIZE - RESERVE_SIZE + 16]
+            .try_into()
+            .unwrap();
         let enc = &page[SALT_SIZE..PAGE_SIZE - RESERVE_SIZE];
         if let Ok(dec) = aes_cbc_decrypt(aes_key, iv, enc) {
-            if dec.len() >= 16 && &dec[..15] == b"SQLite format 3" { return true; }
+            if dec.len() >= 16 && &dec[..15] == b"SQLite format 3" {
+                return true;
+            }
         }
 
         // Fallback: PBKDF2-derive the raw key with the DB's salt (last 32 chars of 96-char key)
@@ -605,7 +732,9 @@ fn try_key_on_page1(key_hex: &str, encrypted: &[u8]) -> bool {
             if let Some(derived) = pbkdf2_derive_openssl(key_part, salt_part) {
                 if derived != *aes_key {
                     if let Ok(dec) = aes_cbc_decrypt(&derived, iv, enc) {
-                        if dec.len() >= 16 && &dec[..15] == b"SQLite format 3" { return true; }
+                        if dec.len() >= 16 && &dec[..15] == b"SQLite format 3" {
+                            return true;
+                        }
                     }
                 }
             }
@@ -765,12 +894,11 @@ pub struct RawWechatMessage {
 
 /// List all table names in the database (for schema diagnosis).
 pub fn list_tables(conn: &rusqlite::Connection) -> Vec<String> {
-    let mut stmt = match conn
-        .prepare("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")
-    {
-        Ok(s) => s,
-        Err(_) => return Vec::new(),
-    };
+    let mut stmt =
+        match conn.prepare("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name") {
+            Ok(s) => s,
+            Err(_) => return Vec::new(),
+        };
     stmt.query_map([], |row| row.get(0))
         .map(|rows| rows.filter_map(|r| r.ok()).collect())
         .unwrap_or_default()
