@@ -127,6 +127,8 @@ fn story_from_object(map: &Map<String, Value>, page_url: &str) -> Option<PublicN
         url: article_url(page_url, id),
         score: None,
         comments: None,
+        ai_score: None,
+        category: None,
     })
 }
 

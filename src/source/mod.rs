@@ -14,13 +14,15 @@ use tracing::warn;
 
 use crate::error::Result;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct PublicNewsItem {
     pub source: String,
     pub title: String,
     pub url: String,
     pub score: Option<i64>,
     pub comments: Option<i64>,
+    pub ai_score: Option<f64>,
+    pub category: Option<String>,
 }
 
 #[async_trait]
@@ -123,6 +125,8 @@ mod tests {
                     url: "https://example.com/rust-zkp".to_string(),
                     score: None,
                     comments: None,
+                    ai_score: None,
+                    category: None,
                 },
                 PublicNewsItem {
                     source: "test".to_string(),
@@ -130,6 +134,8 @@ mod tests {
                     url: "https://example.com/rust-zkp".to_string(),
                     score: None,
                     comments: None,
+                    ai_score: None,
+                    category: None,
                 },
                 PublicNewsItem {
                     source: "test".to_string(),
@@ -137,6 +143,8 @@ mod tests {
                     url: "https://example.com/gardening".to_string(),
                     score: None,
                     comments: None,
+                    ai_score: None,
+                    category: None,
                 },
             ],
         });
@@ -176,6 +184,8 @@ mod tests {
                         url: "https://example.com/ai-agent".to_string(),
                         score: Some(10),
                         comments: Some(2),
+                        ai_score: None,
+                        category: None,
                     }],
                 }),
             ],

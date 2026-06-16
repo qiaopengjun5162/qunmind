@@ -660,6 +660,8 @@ mod tests {
                 url: "https://example.com/ai".to_string(),
                 score: Some(10),
                 comments: Some(2),
+                ai_score: None,
+                category: None,
             }],
             since,
             until,
@@ -705,6 +707,7 @@ mod tests {
             daily_report_lookback_hours: 24,
             daily_report_max_messages: 200,
             daily_report_max_links: 20,
+            daily_report_scoring_prompt: Default::default(),
             daily_reports: vec![
                 crate::config::DailyReportConfig {
                     chat_id: "group-1".to_string(),
@@ -715,6 +718,9 @@ mod tests {
                     lookback_hours: Some(8),
                     max_messages: Some(60),
                     max_links: Some(5),
+                    output: String::new(),
+                    wechat_bin: String::new(),
+                    wechat_articles_dir: String::new(),
                 },
                 crate::config::DailyReportConfig {
                     chat_id: "group-2".to_string(),
@@ -725,6 +731,9 @@ mod tests {
                     lookback_hours: None,
                     max_messages: None,
                     max_links: None,
+                    output: String::new(),
+                    wechat_bin: String::new(),
+                    wechat_articles_dir: String::new(),
                 },
                 crate::config::DailyReportConfig {
                     chat_id: "disabled-group".to_string(),
@@ -735,6 +744,9 @@ mod tests {
                     lookback_hours: None,
                     max_messages: None,
                     max_links: None,
+                    output: String::new(),
+                    wechat_bin: String::new(),
+                    wechat_articles_dir: String::new(),
                 },
                 crate::config::DailyReportConfig {
                     chat_id: String::new(),
@@ -745,6 +757,9 @@ mod tests {
                     lookback_hours: None,
                     max_messages: None,
                     max_links: None,
+                    output: String::new(),
+                    wechat_bin: String::new(),
+                    wechat_articles_dir: String::new(),
                 },
             ],
         });
@@ -854,6 +869,8 @@ mod tests {
                 url: "https://example.com/rust".to_string(),
                 score: Some(100),
                 comments: Some(20),
+                ai_score: None,
+                category: None,
             }],
         }));
 
@@ -942,6 +959,9 @@ mod tests {
                     lookback_hours: Some(6),
                     max_messages: Some(0),
                     max_links: Some(3),
+                    output: String::new(),
+                    wechat_bin: String::new(),
+                    wechat_articles_dir: String::new(),
                 }],
                 ..Default::default()
             },

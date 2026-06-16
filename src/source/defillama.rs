@@ -89,6 +89,8 @@ fn parse_protocol(value: &Value) -> Option<PublicNewsItem> {
         url: format!("https://defillama.com/protocol/{}", slug),
         score: finite_i64(tvl),
         comments: None,
+        ai_score: None,
+        category: None,
     })
 }
 

@@ -126,6 +126,8 @@ pub struct ScheduleConfig {
     pub daily_report_max_messages: i64,
     #[serde(default = "default_daily_report_max_links")]
     pub daily_report_max_links: i64,
+    #[serde(default = "default_daily_report_scoring_prompt")]
+    pub daily_report_scoring_prompt: String,
     #[serde(default)]
     pub daily_reports: Vec<DailyReportConfig>,
 }
@@ -147,6 +149,13 @@ pub struct DailyReportConfig {
     pub max_messages: Option<i64>,
     #[serde(default)]
     pub max_links: Option<i64>,
+    // 以下为新增字段
+    #[serde(default = "default_report_output")]
+    pub output: String,
+    #[serde(default = "default_wechat_bin")]
+    pub wechat_bin: String,
+    #[serde(default)]
+    pub wechat_articles_dir: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -455,6 +464,24 @@ fn default_true() -> bool {
     true
 }
 
+fn default_report_output() -> String {
+    "chat".to_string()
+}
+
+fn default_wechat_bin() -> String {
+    "moonpub".to_string()
+}
+
+fn default_daily_report_scoring_prompt() -> String {
+    "你是一个科技新闻评分员。对每条新闻从以下维度评分(0-10):\n\
+     - 技术重要性\n\
+     - 行业影响力\n\
+     - 与 Rust/Web3/AI/ZKP 的相关性\n\
+     返回纯 JSON 数组，不要包含其他文字:\n\
+     [{\"title\": \"...\", \"score\": 7, \"category\": \"AI\", \"reason\": \"...\"}]"
+        .to_string()
+}
+
 impl Default for ChannelConfig {
     fn default() -> Self {
         Self {
@@ -495,6 +522,7 @@ impl Default for ScheduleConfig {
             daily_report_lookback_hours: default_daily_report_lookback_hours(),
             daily_report_max_messages: default_daily_report_max_messages(),
             daily_report_max_links: default_daily_report_max_links(),
+            daily_report_scoring_prompt: default_daily_report_scoring_prompt(),
             daily_reports: Vec::new(),
         }
     }

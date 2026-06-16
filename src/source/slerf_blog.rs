@@ -80,6 +80,8 @@ fn parse_blog_html(html: &str, page_url: &str, max_items: usize) -> Vec<PublicNe
                 url: absolutize_url(page_url, &href),
                 score: None,
                 comments: None,
+                ai_score: None,
+                category: None,
             })
         })
         .take(max_items.max(1))

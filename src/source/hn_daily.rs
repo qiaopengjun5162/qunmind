@@ -107,6 +107,8 @@ fn parse_li(li: &str) -> Option<PublicNewsItem> {
         // HN Daily does not expose score or comment count from the daily summary page.
         score: None,
         comments: None,
+        ai_score: None,
+        category: None,
     })
 }
 

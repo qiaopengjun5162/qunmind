@@ -104,6 +104,8 @@ fn parse_row(query_id: u64, value: &Value) -> Option<PublicNewsItem> {
         url: format!("https://dune.com/queries/{}", query_id),
         score: first_numeric_score(map),
         comments: None,
+        ai_score: None,
+        category: None,
     })
 }
 
