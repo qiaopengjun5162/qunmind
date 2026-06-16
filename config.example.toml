@@ -52,6 +52,24 @@ chat_id = "group-chat-id-2"
 enabled = false
 name = "投研群日报"
 
+# 微信公众号日报 (需要 moonpub 已配置)
+# [[schedule.daily_reports]]
+# chat_id = ""
+# name = "微信公众号日报"
+# enabled = true
+# cron = "0 0 8 * * *"
+# output = "wechat"
+# wechat_bin = "moonpub"
+# wechat_articles_dir = "/data/moonpub"
+# prompt = """你是一个科技&Web3日报编辑。请根据以下评分后的新闻条目生成一份中文日报。
+# 输出格式要求:
+# 1. YAML frontmatter (title, digest, date, tags, wechat_author)
+# 2. 使用 moonpub :::intro / :::callout / :::summary fence 语法
+# 3. 按分类组织: 🔥热点速览 / 📡AI&LLM / ⛓️Web3/Crypto / 📦开源&工具
+# 4. 每条新闻: 加粗标题 + 来源链接 + 一句话解读 + AI评分
+# 5. 精选 6-12 条最重要的新闻
+# 6. 末尾注明数据来源"""
+
 [storage]
 database_url = "postgres://postgres:postgres@localhost:5432/qunmind"
 
