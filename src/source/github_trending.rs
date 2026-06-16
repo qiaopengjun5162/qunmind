@@ -87,6 +87,8 @@ fn parse_trending_html(html: &str, max_items: usize) -> Vec<PublicNewsItem> {
                 url: format!("https://github.com{}", href),
                 score: extract_stargazer_count(article),
                 comments: None,
+                ai_score: None,
+                category: None,
             })
         })
         .take(max_items.max(1))

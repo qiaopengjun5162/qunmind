@@ -5,9 +5,11 @@ use tracing::{error, info};
 use crate::ai::{AiClient, ChatMessage};
 use crate::channel::Channel;
 use crate::config::ScheduleConfig;
+use crate::daily_report::DailyReportGenerator;
 use crate::error::Result;
 use crate::source::{PublicNewsItem, PublicNewsSource};
 use crate::storage::{MessageStore, StoredLink, StoredMessage};
+use crate::wechat_publisher::publish_to_wechat;
 
 pub struct DailyReportScheduler {
     channel: Arc<dyn Channel>,
@@ -26,6 +28,9 @@ struct DailyReportTarget {
     lookback_hours: i64,
     max_messages: i64,
     max_links: i64,
+    output: String,
+    wechat_bin: String,
+    wechat_articles_dir: String,
 }
 
 impl DailyReportScheduler {
@@ -127,7 +132,43 @@ impl DailyReportScheduler {
         self.send_report_for(&target).await;
     }
 
+    async fn send_report_to_wechat(&self, target: &DailyReportTarget) {
+        if target.wechat_bin.is_empty() || target.wechat_articles_dir.is_empty() {
+            error!("微信日报配置缺失: wechat_bin 或 wechat_articles_dir 为空");
+            return;
+        }
+
+        let Some(source) = &self.public_news_source else {
+            error!("微信日报需要启用 public_sources");
+            return;
+        };
+
+        let generator = DailyReportGenerator::new(
+            Arc::clone(&self.ai),
+            Arc::clone(source),
+            self.config.daily_report_scoring_prompt.clone(),
+            target.prompt.clone(),
+        );
+
+        let markdown = match generator.generate().await {
+            Ok(md) => md,
+            Err(e) => {
+                error!("生成微信日报失败: {}", e);
+                return;
+            }
+        };
+
+        match publish_to_wechat(&markdown, &target.wechat_bin, &target.wechat_articles_dir) {
+            Ok(_) => info!(name = %target.name, "微信日报发布成功"),
+            Err(e) => error!("微信日报发布失败: {}", e),
+        }
+    }
+
     async fn send_report_for(&self, target: &DailyReportTarget) {
+        if target.output == "wechat" {
+            self.send_report_to_wechat(target).await;
+            return;
+        }
         info!("开始生成日报...");
 
         let lookback_hours = target.lookback_hours.max(1);
@@ -271,6 +312,9 @@ fn report_targets(config: &ScheduleConfig) -> Vec<DailyReportTarget> {
                     Some(max_links) => max_links,
                     None => config.daily_report_max_links,
                 },
+                output: report.output.clone(),
+                wechat_bin: report.wechat_bin.clone(),
+                wechat_articles_dir: report.wechat_articles_dir.clone(),
             })
             .collect();
     }
@@ -287,6 +331,9 @@ fn report_targets(config: &ScheduleConfig) -> Vec<DailyReportTarget> {
         lookback_hours: config.daily_report_lookback_hours,
         max_messages: config.daily_report_max_messages,
         max_links: config.daily_report_max_links,
+        output: "chat".to_string(),
+        wechat_bin: String::new(),
+        wechat_articles_dir: String::new(),
     }]
 }
 
@@ -414,6 +461,9 @@ mod tests {
             lookback_hours: 24,
             max_messages: 200,
             max_links: 20,
+            output: "chat".to_string(),
+            wechat_bin: String::new(),
+            wechat_articles_dir: String::new(),
         }
     }
 
@@ -660,6 +710,8 @@ mod tests {
                 url: "https://example.com/ai".to_string(),
                 score: Some(10),
                 comments: Some(2),
+                ai_score: None,
+                category: None,
             }],
             since,
             until,
@@ -692,6 +744,9 @@ mod tests {
                 lookback_hours: 12,
                 max_messages: 50,
                 max_links: 6,
+                output: "chat".to_string(),
+                wechat_bin: String::new(),
+                wechat_articles_dir: String::new(),
             }]
         );
     }
@@ -705,6 +760,7 @@ mod tests {
             daily_report_lookback_hours: 24,
             daily_report_max_messages: 200,
             daily_report_max_links: 20,
+            daily_report_scoring_prompt: Default::default(),
             daily_reports: vec![
                 crate::config::DailyReportConfig {
                     chat_id: "group-1".to_string(),
@@ -715,6 +771,9 @@ mod tests {
                     lookback_hours: Some(8),
                     max_messages: Some(60),
                     max_links: Some(5),
+                    output: String::new(),
+                    wechat_bin: String::new(),
+                    wechat_articles_dir: String::new(),
                 },
                 crate::config::DailyReportConfig {
                     chat_id: "group-2".to_string(),
@@ -725,6 +784,9 @@ mod tests {
                     lookback_hours: None,
                     max_messages: None,
                     max_links: None,
+                    output: String::new(),
+                    wechat_bin: String::new(),
+                    wechat_articles_dir: String::new(),
                 },
                 crate::config::DailyReportConfig {
                     chat_id: "disabled-group".to_string(),
@@ -735,6 +797,9 @@ mod tests {
                     lookback_hours: None,
                     max_messages: None,
                     max_links: None,
+                    output: String::new(),
+                    wechat_bin: String::new(),
+                    wechat_articles_dir: String::new(),
                 },
                 crate::config::DailyReportConfig {
                     chat_id: String::new(),
@@ -745,6 +810,9 @@ mod tests {
                     lookback_hours: None,
                     max_messages: None,
                     max_links: None,
+                    output: String::new(),
+                    wechat_bin: String::new(),
+                    wechat_articles_dir: String::new(),
                 },
             ],
         });
@@ -854,6 +922,8 @@ mod tests {
                 url: "https://example.com/rust".to_string(),
                 score: Some(100),
                 comments: Some(20),
+                ai_score: None,
+                category: None,
             }],
         }));
 
@@ -942,6 +1012,9 @@ mod tests {
                     lookback_hours: Some(6),
                     max_messages: Some(0),
                     max_links: Some(3),
+                    output: String::new(),
+                    wechat_bin: String::new(),
+                    wechat_articles_dir: String::new(),
                 }],
                 ..Default::default()
             },

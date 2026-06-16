@@ -14,6 +14,7 @@ use qunmind::channel::wx_cli::WxCliChannel;
 use qunmind::channel::wx_cli::parse_wx_cli_messages_from_str;
 use qunmind::cli::{Args, CliCommand, WxCliCommand};
 use qunmind::config::{AiProvider, ChannelKind, Config};
+use qunmind::daily_report::DailyReportGenerator;
 use qunmind::diagnostic::{
     select_wx_cli_messages, wx_cli_capture_report, wx_cli_doctor_report,
     wx_cli_dry_run_message_id_guard_report, wx_cli_dry_run_report, wx_cli_formal_test_plan,
@@ -181,6 +182,25 @@ async fn run_diagnostic_command(
             qunmind::mcp::run(config_path.to_path_buf()).await?;
             Ok(())
         }
+        CliCommand::DailyReport { output, hours: _ } => {
+            let ai_client = build_ai_client(config)?;
+            let public_news_source = build_public_news_source(config)?.ok_or_else(|| {
+                QunMindError::Config("daily-report 需要启用至少一个 public_sources".to_string())
+            })?;
+
+            let generator = DailyReportGenerator::new(
+                ai_client,
+                public_news_source,
+                config.schedule.daily_report_scoring_prompt.clone(),
+                config.schedule.daily_report_prompt.clone(),
+            );
+
+            let markdown = generator.generate().await?;
+            std::fs::write(&output, &markdown)
+                .with_context(|| format!("写入日报文件失败: {}", output.display()))?;
+            println!("日报已写入 {}", output.display());
+            Ok(())
+        }
     }
 }
 
@@ -329,6 +349,41 @@ async fn run_wx_cli_command(
                     "chat_id": chat_id
                 })
             );
+        }
+        WxCliCommand::KeysExtract => {
+            use qunmind::channel::wechat_db;
+            info!("通过 LLDB 提取微信数据库密钥（将重启微信，请在手机上确认登录）...");
+            let keys = wechat_db::lldb_extract_keys()?;
+            wechat_db::save_keys(&keys);
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&serde_json::json!({
+                    "ok": true,
+                    "keys_extracted": keys.len(),
+                    "cache": "~/.qunmind/db_keys.cache"
+                }))?
+            );
+        }
+        WxCliCommand::KeysStatus => {
+            use qunmind::channel::wechat_db;
+            let cached = wechat_db::load_cached_keys();
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&serde_json::json!({
+                    "cached_keys": cached.len(),
+                    "cache_path": "~/.qunmind/db_keys.cache",
+                    "hint": if cached.is_empty() {
+                        "运行 `wx-cli keys-extract` 或以 sudo 运行一次 `wx-cli poll` 来建立缓存"
+                    } else {
+                        "密钥缓存可用，poll 命令无需 sudo"
+                    }
+                }))?
+            );
+        }
+        WxCliCommand::Probe => {
+            use qunmind::channel::wechat_db;
+            let report = wechat_db::probe();
+            println!("{}", serde_json::to_string_pretty(&report)?);
         }
     }
 

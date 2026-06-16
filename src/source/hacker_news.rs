@@ -109,6 +109,8 @@ fn into_public_item(item: HackerNewsItem) -> Option<PublicNewsItem> {
         },
         score: item.score,
         comments: item.descendants,
+        ai_score: None,
+        category: None,
     })
 }
 

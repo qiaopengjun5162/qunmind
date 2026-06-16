@@ -87,6 +87,8 @@ fn parse_coin_item(value: &Value) -> Option<PublicNewsItem> {
         url: format!("https://www.coingecko.com/en/coins/{}", id),
         score,
         comments: None,
+        ai_score: None,
+        category: None,
     })
 }
 

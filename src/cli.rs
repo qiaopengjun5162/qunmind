@@ -24,6 +24,16 @@ pub enum CliCommand {
     /// Start an MCP (Model Context Protocol) server on stdio so AI agents can drive diagnostics.
     #[command(name = "mcp")]
     Mcp,
+    /// 生成日报 markdown 并输出到文件（手动测试用）
+    #[command(name = "daily-report")]
+    DailyReport {
+        /// 输出文件路径
+        #[arg(long)]
+        output: PathBuf,
+        /// 回溯小时数
+        #[arg(long, default_value_t = 24)]
+        hours: i64,
+    },
 }
 
 #[derive(Debug, Subcommand)]
@@ -107,6 +117,18 @@ pub enum WxCliCommand {
         #[arg(long)]
         dry_run: bool,
     },
+    /// Extract and cache the SQLCipher database key via LLDB (requires WeChat restart).
+    ///
+    /// Use this when memory scan is blocked by SIP / missing entitlement.
+    /// The key is saved to ~/.qunmind/db_keys.cache and reused in future polls.
+    KeysExtract,
+    /// Show whether a key cache file exists and how many keys it contains.
+    KeysStatus,
+    /// Read-only: resolve keys, decrypt the newest message shard, and print its real table schema.
+    ///
+    /// Touches no AI / PostgreSQL / send paths. Use it to locate where the receive
+    /// pipeline breaks: key extraction, decryption, or the WeChat 4.x table schema.
+    Probe,
 }
 
 #[cfg(test)]
@@ -476,6 +498,50 @@ mod tests {
                 assert!(dry_run);
             }
             _ => panic!("wx-cli send command should parse"),
+        }
+    }
+
+    #[test]
+    fn parses_wx_cli_probe_command() {
+        let args = parse_args(&["qunmind", "wx-cli", "probe"]);
+
+        assert!(matches!(
+            args.command,
+            Some(CliCommand::WxCli {
+                command: WxCliCommand::Probe
+            })
+        ));
+    }
+
+    #[test]
+    fn parses_daily_report_command() {
+        let args = parse_args(&[
+            "qunmind",
+            "daily-report",
+            "--output",
+            "/tmp/daily.md",
+            "--hours",
+            "48",
+        ]);
+
+        match args.command {
+            Some(CliCommand::DailyReport { output, hours }) => {
+                assert_eq!(output, PathBuf::from("/tmp/daily.md"));
+                assert_eq!(hours, 48);
+            }
+            _ => panic!("daily-report command should parse"),
+        }
+    }
+
+    #[test]
+    fn parses_daily_report_default_hours() {
+        let args = parse_args(&["qunmind", "daily-report", "--output", "/tmp/daily.md"]);
+
+        match args.command {
+            Some(CliCommand::DailyReport { hours, .. }) => {
+                assert_eq!(hours, 24);
+            }
+            _ => panic!("daily-report command should parse"),
         }
     }
 }
