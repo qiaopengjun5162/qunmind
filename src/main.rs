@@ -183,8 +183,8 @@ async fn run_diagnostic_command(
             Ok(())
         }
         CliCommand::DailyReport { output, hours: _ } => {
-            let ai_client = build_ai_client(&config)?;
-            let public_news_source = build_public_news_source(&config)?
+            let ai_client = build_ai_client(config)?;
+            let public_news_source = build_public_news_source(config)?
                 .ok_or_else(|| QunMindError::Config(
                     "daily-report 需要启用至少一个 public_sources".to_string()
                 ))?;
