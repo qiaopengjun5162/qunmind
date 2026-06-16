@@ -1,7 +1,19 @@
+use std::path::PathBuf;
 use std::process::Command;
-use tracing::{error, info};
+use tracing::{error, info, warn};
 
 use crate::error::{QunMindError, Result};
+
+/// RAII guard that removes the temp file on drop.
+struct TempFileGuard(PathBuf);
+
+impl Drop for TempFileGuard {
+    fn drop(&mut self) {
+        if let Err(e) = std::fs::remove_file(&self.0) {
+            warn!(path = %self.0.display(), error = %e, "清理临时日报文件失败");
+        }
+    }
+}
 
 pub fn publish_to_wechat(markdown: &str, moonpub_bin: &str, articles_dir: &str) -> Result<String> {
     let dir = std::env::temp_dir().join("qunmind-daily");
@@ -10,6 +22,9 @@ pub fn publish_to_wechat(markdown: &str, moonpub_bin: &str, articles_dir: &str) 
     let filename = format!("daily-{}.md", chrono::Utc::now().format("%Y-%m-%d"));
     let path = dir.join(&filename);
     std::fs::write(&path, markdown).map_err(QunMindError::Io)?;
+
+    // Guard ensures cleanup on all exit paths.
+    let _guard = TempFileGuard(path.clone());
 
     info!(path = %path.display(), bin = %moonpub_bin, "调用 moonpub 发布日报");
 
@@ -31,8 +46,7 @@ pub fn publish_to_wechat(markdown: &str, moonpub_bin: &str, articles_dir: &str) 
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
     info!(stdout = %stdout, "moonpub 发布成功");
 
-    let _ = std::fs::remove_file(&path);
-
+    // _guard drops here, removing the temp file.
     Ok(stdout)
 }
 
