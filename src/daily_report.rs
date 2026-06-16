@@ -23,7 +23,12 @@ impl DailyReportGenerator {
         scoring_prompt: String,
         report_prompt: String,
     ) -> Self {
-        Self { ai, news_source, scoring_prompt, report_prompt }
+        Self {
+            ai,
+            news_source,
+            scoring_prompt,
+            report_prompt,
+        }
     }
 
     /// Pass 1: 采集 + AI 评分
@@ -51,9 +56,7 @@ impl DailyReportGenerator {
     pub async fn generate(&self) -> Result<String> {
         let items = self.news_source.fetch_top_items().await?;
         if items.is_empty() {
-            return Err(QunMindError::Other(anyhow::anyhow!(
-                "无新闻条目可生成日报"
-            )));
+            return Err(QunMindError::Other(anyhow::anyhow!("无新闻条目可生成日报")));
         }
         let scored = self.score_items(&items).await?;
         let mut filtered: Vec<_> = scored
@@ -78,7 +81,10 @@ impl DailyReportGenerator {
 
 fn build_daily_prompt(scored: &[ScoredItem], report_prompt: &str) -> String {
     let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
-    let mut prompt = format!("{}\n\n日期: {}\n\n评分后的新闻列表:\n", report_prompt, today);
+    let mut prompt = format!(
+        "{}\n\n日期: {}\n\n评分后的新闻列表:\n",
+        report_prompt, today
+    );
     for s in scored {
         prompt.push_str(&format!(
             "- [{}] {} (评分: {:.0}/10, 分类: {})\n  URL: {}\n  评分理由: {}\n",
@@ -106,7 +112,9 @@ mod tests {
 
     impl FakeAi {
         fn new(responses: Vec<String>) -> Self {
-            Self { responses: Mutex::new(responses) }
+            Self {
+                responses: Mutex::new(responses),
+            }
         }
     }
 
@@ -167,18 +175,11 @@ mod tests {
             "日报内容".to_string(),
         ]));
         let news = Arc::new(FakeNewsSource {
-            items: vec![
-                test_item("Rust news"),
-                test_item("low quality"),
-            ],
+            items: vec![test_item("Rust news"), test_item("low quality")],
         });
 
-        let generator = DailyReportGenerator::new(
-            ai,
-            news,
-            "评分prompt".to_string(),
-            "日报prompt".to_string(),
-        );
+        let generator =
+            DailyReportGenerator::new(ai, news, "评分prompt".to_string(), "日报prompt".to_string());
         let report = generator.generate().await.unwrap();
         assert_eq!(report, "日报内容");
     }
@@ -187,9 +188,8 @@ mod tests {
     async fn generate_returns_error_when_no_items() {
         let ai = Arc::new(FakeAi::new(vec![]));
         let news = Arc::new(FakeNewsSource { items: vec![] });
-        let generator = DailyReportGenerator::new(
-            ai, news, "scoring".to_string(), "report".to_string(),
-        );
+        let generator =
+            DailyReportGenerator::new(ai, news, "scoring".to_string(), "report".to_string());
         let err = generator.generate().await.unwrap_err();
         assert!(err.to_string().contains("无新闻条目"));
     }

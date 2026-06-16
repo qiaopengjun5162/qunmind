@@ -535,12 +535,7 @@ mod tests {
 
     #[test]
     fn parses_daily_report_default_hours() {
-        let args = parse_args(&[
-            "qunmind",
-            "daily-report",
-            "--output",
-            "/tmp/daily.md",
-        ]);
+        let args = parse_args(&["qunmind", "daily-report", "--output", "/tmp/daily.md"]);
 
         match args.command {
             Some(CliCommand::DailyReport { hours, .. }) => {

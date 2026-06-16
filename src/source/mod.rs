@@ -67,10 +67,7 @@ pub fn parse_scoring_json(json: &str, items: &[PublicNewsItem]) -> Result<Vec<Sc
     let mut matched = Vec::new();
     for e in entries {
         let key = e.title.trim().to_lowercase();
-        if let Some(i) = items
-            .iter()
-            .find(|i| i.title.trim().to_lowercase() == key)
-        {
+        if let Some(i) = items.iter().find(|i| i.title.trim().to_lowercase() == key) {
             matched.push(ScoredItem {
                 item: i.clone(),
                 ai_score: e.score,

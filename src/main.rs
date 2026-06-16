@@ -14,12 +14,12 @@ use qunmind::channel::wx_cli::WxCliChannel;
 use qunmind::channel::wx_cli::parse_wx_cli_messages_from_str;
 use qunmind::cli::{Args, CliCommand, WxCliCommand};
 use qunmind::config::{AiProvider, ChannelKind, Config};
+use qunmind::daily_report::DailyReportGenerator;
 use qunmind::diagnostic::{
     select_wx_cli_messages, wx_cli_capture_report, wx_cli_doctor_report,
     wx_cli_dry_run_message_id_guard_report, wx_cli_dry_run_report, wx_cli_formal_test_plan,
     wx_cli_formal_test_plan_shell_script,
 };
-use qunmind::daily_report::DailyReportGenerator;
 use qunmind::error::QunMindError;
 use qunmind::scheduler::daily_report::DailyReportScheduler;
 use qunmind::source::CompositePublicNewsSource;
@@ -184,10 +184,9 @@ async fn run_diagnostic_command(
         }
         CliCommand::DailyReport { output, hours: _ } => {
             let ai_client = build_ai_client(config)?;
-            let public_news_source = build_public_news_source(config)?
-                .ok_or_else(|| QunMindError::Config(
-                    "daily-report 需要启用至少一个 public_sources".to_string()
-                ))?;
+            let public_news_source = build_public_news_source(config)?.ok_or_else(|| {
+                QunMindError::Config("daily-report 需要启用至少一个 public_sources".to_string())
+            })?;
 
             let generator = DailyReportGenerator::new(
                 ai_client,
