@@ -51,7 +51,6 @@ pub fn build_scoring_prompt(items: &[PublicNewsItem], scoring_prompt: &str) -> S
 /// 解析 AI 返回的评分 JSON
 pub fn parse_scoring_json(json: &str, items: &[PublicNewsItem]) -> Result<Vec<ScoredItem>> {
     use serde::Deserialize;
-    use crate::error::QunMindError;
 
     #[derive(Deserialize)]
     struct ScoreEntry {
@@ -61,21 +60,35 @@ pub fn parse_scoring_json(json: &str, items: &[PublicNewsItem]) -> Result<Vec<Sc
         reason: String,
     }
 
-    let entries: Vec<ScoreEntry> = serde_json::from_str(json).map_err(|e| {
-        QunMindError::Ai(format!("评分 JSON 解析失败: {}", e))
-    })?;
+    let entries: Vec<ScoreEntry> =
+        serde_json::from_str(json).map_err(crate::error::QunMindError::Json)?;
 
-    Ok(entries
-        .into_iter()
-        .filter_map(|e| {
-            items.iter().find(|i| i.title == e.title).map(|i| ScoredItem {
+    let entry_count = entries.len();
+    let mut matched = Vec::new();
+    for e in entries {
+        let key = e.title.trim().to_lowercase();
+        if let Some(i) = items
+            .iter()
+            .find(|i| i.title.trim().to_lowercase() == key)
+        {
+            matched.push(ScoredItem {
                 item: i.clone(),
                 ai_score: e.score,
                 category: e.category,
                 reason: e.reason,
-            })
-        })
-        .collect())
+            });
+        }
+    }
+
+    if matched.is_empty() && entry_count > 0 {
+        tracing::warn!(
+            entries = entry_count,
+            items = items.len(),
+            "评分结果中没找到与任何新闻标题匹配的条目"
+        );
+    }
+
+    Ok(matched)
 }
 
 #[async_trait]
