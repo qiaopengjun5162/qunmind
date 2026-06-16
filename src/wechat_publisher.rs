@@ -29,8 +29,13 @@ pub fn publish_to_wechat(markdown: &str, moonpub_bin: &str, articles_dir: &str) 
     info!(path = %path.display(), bin = %moonpub_bin, "调用 moonpub 发布日报");
 
     let output = Command::new(moonpub_bin)
-        .args(["push", &path.to_string_lossy(), "--render"])
-        .env("MOONPUB_ARTICLES", articles_dir)
+        .args([
+            "--articles",
+            articles_dir,
+            "push",
+            &path.to_string_lossy(),
+            "--render",
+        ])
         .output()
         .map_err(|e| QunMindError::Channel(format!("启动 moonpub 失败: {}", e)))?;
 
