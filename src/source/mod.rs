@@ -25,6 +25,59 @@ pub struct PublicNewsItem {
     pub category: Option<String>,
 }
 
+#[derive(Debug, Clone)]
+pub struct ScoredItem {
+    pub item: PublicNewsItem,
+    pub ai_score: f64,
+    pub category: String,
+    pub reason: String,
+}
+
+/// 构建评分 prompt，AI 返回 JSON 数组
+pub fn build_scoring_prompt(items: &[PublicNewsItem], scoring_prompt: &str) -> String {
+    let mut prompt = String::from(scoring_prompt);
+    prompt.push_str("\n\n新闻列表:\n");
+    for item in items {
+        prompt.push_str(&format!(
+            "- [{}] {} ({})\n",
+            item.source,
+            item.title.replace('\n', " "),
+            item.url
+        ));
+    }
+    prompt
+}
+
+/// 解析 AI 返回的评分 JSON
+pub fn parse_scoring_json(json: &str, items: &[PublicNewsItem]) -> Result<Vec<ScoredItem>> {
+    use serde::Deserialize;
+    use crate::error::QunMindError;
+
+    #[derive(Deserialize)]
+    struct ScoreEntry {
+        title: String,
+        score: f64,
+        category: String,
+        reason: String,
+    }
+
+    let entries: Vec<ScoreEntry> = serde_json::from_str(json).map_err(|e| {
+        QunMindError::Ai(format!("评分 JSON 解析失败: {}", e))
+    })?;
+
+    Ok(entries
+        .into_iter()
+        .filter_map(|e| {
+            items.iter().find(|i| i.title == e.title).map(|i| ScoredItem {
+                item: i.clone(),
+                ai_score: e.score,
+                category: e.category,
+                reason: e.reason,
+            })
+        })
+        .collect())
+}
+
 #[async_trait]
 pub trait PublicNewsSource: Send + Sync {
     async fn fetch_top_items(&self) -> Result<Vec<PublicNewsItem>>;
@@ -200,5 +253,81 @@ mod tests {
 
         assert_eq!(items.len(), 1);
         assert_eq!(items[0].title, "AI agent runtime");
+    }
+
+    #[test]
+    fn build_scoring_prompt_includes_items_and_custom_prompt() {
+        let items = vec![PublicNewsItem {
+            source: "HN".to_string(),
+            title: "Rust 2026".to_string(),
+            url: "https://example.com/rust".to_string(),
+            score: None,
+            comments: None,
+            ai_score: None,
+            category: None,
+        }];
+        let prompt = build_scoring_prompt(&items, "请评分");
+        assert!(prompt.contains("请评分"));
+        assert!(prompt.contains("Rust 2026"));
+        assert!(prompt.contains("https://example.com/rust"));
+    }
+
+    #[test]
+    fn parse_scoring_json_matches_items_by_title() {
+        let items = vec![
+            PublicNewsItem {
+                source: "HN".to_string(),
+                title: "Rust 2026".to_string(),
+                url: "https://example.com/rust".to_string(),
+                score: None,
+                comments: None,
+                ai_score: None,
+                category: None,
+            },
+            PublicNewsItem {
+                source: "HN".to_string(),
+                title: "AI news".to_string(),
+                url: "https://example.com/ai".to_string(),
+                score: None,
+                comments: None,
+                ai_score: None,
+                category: None,
+            },
+        ];
+        let json = r#"[
+            {"title": "Rust 2026", "score": 9, "category": "Dev", "reason": "重要"},
+            {"title": "AI news", "score": 5, "category": "AI", "reason": "一般"}
+        ]"#;
+        let scored = parse_scoring_json(json, &items).unwrap();
+        assert_eq!(scored.len(), 2);
+        assert_eq!(scored[0].ai_score, 9.0);
+        assert_eq!(scored[1].ai_score, 5.0);
+    }
+
+    #[test]
+    fn parse_scoring_json_skips_unmatched_titles() {
+        let items = vec![PublicNewsItem {
+            source: "HN".to_string(),
+            title: "Rust 2026".to_string(),
+            url: "https://example.com/rust".to_string(),
+            score: None,
+            comments: None,
+            ai_score: None,
+            category: None,
+        }];
+        let json = r#"[
+            {"title": "Rust 2026", "score": 9, "category": "Dev", "reason": "ok"},
+            {"title": "No match", "score": 8, "category": "Dev", "reason": "ok"}
+        ]"#;
+        let scored = parse_scoring_json(json, &items).unwrap();
+        assert_eq!(scored.len(), 1);
+        assert_eq!(scored[0].item.title, "Rust 2026");
+    }
+
+    #[test]
+    fn parse_scoring_json_rejects_invalid_json() {
+        let items = vec![];
+        let err = parse_scoring_json("not json", &items).unwrap_err();
+        assert!(err.to_string().contains("JSON"));
     }
 }
