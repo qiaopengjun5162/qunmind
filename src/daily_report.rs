@@ -3,9 +3,11 @@ use std::sync::Arc;
 use crate::ai::{AiClient, ChatMessage};
 use crate::error::{QunMindError, Result};
 use crate::source::{
-    PublicNewsItem, PublicNewsSource, ScoredItem,
-    build_scoring_prompt, parse_scoring_json,
+    PublicNewsItem, PublicNewsSource, ScoredItem, build_scoring_prompt, parse_scoring_json,
 };
+
+const SCORE_THRESHOLD: f64 = 6.0;
+const MAX_REPORT_ITEMS: usize = 15;
 
 pub struct DailyReportGenerator {
     ai: Arc<dyn AiClient>,
@@ -49,18 +51,26 @@ impl DailyReportGenerator {
     pub async fn generate(&self) -> Result<String> {
         let items = self.news_source.fetch_top_items().await?;
         if items.is_empty() {
-            return Err(QunMindError::Ai("无新闻条目可生成日报".to_string()));
+            return Err(QunMindError::Other(anyhow::anyhow!(
+                "无新闻条目可生成日报"
+            )));
         }
         let scored = self.score_items(&items).await?;
-        // 过滤: score >= 6，最多保留 15 条
-        let mut filtered: Vec<_> = scored.into_iter()
-            .filter(|s| s.ai_score >= 6.0)
+        let mut filtered: Vec<_> = scored
+            .into_iter()
+            .filter(|s| s.ai_score >= SCORE_THRESHOLD)
             .collect();
-        filtered.sort_by(|a, b| b.ai_score.partial_cmp(&a.ai_score).unwrap_or(std::cmp::Ordering::Equal));
-        filtered.truncate(15);
+        filtered.sort_by(|a, b| {
+            b.ai_score
+                .partial_cmp(&a.ai_score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+        filtered.truncate(MAX_REPORT_ITEMS);
 
         if filtered.is_empty() {
-            return Err(QunMindError::Ai("评分后无合格新闻(>=6分)".to_string()));
+            return Err(QunMindError::Other(anyhow::anyhow!(
+                "评分后无合格新闻(>={SCORE_THRESHOLD}分)"
+            )));
         }
         self.generate_report(&filtered).await
     }
@@ -182,6 +192,21 @@ mod tests {
         );
         let err = generator.generate().await.unwrap_err();
         assert!(err.to_string().contains("无新闻条目"));
+    }
+
+    #[tokio::test]
+    async fn generate_returns_error_when_all_items_filtered_out() {
+        let ai = Arc::new(FakeAi::new(vec![
+            r#"[{"title": "low quality", "score": 2, "category": "Other", "reason": "noise"}]"#
+                .to_string(),
+        ]));
+        let news = Arc::new(FakeNewsSource {
+            items: vec![test_item("low quality")],
+        });
+        let generator =
+            DailyReportGenerator::new(ai, news, "scoring".to_string(), "report".to_string());
+        let err = generator.generate().await.unwrap_err();
+        assert!(err.to_string().contains("无合格新闻"));
     }
 
     #[test]
