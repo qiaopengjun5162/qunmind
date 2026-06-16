@@ -19,6 +19,7 @@ use qunmind::diagnostic::{
     wx_cli_dry_run_message_id_guard_report, wx_cli_dry_run_report, wx_cli_formal_test_plan,
     wx_cli_formal_test_plan_shell_script,
 };
+use qunmind::daily_report::DailyReportGenerator;
 use qunmind::error::QunMindError;
 use qunmind::scheduler::daily_report::DailyReportScheduler;
 use qunmind::source::CompositePublicNewsSource;
@@ -179,6 +180,26 @@ async fn run_diagnostic_command(
         CliCommand::WxCli { command } => run_wx_cli_command(command, config, config_path).await,
         CliCommand::Mcp => {
             qunmind::mcp::run(config_path.to_path_buf()).await?;
+            Ok(())
+        }
+        CliCommand::DailyReport { output, hours: _ } => {
+            let ai_client = build_ai_client(&config)?;
+            let public_news_source = build_public_news_source(&config)?
+                .ok_or_else(|| QunMindError::Config(
+                    "daily-report 需要启用至少一个 public_sources".to_string()
+                ))?;
+
+            let generator = DailyReportGenerator::new(
+                ai_client,
+                public_news_source,
+                config.schedule.daily_report_scoring_prompt.clone(),
+                config.schedule.daily_report_prompt.clone(),
+            );
+
+            let markdown = generator.generate().await?;
+            std::fs::write(&output, &markdown)
+                .with_context(|| format!("写入日报文件失败: {}", output.display()))?;
+            println!("日报已写入 {}", output.display());
             Ok(())
         }
     }
