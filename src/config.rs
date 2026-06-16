@@ -149,7 +149,6 @@ pub struct DailyReportConfig {
     pub max_messages: Option<i64>,
     #[serde(default)]
     pub max_links: Option<i64>,
-    // 以下为新增字段
     #[serde(default = "default_report_output")]
     pub output: String,
     #[serde(default = "default_wechat_bin")]

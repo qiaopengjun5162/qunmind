@@ -5,9 +5,11 @@ use tracing::{error, info};
 use crate::ai::{AiClient, ChatMessage};
 use crate::channel::Channel;
 use crate::config::ScheduleConfig;
+use crate::daily_report::DailyReportGenerator;
 use crate::error::Result;
 use crate::source::{PublicNewsItem, PublicNewsSource};
 use crate::storage::{MessageStore, StoredLink, StoredMessage};
+use crate::wechat_publisher::publish_to_wechat;
 
 pub struct DailyReportScheduler {
     channel: Arc<dyn Channel>,
@@ -131,8 +133,10 @@ impl DailyReportScheduler {
     }
 
     async fn send_report_to_wechat(&self, target: &DailyReportTarget) {
-        use crate::daily_report::DailyReportGenerator;
-        use crate::wechat_publisher::publish_to_wechat;
+        if target.wechat_bin.is_empty() || target.wechat_articles_dir.is_empty() {
+            error!("微信日报配置缺失: wechat_bin 或 wechat_articles_dir 为空");
+            return;
+        }
 
         let Some(source) = &self.public_news_source else {
             error!("微信日报需要启用 public_sources");
