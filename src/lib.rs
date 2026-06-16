@@ -3,6 +3,7 @@ pub mod bot;
 pub mod channel;
 pub mod cli;
 pub mod config;
+pub mod daily_report;
 pub mod diagnostic;
 pub mod error;
 pub mod intelligence;
