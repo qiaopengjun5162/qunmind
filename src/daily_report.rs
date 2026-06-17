@@ -75,12 +75,16 @@ fn wrap_frontmatter(body: &str, items: &[PublicNewsItem], daily_quote: &str) -> 
 
     let top_score = items.first().and_then(|i| i.score).unwrap_or(0);
     let title = if let Some(first) = items.first() {
-        let first_title = truncate_str(&first.title, 50);
-        if top_score > 0 {
-            format!("HN {top_score}分都在讨论: {first_title}")
+        let prefix = if top_score > 0 {
+            format!("HN {top_score}分: ")
         } else {
-            first_title
-        }
+            String::new()
+        };
+        let max_item = 58usize.saturating_sub(prefix.len());
+        let item_title = truncate_str(&first.title, max_item);
+        let t = format!("{prefix}{item_title}");
+        // Final safety net: WeChat hard limit 64 bytes
+        truncate_str(&t, 50)
     } else {
         format!("今日科技信号 · {today}")
     };
@@ -103,21 +107,23 @@ fn wrap_frontmatter(body: &str, items: &[PublicNewsItem], daily_quote: &str) -> 
     )
 }
 
-fn truncate_str(s: &str, max_chars: usize) -> String {
+fn truncate_str(s: &str, max_bytes: usize) -> String {
     let trimmed = s.trim();
-    if trimmed.chars().count() <= max_chars {
+    if trimmed.len() <= max_bytes {
         trimmed.to_string()
     } else {
-        let mut count = 0;
         let mut end = 0;
         for (i, c) in trimmed.char_indices() {
-            if count >= max_chars {
+            if i + c.len_utf8() > max_bytes.saturating_sub(3) {
                 break;
             }
-            count += 1;
             end = i + c.len_utf8();
         }
-        format!("{}...", &trimmed[..end])
+        if end == 0 {
+            trimmed[..max_bytes.saturating_sub(3)].to_string() + "..."
+        } else {
+            format!("{}...", &trimmed[..end])
+        }
     }
 }
 
