@@ -134,6 +134,7 @@ pub struct ScheduleConfig {
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct DailyReportConfig {
+    #[serde(default)]
     pub chat_id: String,
     #[serde(default)]
     pub name: String,
@@ -476,8 +477,8 @@ fn default_daily_report_scoring_prompt() -> String {
      - 技术重要性\n\
      - 行业影响力\n\
      - 与 Rust/Web3/AI/ZKP 的相关性\n\
-     返回纯 JSON 数组，不要包含其他文字:\n\
-     [{\"title\": \"...\", \"score\": 7, \"category\": \"AI\", \"reason\": \"...\"}]"
+     返回纯 JSON 数组，用 id 对应新闻序号，不要包含其他文字:\n\
+     [{\"id\": 0, \"score\": 7, \"category\": \"AI\", \"reason\": \"...\"}]"
         .to_string()
 }
 

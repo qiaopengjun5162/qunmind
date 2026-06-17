@@ -167,8 +167,8 @@ mod tests {
         let ai = Arc::new(FakeAi::new(vec![
             // Pass 1: scoring JSON
             r#"[
-                {"title": "Rust news", "score": 9, "category": "Dev", "reason": "important"},
-                {"title": "low quality", "score": 3, "category": "Other", "reason": "boring"}
+                {"id": 0, "score": 9, "category": "Dev", "reason": "important"},
+                {"id": 1, "score": 3, "category": "Other", "reason": "boring"}
             ]"#
             .to_string(),
             // Pass 2: report
@@ -197,7 +197,7 @@ mod tests {
     #[tokio::test]
     async fn generate_returns_error_when_all_items_filtered_out() {
         let ai = Arc::new(FakeAi::new(vec![
-            r#"[{"title": "low quality", "score": 2, "category": "Other", "reason": "noise"}]"#
+            r#"[{"id": 0, "score": 2, "category": "Other", "reason": "noise"}]"#
                 .to_string(),
         ]));
         let news = Arc::new(FakeNewsSource {

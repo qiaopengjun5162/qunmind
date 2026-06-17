@@ -33,13 +33,13 @@ pub struct ScoredItem {
     pub reason: String,
 }
 
-/// 构建评分 prompt，AI 返回 JSON 数组
+/// 构建评分 prompt，AI 返回 JSON 数组（使用序号匹配）
 pub fn build_scoring_prompt(items: &[PublicNewsItem], scoring_prompt: &str) -> String {
     let mut prompt = String::from(scoring_prompt);
-    prompt.push_str("\n\n新闻列表:\n");
-    for item in items {
+    prompt.push_str("\n\n新闻列表(请用 id 字段返回序号):\n");
+    for (idx, item) in items.iter().enumerate() {
         prompt.push_str(&format!(
-            "- [{}] {} ({})\n",
+            "- [{idx}] [{}] {} ({})\n",
             item.source,
             item.title.replace('\n', " "),
             item.url
@@ -48,13 +48,13 @@ pub fn build_scoring_prompt(items: &[PublicNewsItem], scoring_prompt: &str) -> S
     prompt
 }
 
-/// 解析 AI 返回的评分 JSON
+/// 解析 AI 返回的评分 JSON（按 id 序号匹配，而非标题）
 pub fn parse_scoring_json(json: &str, items: &[PublicNewsItem]) -> Result<Vec<ScoredItem>> {
     use serde::Deserialize;
 
     #[derive(Deserialize)]
     struct ScoreEntry {
-        title: String,
+        id: usize,
         score: f64,
         category: String,
         reason: String,
@@ -66,8 +66,7 @@ pub fn parse_scoring_json(json: &str, items: &[PublicNewsItem]) -> Result<Vec<Sc
     let entry_count = entries.len();
     let mut matched = Vec::new();
     for e in entries {
-        let key = e.title.trim().to_lowercase();
-        if let Some(i) = items.iter().find(|i| i.title.trim().to_lowercase() == key) {
+        if let Some(i) = items.get(e.id) {
             matched.push(ScoredItem {
                 item: i.clone(),
                 ai_score: e.score,
@@ -81,7 +80,7 @@ pub fn parse_scoring_json(json: &str, items: &[PublicNewsItem]) -> Result<Vec<Sc
         tracing::warn!(
             entries = entry_count,
             items = items.len(),
-            "评分结果中没找到与任何新闻标题匹配的条目"
+            "评分结果中没找到与任何新闻条目匹配的 id"
         );
     }
 
@@ -283,7 +282,7 @@ mod tests {
     }
 
     #[test]
-    fn parse_scoring_json_matches_items_by_title() {
+    fn parse_scoring_json_matches_items_by_id() {
         let items = vec![
             PublicNewsItem {
                 source: "HN".to_string(),
@@ -305,8 +304,8 @@ mod tests {
             },
         ];
         let json = r#"[
-            {"title": "Rust 2026", "score": 9, "category": "Dev", "reason": "重要"},
-            {"title": "AI news", "score": 5, "category": "AI", "reason": "一般"}
+            {"id": 0, "score": 9, "category": "Dev", "reason": "重要"},
+            {"id": 1, "score": 5, "category": "AI", "reason": "一般"}
         ]"#;
         let scored = parse_scoring_json(json, &items).unwrap();
         assert_eq!(scored.len(), 2);
@@ -315,7 +314,7 @@ mod tests {
     }
 
     #[test]
-    fn parse_scoring_json_skips_unmatched_titles() {
+    fn parse_scoring_json_skips_out_of_bounds_id() {
         let items = vec![PublicNewsItem {
             source: "HN".to_string(),
             title: "Rust 2026".to_string(),
@@ -326,8 +325,8 @@ mod tests {
             category: None,
         }];
         let json = r#"[
-            {"title": "Rust 2026", "score": 9, "category": "Dev", "reason": "ok"},
-            {"title": "No match", "score": 8, "category": "Dev", "reason": "ok"}
+            {"id": 0, "score": 9, "category": "Dev", "reason": "ok"},
+            {"id": 99, "score": 8, "category": "Dev", "reason": "ok"}
         ]"#;
         let scored = parse_scoring_json(json, &items).unwrap();
         assert_eq!(scored.len(), 1);
