@@ -1,5 +1,38 @@
 # Progress
 
+## 2026-06-17
+
+### Done
+
+- **日报生成器 (`src/daily_report.rs`)** — 两段式 pipeline 简化为单段 AI 生成 + 源数据排序。采集多源新闻，按 HN 分数/GitHub stars 排序，DeepSeek 生成正文，代码自动补齐 YAML frontmatter 和标题。
+- **微信发布集成 (`src/wechat_publisher.rs`)** — moonpub subprocess 封装，RAII 临时文件管理，`--articles` 参数传递。
+- **Scheduler 微信路由 (`src/scheduler/daily_report.rs`)** — `output = "wechat"` 时调用 moonpub 发布到微信草稿，同时保留群聊发送路径。
+- **CLI 手动测试** — `qunmind daily-report --output <path>` 命令。
+- **数据模型扩展** — `PublicNewsItem` 新增 `ai_score`/`category`；`DailyReportConfig` 新增 `output`/`wechat_bin`/`wechat_articles_dir`/`daily_quote`。
+- **智能标题** — 从 GitHub URL 提取 `owner/repo`，避免用长描述作标题。WeChat 64 字限制内截断。
+- **moonpub 配置** — 封面永久素材上传、geek 主题、CDP 浏览器自动化。
+- **全链路跑通** — qunmind 定时采集 → AI 生成 → moonpub 渲染 → 微信草稿箱 → 手动群发。
+
+### Architecture
+
+```
+qunmind (常驻进程)
+  └─ DailyReportScheduler (cron 8:00)
+       └─ DailyReportGenerator
+            │  采集 HN/CoinGecko/GitHub Trending
+            │  按源分数排序, 取 top 15
+            │  DeepSeek 生成日报正文
+            │  代码补 YAML frontmatter + 标题 + daily_quote
+            └─ markdown → moonpub push --render → 微信草稿
+```
+
+### Next
+
+- 代码模板 + AI 只写叙述（解决 DeepSeek 不跟格式指令的问题）
+- 每条新闻强制带 URL（代码生成而非依赖 AI）
+- 内容富化、RSS 源、评论收集（参考 Horizon）
+- PR #34, #35 已合并到 master
+
 ## 2026-06-10
 
 ### Done
