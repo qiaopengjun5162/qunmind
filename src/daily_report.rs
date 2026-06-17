@@ -70,28 +70,45 @@ fn build_daily_prompt(items: &[PublicNewsItem], report_prompt: &str) -> String {
     prompt
 }
 
+fn short_title(item: &PublicNewsItem, score: i64) -> String {
+    if item.source.contains("GitHub") {
+        if let Some(repo) = extract_github_repo(&item.url) {
+            if score > 0 {
+                return format!("{} ⭐{score}", repo);
+            }
+            return repo;
+        }
+    }
+    if score > 0 {
+        format!("{} ({} points)", item.title.trim(), score)
+    } else {
+        item.title.trim().to_string()
+    }
+}
+
+fn extract_github_repo(url: &str) -> Option<String> {
+    let path = url.strip_prefix("https://github.com/")?;
+    let parts: Vec<&str> = path.split('/').take(2).collect();
+    if parts.len() == 2 {
+        Some(format!("{}/{}", parts[0], parts[1]))
+    } else {
+        None
+    }
+}
+
 fn wrap_frontmatter(body: &str, items: &[PublicNewsItem], daily_quote: &str) -> String {
     let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
 
-    let top_score = items.first().and_then(|i| i.score).unwrap_or(0);
     let title = if let Some(first) = items.first() {
-        let prefix = if top_score > 0 {
-            format!("HN {top_score}分: ")
-        } else {
-            String::new()
-        };
-        let max_item = 58usize.saturating_sub(prefix.len());
-        let item_title = truncate_str(&first.title, max_item);
-        let t = format!("{prefix}{item_title}");
-        // Final safety net: WeChat hard limit 64 bytes
-        truncate_str(&t, 50)
+        let score = first.score.unwrap_or(0);
+        truncate_str(&short_title(first, score), 50)
     } else {
         format!("今日科技信号 · {today}")
     };
 
     let digest = if items.len() >= 2 {
-        let second = truncate_str(&items[1].title, 60);
-        format!("{}. 还包括: {second}", title, second = second)
+        let second_title = short_title(&items[1], items[1].score.unwrap_or(0));
+        format!("{title}。{second_title}")
     } else {
         title.clone()
     };
@@ -99,7 +116,10 @@ fn wrap_frontmatter(body: &str, items: &[PublicNewsItem], daily_quote: &str) -> 
     let quote_block = if daily_quote.trim().is_empty() {
         String::new()
     } else {
-        format!("\n\n## 今日一句\n\n> {}\n", daily_quote.trim())
+        format!(
+            "\n\n:::divider\nlabel: 今日一句\n:::\n\n> {}\n",
+            daily_quote.trim()
+        )
     };
 
     format!(
