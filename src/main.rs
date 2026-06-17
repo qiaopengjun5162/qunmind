@@ -193,6 +193,7 @@ async fn run_diagnostic_command(
                 public_news_source,
                 config.schedule.daily_report_scoring_prompt.clone(),
                 config.schedule.daily_report_prompt.clone(),
+                String::new(),
             );
 
             let markdown = generator.generate().await?;
