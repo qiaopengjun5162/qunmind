@@ -52,7 +52,7 @@ chat_id = "group-chat-id-2"
 enabled = false
 name = "投研群日报"
 
-# 微信公众号日报 (需要 moonpub 已配置)
+# 微信公众号日报 (需要 moonpub 已配置，使用 public_sources 作为素材)
 # [[schedule.daily_reports]]
 # chat_id = ""
 # name = "微信公众号日报"
@@ -61,19 +61,16 @@ name = "投研群日报"
 # output = "wechat"
 # wechat_bin = "moonpub"
 # wechat_articles_dir = "/data/moonpub"
-# prompt = """你是一个科技&Web3日报编辑。请根据以下评分后的新闻条目生成一份中文日报。
-# 输出格式要求:
-# 1. YAML frontmatter (title, digest, date, tags, wechat_author)
-# 2. 使用 moonpub :::intro / :::callout / :::summary fence 语法
-# 3. 按分类组织: 🔥热点速览 / 📡AI&LLM / ⛓️Web3/Crypto / 📦开源&工具
-# 4. 每条新闻: 加粗标题 + 来源链接 + 一句话解读 + AI评分
-# 5. 精选 6-12 条最重要的新闻
-# 6. 末尾注明数据来源"""
+# daily_quote = ""   # 可选: 日报底部每日一句
 
 [storage]
 database_url = "postgres://postgres:postgres@localhost:5432/qunmind"
 
 [public_sources]
+arxiv_enabled = false
+arxiv_max_items = 15
+arxiv_timeout_secs = 15
+arxiv_url = "https://export.arxiv.org/api/query?search_query=cat:cs.LG+OR+cat:cs.AI+OR+cat:cs.CL&sortBy=submittedDate&sortOrder=descending"
 coingecko_enabled = false
 coingecko_max_items = 8
 coingecko_timeout_secs = 10
@@ -92,6 +89,10 @@ dune_enabled = false
 dune_max_rows_per_query = 5
 dune_query_ids = []
 dune_timeout_secs = 10
+ethresear_enabled = false
+ethresear_max_items = 10
+ethresear_timeout_secs = 10
+ethresear_url = "https://ethresear.ch"
 github_trending_base_url = "https://github.com/trending"
 github_trending_enabled = false
 github_trending_languages = ["rust", "go", "python", "typescript"]
@@ -102,6 +103,10 @@ hacker_news_base_url = "https://hacker-news.firebaseio.com/v0"
 hacker_news_enabled = false
 hacker_news_max_items = 10
 hacker_news_timeout_secs = 10
+hn_daily_enabled = false
+hn_daily_max_items = 20
+hn_daily_timeout_secs = 10
+hn_daily_url = "https://www.daemonology.net/hn-daily/"
 max_items = 12
 slerf_blog_enabled = false
 slerf_blog_max_items = 8
