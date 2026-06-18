@@ -126,14 +126,13 @@ pub struct ScheduleConfig {
     pub daily_report_max_messages: i64,
     #[serde(default = "default_daily_report_max_links")]
     pub daily_report_max_links: i64,
-    #[serde(default = "default_daily_report_scoring_prompt")]
-    pub daily_report_scoring_prompt: String,
     #[serde(default)]
     pub daily_reports: Vec<DailyReportConfig>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct DailyReportConfig {
+    #[serde(default)]
     pub chat_id: String,
     #[serde(default)]
     pub name: String,
@@ -149,6 +148,8 @@ pub struct DailyReportConfig {
     pub max_messages: Option<i64>,
     #[serde(default)]
     pub max_links: Option<i64>,
+    #[serde(default)]
+    pub daily_quote: String,
     #[serde(default = "default_report_output")]
     pub output: String,
     #[serde(default = "default_wechat_bin")]
@@ -241,6 +242,22 @@ pub struct PublicSourcesConfig {
     pub hn_daily_max_items: usize,
     #[serde(default = "default_hn_daily_timeout_secs")]
     pub hn_daily_timeout_secs: u64,
+    #[serde(default)]
+    pub arxiv_enabled: bool,
+    #[serde(default = "default_arxiv_url")]
+    pub arxiv_url: String,
+    #[serde(default = "default_arxiv_max_items")]
+    pub arxiv_max_items: usize,
+    #[serde(default = "default_arxiv_timeout_secs")]
+    pub arxiv_timeout_secs: u64,
+    #[serde(default)]
+    pub ethresear_enabled: bool,
+    #[serde(default = "default_ethresear_url")]
+    pub ethresear_url: String,
+    #[serde(default = "default_ethresear_max_items")]
+    pub ethresear_max_items: usize,
+    #[serde(default = "default_ethresear_timeout_secs")]
+    pub ethresear_timeout_secs: u64,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -455,6 +472,30 @@ fn default_hn_daily_timeout_secs() -> u64 {
     10
 }
 
+fn default_arxiv_url() -> String {
+    "https://export.arxiv.org/api/query?search_query=cat:cs.LG+OR+cat:cs.AI+OR+cat:cs.CL&sortBy=submittedDate&sortOrder=descending".to_string()
+}
+
+fn default_arxiv_max_items() -> usize {
+    10
+}
+
+fn default_arxiv_timeout_secs() -> u64 {
+    15
+}
+
+fn default_ethresear_url() -> String {
+    "https://ethresear.ch".to_string()
+}
+
+fn default_ethresear_max_items() -> usize {
+    10
+}
+
+fn default_ethresear_timeout_secs() -> u64 {
+    10
+}
+
 fn default_bot_context_messages() -> usize {
     8
 }
@@ -469,16 +510,6 @@ fn default_report_output() -> String {
 
 fn default_wechat_bin() -> String {
     "moonpub".to_string()
-}
-
-fn default_daily_report_scoring_prompt() -> String {
-    "你是一个科技新闻评分员。对每条新闻从以下维度评分(0-10):\n\
-     - 技术重要性\n\
-     - 行业影响力\n\
-     - 与 Rust/Web3/AI/ZKP 的相关性\n\
-     返回纯 JSON 数组，不要包含其他文字:\n\
-     [{\"title\": \"...\", \"score\": 7, \"category\": \"AI\", \"reason\": \"...\"}]"
-        .to_string()
 }
 
 impl Default for ChannelConfig {
@@ -521,7 +552,6 @@ impl Default for ScheduleConfig {
             daily_report_lookback_hours: default_daily_report_lookback_hours(),
             daily_report_max_messages: default_daily_report_max_messages(),
             daily_report_max_links: default_daily_report_max_links(),
-            daily_report_scoring_prompt: default_daily_report_scoring_prompt(),
             daily_reports: Vec::new(),
         }
     }
@@ -576,6 +606,14 @@ impl Default for PublicSourcesConfig {
             hn_daily_url: default_hn_daily_url(),
             hn_daily_max_items: default_hn_daily_max_items(),
             hn_daily_timeout_secs: default_hn_daily_timeout_secs(),
+            arxiv_enabled: false,
+            arxiv_url: default_arxiv_url(),
+            arxiv_max_items: default_arxiv_max_items(),
+            arxiv_timeout_secs: default_arxiv_timeout_secs(),
+            ethresear_enabled: false,
+            ethresear_url: default_ethresear_url(),
+            ethresear_max_items: default_ethresear_max_items(),
+            ethresear_timeout_secs: default_ethresear_timeout_secs(),
         }
     }
 }

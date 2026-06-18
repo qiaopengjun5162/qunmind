@@ -28,6 +28,7 @@ struct DailyReportTarget {
     lookback_hours: i64,
     max_messages: i64,
     max_links: i64,
+    daily_quote: String,
     output: String,
     wechat_bin: String,
     wechat_articles_dir: String,
@@ -146,8 +147,7 @@ impl DailyReportScheduler {
         let generator = DailyReportGenerator::new(
             Arc::clone(&self.ai),
             Arc::clone(source),
-            self.config.daily_report_scoring_prompt.clone(),
-            target.prompt.clone(),
+            target.daily_quote.clone(),
         );
 
         let markdown = match generator.generate().await {
@@ -284,11 +284,12 @@ impl DailyReportScheduler {
 
 fn report_targets(config: &ScheduleConfig) -> Vec<DailyReportTarget> {
     if !config.daily_reports.is_empty() {
-        // Legacy single-group fields stay as defaults so configs can migrate to multi-group reports gradually.
         return config
             .daily_reports
             .iter()
-            .filter(|report| report.enabled && !report.chat_id.is_empty())
+            .filter(|report| {
+                report.enabled && (report.output == "wechat" || !report.chat_id.is_empty())
+            })
             .map(|report| DailyReportTarget {
                 chat_id: report.chat_id.clone(),
                 name: report.name.clone(),
@@ -312,6 +313,7 @@ fn report_targets(config: &ScheduleConfig) -> Vec<DailyReportTarget> {
                     Some(max_links) => max_links,
                     None => config.daily_report_max_links,
                 },
+                daily_quote: report.daily_quote.clone(),
                 output: report.output.clone(),
                 wechat_bin: report.wechat_bin.clone(),
                 wechat_articles_dir: report.wechat_articles_dir.clone(),
@@ -331,6 +333,7 @@ fn report_targets(config: &ScheduleConfig) -> Vec<DailyReportTarget> {
         lookback_hours: config.daily_report_lookback_hours,
         max_messages: config.daily_report_max_messages,
         max_links: config.daily_report_max_links,
+        daily_quote: String::new(),
         output: "chat".to_string(),
         wechat_bin: String::new(),
         wechat_articles_dir: String::new(),
@@ -461,6 +464,7 @@ mod tests {
             lookback_hours: 24,
             max_messages: 200,
             max_links: 20,
+            daily_quote: String::new(),
             output: "chat".to_string(),
             wechat_bin: String::new(),
             wechat_articles_dir: String::new(),
@@ -744,6 +748,7 @@ mod tests {
                 lookback_hours: 12,
                 max_messages: 50,
                 max_links: 6,
+                daily_quote: String::new(),
                 output: "chat".to_string(),
                 wechat_bin: String::new(),
                 wechat_articles_dir: String::new(),
@@ -760,7 +765,6 @@ mod tests {
             daily_report_lookback_hours: 24,
             daily_report_max_messages: 200,
             daily_report_max_links: 20,
-            daily_report_scoring_prompt: Default::default(),
             daily_reports: vec![
                 crate::config::DailyReportConfig {
                     chat_id: "group-1".to_string(),
@@ -771,6 +775,7 @@ mod tests {
                     lookback_hours: Some(8),
                     max_messages: Some(60),
                     max_links: Some(5),
+                    daily_quote: String::new(),
                     output: String::new(),
                     wechat_bin: String::new(),
                     wechat_articles_dir: String::new(),
@@ -784,6 +789,7 @@ mod tests {
                     lookback_hours: None,
                     max_messages: None,
                     max_links: None,
+                    daily_quote: String::new(),
                     output: String::new(),
                     wechat_bin: String::new(),
                     wechat_articles_dir: String::new(),
@@ -797,6 +803,7 @@ mod tests {
                     lookback_hours: None,
                     max_messages: None,
                     max_links: None,
+                    daily_quote: String::new(),
                     output: String::new(),
                     wechat_bin: String::new(),
                     wechat_articles_dir: String::new(),
@@ -810,6 +817,7 @@ mod tests {
                     lookback_hours: None,
                     max_messages: None,
                     max_links: None,
+                    daily_quote: String::new(),
                     output: String::new(),
                     wechat_bin: String::new(),
                     wechat_articles_dir: String::new(),
@@ -1012,6 +1020,7 @@ mod tests {
                     lookback_hours: Some(6),
                     max_messages: Some(0),
                     max_links: Some(3),
+                    daily_quote: String::new(),
                     output: String::new(),
                     wechat_bin: String::new(),
                     wechat_articles_dir: String::new(),

@@ -74,17 +74,14 @@ fn parse_trending_html(html: &str, max_items: usize) -> Vec<PublicNewsItem> {
         .skip(1)
         .filter_map(|fragment| {
             let article = fragment.split_once("</article>")?.0;
-            let (href, repo) = extract_repo_link(article)?;
-            let description = extract_tag_text(article, "p").filter(|text| !text.is_empty());
-            let title = match description {
-                Some(description) => format!("{} - {}", repo, description),
-                None => repo,
-            };
+            let href = extract_repo_href(article)?;
+            let clean_name = repo_name_from_href(&href);
+            let title = clean_name;
 
             Some(PublicNewsItem {
                 source: "GitHub Trending".to_string(),
                 title,
-                url: format!("https://github.com{}", href),
+                url: format!("https://github.com{href}"),
                 score: extract_stargazer_count(article),
                 comments: None,
                 ai_score: None,
@@ -95,20 +92,17 @@ fn parse_trending_html(html: &str, max_items: usize) -> Vec<PublicNewsItem> {
         .collect()
 }
 
-fn extract_repo_link(article: &str) -> Option<(String, String)> {
+fn extract_repo_href(article: &str) -> Option<String> {
     let h2 = extract_tag_inner(article, "h2")?;
     let open_start = h2.find("<a")?;
     let open_end = h2[open_start..].find('>')? + open_start;
     let open_tag = &h2[open_start..=open_end];
-    let close_start = h2[open_end + 1..].find("</a>")? + open_end + 1;
-    let href = attr_value(open_tag, "href")?;
-    let repo = normalize_space(&strip_tags(&h2[open_end + 1..close_start]));
+    attr_value(open_tag, "href")
+}
 
-    if repo.is_empty() {
-        None
-    } else {
-        Some((href, repo))
-    }
+fn repo_name_from_href(href: &str) -> String {
+    let path = href.trim_matches('/');
+    path.split('/').take(2).collect::<Vec<_>>().join(" / ")
 }
 
 fn extract_stargazer_count(article: &str) -> Option<i64> {
@@ -120,10 +114,6 @@ fn extract_stargazer_count(article: &str) -> Option<i64> {
     let close_start = article[open_end + 1..].find("</a>")? + open_end + 1;
 
     parse_compact_number(&strip_tags(&article[open_end + 1..close_start]))
-}
-
-fn extract_tag_text(html: &str, tag: &str) -> Option<String> {
-    extract_tag_inner(html, tag).map(|inner| normalize_space(&strip_tags(inner)))
 }
 
 fn extract_tag_inner<'a>(html: &'a str, tag: &str) -> Option<&'a str> {
@@ -174,10 +164,6 @@ fn html_decode(value: &str) -> String {
         .replace("&#39;", "'")
 }
 
-fn normalize_space(value: &str) -> String {
-    value.split_whitespace().collect::<Vec<_>>().join(" ")
-}
-
 fn parse_compact_number(value: &str) -> Option<i64> {
     let digits = value
         .chars()
@@ -203,10 +189,7 @@ mod tests {
         let items = parse_trending_html(html, 10);
 
         assert_eq!(items.len(), 1);
-        assert_eq!(
-            items[0].title,
-            "rust-lang / rust - Empowering everyone to build reliable software."
-        );
+        assert_eq!(items[0].title, "rust-lang / rust");
         assert_eq!(items[0].url, "https://github.com/rust-lang/rust");
         assert_eq!(items[0].score, Some(100000));
     }
