@@ -24,7 +24,10 @@ pub(super) fn assemble_markdown(
 
     md.push_str(&render_ai_section(&report.ai_items, &report.ai_signals));
     md.push_str(&render_web3_section(&report.web3_items));
-    md.push_str(&render_tech_section(&report.tech_items, &report.tech_timeline));
+    md.push_str(&render_tech_section(
+        &report.tech_items,
+        &report.tech_timeline,
+    ));
 
     if !report.reads.is_empty() {
         md.push_str(&render_reads_section(&report.reads));
@@ -64,7 +67,10 @@ fn compute_title_digest(report: &ReportJson, items: &[PublicNewsItem]) -> (Strin
             .to_string();
         truncate_str(&first_sentence, 80)
     } else if items.len() >= 2 {
-        format!("{title}。{}", short_title(&items[1], items[1].score.unwrap_or(0)))
+        format!(
+            "{title}。{}",
+            short_title(&items[1], items[1].score.unwrap_or(0))
+        )
     } else {
         title.clone()
     };
@@ -73,7 +79,9 @@ fn compute_title_digest(report: &ReportJson, items: &[PublicNewsItem]) -> (Strin
 }
 
 fn render_frontmatter(title: &str, digest: &str, date: &str) -> String {
-    format!("---\ntitle: \"{title}\"\ndigest: \"{digest}\"\ndate: {date}\ntags: [科技, AI, Web3, 开源]\nwechat_author: 寻月隐君\n---\n\n")
+    format!(
+        "---\ntitle: \"{title}\"\ndigest: \"{digest}\"\ndate: {date}\ntags: [科技, AI, Web3, 开源]\nwechat_author: 寻月隐君\n---\n\n"
+    )
 }
 
 fn fence_block(kind: &str, label: Option<&str>, body: &str) -> String {
@@ -96,7 +104,10 @@ fn render_ai_section(items: &[ReportSection], signals: &[String]) -> String {
     let mut s = String::from("## 🤖 AI 前沿\n\n");
 
     for sub in &AI_SUBSECTIONS {
-        let matched: Vec<_> = items.iter().filter(|it| it.subsection.contains(sub)).collect();
+        let matched: Vec<_> = items
+            .iter()
+            .filter(|it| it.subsection.contains(sub))
+            .collect();
         if matched.is_empty() {
             continue;
         }
@@ -106,7 +117,10 @@ fn render_ai_section(items: &[ReportSection], signals: &[String]) -> String {
         }
     }
     for item in items {
-        if !AI_SUBSECTIONS.iter().any(|sub| item.subsection.contains(sub)) {
+        if !AI_SUBSECTIONS
+            .iter()
+            .any(|sub| item.subsection.contains(sub))
+        {
             s.push_str(&format_section_item(item));
         }
     }
@@ -158,7 +172,11 @@ fn render_reads_section(reads: &[ReportRead]) -> String {
         if read.url.is_empty() {
             s.push_str(&format!("**{}**\n\n", sanitize(&read.title)));
         } else {
-            s.push_str(&format!("**[{}]({})**\n\n", sanitize(&read.title), read.url));
+            s.push_str(&format!(
+                "**[{}]({})**\n\n",
+                sanitize(&read.title),
+                read.url
+            ));
         }
         // 空摘要时不渲染空 blockquote
         if !read.summary.is_empty() {
@@ -224,7 +242,9 @@ pub(super) fn sanitize(s: &str) -> String {
 }
 
 fn short_title(item: &PublicNewsItem, score: i64) -> String {
-    if item.source.contains("GitHub") && let Some(repo) = extract_github_repo(&item.url) {
+    if item.source.contains("GitHub")
+        && let Some(repo) = extract_github_repo(&item.url)
+    {
         return if score > 0 {
             format!("{repo} ⭐{score}")
         } else {

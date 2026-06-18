@@ -287,7 +287,9 @@ fn report_targets(config: &ScheduleConfig) -> Vec<DailyReportTarget> {
         return config
             .daily_reports
             .iter()
-            .filter(|report| report.enabled && (report.output == "wechat" || !report.chat_id.is_empty()))
+            .filter(|report| {
+                report.enabled && (report.output == "wechat" || !report.chat_id.is_empty())
+            })
             .map(|report| DailyReportTarget {
                 chat_id: report.chat_id.clone(),
                 name: report.name.clone(),

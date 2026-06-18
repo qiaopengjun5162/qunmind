@@ -143,11 +143,7 @@ async fn run_diagnostic_command(
                 QunMindError::Config("daily-report 需要启用至少一个 public_sources".to_string())
             })?;
 
-            let generator = DailyReportGenerator::new(
-                ai_client,
-                public_news_source,
-                String::new(),
-            );
+            let generator = DailyReportGenerator::new(ai_client, public_news_source, String::new());
 
             let markdown = generator.generate().await?;
             std::fs::write(&output, &markdown)

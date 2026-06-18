@@ -50,7 +50,11 @@ impl DailyReportGenerator {
         }];
         let raw = self.ai.chat(&messages).await?;
 
-        Ok(assemble_markdown(&parse_report_json(&raw), &ranked, &self.daily_quote))
+        Ok(assemble_markdown(
+            &parse_report_json(&raw),
+            &ranked,
+            &self.daily_quote,
+        ))
     }
 }
 
@@ -124,7 +128,10 @@ mod tests {
         let report = generator.generate().await.unwrap();
         let pos_high = report.find("high-score").unwrap();
         let pos_low = report.find("low-score").unwrap();
-        assert!(pos_high < pos_low, "high score should appear before low score in refs");
+        assert!(
+            pos_high < pos_low,
+            "high score should appear before low score in refs"
+        );
         assert!(report.contains("参考来源"));
     }
 

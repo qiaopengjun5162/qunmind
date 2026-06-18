@@ -108,7 +108,13 @@ mod tests {
     #[test]
     fn filters_pinned_and_limits() {
         let topics = vec![
-            make_topic(8, "Read this before posting", "read-before-posting", 0, true),
+            make_topic(
+                8,
+                "Read this before posting",
+                "read-before-posting",
+                0,
+                true,
+            ),
             make_topic(100, "EIP-4844 discussion", "eip-4844-discussion", 42, false),
             make_topic(101, "L2 scaling", "l2-scaling", 15, false),
             make_topic(102, "ZK proofs", "zk-proofs", 8, false),
@@ -116,7 +122,10 @@ mod tests {
         let items = parse_topics(topics, 2);
         assert_eq!(items.len(), 2);
         assert_eq!(items[0].title, "EIP-4844 discussion");
-        assert_eq!(items[0].url, "https://ethresear.ch/t/eip-4844-discussion/100");
+        assert_eq!(
+            items[0].url,
+            "https://ethresear.ch/t/eip-4844-discussion/100"
+        );
         assert_eq!(items[0].score, Some(42));
         assert_eq!(items[0].source, "ethresear.ch");
         assert_eq!(items[1].title, "L2 scaling");

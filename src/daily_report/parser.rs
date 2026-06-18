@@ -25,10 +25,7 @@ pub(super) fn parse_report_json(raw: &str) -> ReportJson {
 
 fn extract_json(raw: &str) -> &str {
     let s = raw.trim();
-    let s = if let Some(inner) = s
-        .strip_prefix("```json")
-        .or_else(|| s.strip_prefix("```"))
-    {
+    let s = if let Some(inner) = s.strip_prefix("```json").or_else(|| s.strip_prefix("```")) {
         inner.trim_start()
     } else {
         s
@@ -58,7 +55,9 @@ fn remove_duplicate_keys(json: &str) -> String {
 
     // Walk in reverse, keeping last occurrence of each key
     for seg in segments.iter().rev() {
-        if let Some(key) = segment_key(seg) && seen.insert(key) {
+        if let Some(key) = segment_key(seg)
+            && seen.insert(key)
+        {
             unique.push(seg);
         }
     }
@@ -165,8 +164,7 @@ mod tests {
     #[test]
     fn handles_duplicate_keys() {
         // DeepSeek sometimes emits duplicate "summary" fields
-        let raw =
-            r#"{"title_hint":"测试","intro":"描述","summary":"第一条","summary":"最后一条"}"#;
+        let raw = r#"{"title_hint":"测试","intro":"描述","summary":"第一条","summary":"最后一条"}"#;
         let report = parse_report_json(raw);
         assert_eq!(report.intro, "描述");
         assert_eq!(report.summary, "最后一条"); // keeps last occurrence
