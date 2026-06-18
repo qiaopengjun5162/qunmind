@@ -24,10 +24,12 @@ use qunmind::error::QunMindError;
 use qunmind::scheduler::daily_report::DailyReportScheduler;
 use qunmind::source::CompositePublicNewsSource;
 use qunmind::source::PublicNewsSource;
+use qunmind::source::arxiv::ArxivSource;
 use qunmind::source::coingecko::CoinGeckoTrendingSource;
 use qunmind::source::coinmarketcap::CoinMarketCapSource;
 use qunmind::source::defillama::DeFiLlamaProtocolsSource;
 use qunmind::source::dune::DuneQuerySource;
+use qunmind::source::ethresear::EthResearchSource;
 use qunmind::source::github_trending::GitHubTrendingSource;
 use qunmind::source::hacker_news::HackerNewsSource;
 use qunmind::source::hn_daily::HnDailySource;
@@ -158,6 +160,12 @@ fn build_public_news_source(config: &Config) -> anyhow::Result<Option<Arc<dyn Pu
     }
     if public_sources.hn_daily_enabled {
         sources.push(Arc::new(HnDailySource::new(public_sources)?));
+    }
+    if public_sources.arxiv_enabled {
+        sources.push(Arc::new(ArxivSource::new(public_sources)?));
+    }
+    if public_sources.ethresear_enabled {
+        sources.push(Arc::new(EthResearchSource::new(public_sources)?));
     }
 
     if sources.is_empty() {

@@ -244,6 +244,22 @@ pub struct PublicSourcesConfig {
     pub hn_daily_max_items: usize,
     #[serde(default = "default_hn_daily_timeout_secs")]
     pub hn_daily_timeout_secs: u64,
+    #[serde(default)]
+    pub arxiv_enabled: bool,
+    #[serde(default = "default_arxiv_url")]
+    pub arxiv_url: String,
+    #[serde(default = "default_arxiv_max_items")]
+    pub arxiv_max_items: usize,
+    #[serde(default = "default_arxiv_timeout_secs")]
+    pub arxiv_timeout_secs: u64,
+    #[serde(default)]
+    pub ethresear_enabled: bool,
+    #[serde(default = "default_ethresear_url")]
+    pub ethresear_url: String,
+    #[serde(default = "default_ethresear_max_items")]
+    pub ethresear_max_items: usize,
+    #[serde(default = "default_ethresear_timeout_secs")]
+    pub ethresear_timeout_secs: u64,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -458,6 +474,30 @@ fn default_hn_daily_timeout_secs() -> u64 {
     10
 }
 
+fn default_arxiv_url() -> String {
+    "https://export.arxiv.org/api/query?search_query=cat:cs.LG+OR+cat:cs.AI+OR+cat:cs.CL&sortBy=submittedDate&sortOrder=descending".to_string()
+}
+
+fn default_arxiv_max_items() -> usize {
+    10
+}
+
+fn default_arxiv_timeout_secs() -> u64 {
+    15
+}
+
+fn default_ethresear_url() -> String {
+    "https://ethresear.ch".to_string()
+}
+
+fn default_ethresear_max_items() -> usize {
+    10
+}
+
+fn default_ethresear_timeout_secs() -> u64 {
+    10
+}
+
 fn default_bot_context_messages() -> usize {
     8
 }
@@ -579,6 +619,14 @@ impl Default for PublicSourcesConfig {
             hn_daily_url: default_hn_daily_url(),
             hn_daily_max_items: default_hn_daily_max_items(),
             hn_daily_timeout_secs: default_hn_daily_timeout_secs(),
+            arxiv_enabled: false,
+            arxiv_url: default_arxiv_url(),
+            arxiv_max_items: default_arxiv_max_items(),
+            arxiv_timeout_secs: default_arxiv_timeout_secs(),
+            ethresear_enabled: false,
+            ethresear_url: default_ethresear_url(),
+            ethresear_max_items: default_ethresear_max_items(),
+            ethresear_timeout_secs: default_ethresear_timeout_secs(),
         }
     }
 }

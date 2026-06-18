@@ -1,7 +1,9 @@
+pub mod arxiv;
 pub mod coingecko;
 pub mod coinmarketcap;
 pub mod defillama;
 pub mod dune;
+pub mod ethresear;
 pub mod github_trending;
 pub mod hacker_news;
 pub mod hn_daily;
