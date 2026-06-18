@@ -224,14 +224,12 @@ pub(super) fn sanitize(s: &str) -> String {
 }
 
 fn short_title(item: &PublicNewsItem, score: i64) -> String {
-    if item.source.contains("GitHub") {
-        if let Some(repo) = extract_github_repo(&item.url) {
-            return if score > 0 {
-                format!("{repo} ⭐{score}")
-            } else {
-                repo
-            };
-        }
+    if item.source.contains("GitHub") && let Some(repo) = extract_github_repo(&item.url) {
+        return if score > 0 {
+            format!("{repo} ⭐{score}")
+        } else {
+            repo
+        };
     }
     if score > 0 {
         format!("{} ({score} points)", item.title.trim())

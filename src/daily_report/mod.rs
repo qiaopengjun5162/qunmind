@@ -41,7 +41,7 @@ impl DailyReportGenerator {
         }
 
         let mut ranked: Vec<PublicNewsItem> = items;
-        ranked.sort_by(|a, b| b.score.unwrap_or(0).cmp(&a.score.unwrap_or(0)));
+        ranked.sort_by_key(|item| std::cmp::Reverse(item.score.unwrap_or(0)));
         ranked.truncate(MAX_REPORT_ITEMS);
 
         let messages = vec![ChatMessage {
