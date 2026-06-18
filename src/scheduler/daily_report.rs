@@ -763,7 +763,6 @@ mod tests {
             daily_report_lookback_hours: 24,
             daily_report_max_messages: 200,
             daily_report_max_links: 20,
-            daily_report_scoring_prompt: Default::default(),
             daily_reports: vec![
                 crate::config::DailyReportConfig {
                     chat_id: "group-1".to_string(),
