@@ -158,10 +158,21 @@ fn matches_topics(item: &PublicNewsItem, topic_keywords: &[String]) -> bool {
         return true;
     }
 
+    // Items from curated sources that the user explicitly opted into are always
+    // relevant — the user enabling the source IS the relevance signal.  Keyword
+    // filtering is for broad feeds (Hacker News, etc.) where most items are noise.
+    if is_curated_source_url(&item.url) {
+        return true;
+    }
+
     let haystack = format!("{} {}", item.title, item.url).to_lowercase();
     topic_keywords
         .iter()
         .any(|keyword| haystack.contains(keyword))
+}
+
+fn is_curated_source_url(url: &str) -> bool {
+    url.contains("github.com") || url.contains("arxiv.org") || url.contains("ethresear.ch")
 }
 
 #[cfg(test)]
