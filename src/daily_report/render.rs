@@ -113,15 +113,18 @@ fn render_ai_section(items: &[ReportSection], signals: &[String]) -> String {
         }
         s.push_str(&format!("**{sub}**\n\n"));
         for item in matched {
-            s.push_str(&format_section_item(item));
+            if let Some(rendered) = format_section_item(item) {
+                s.push_str(&rendered);
+            }
         }
     }
     for item in items {
         if !AI_SUBSECTIONS
             .iter()
             .any(|sub| item.subsection.contains(sub))
+            && let Some(rendered) = format_section_item(item)
         {
-            s.push_str(&format_section_item(item));
+            s.push_str(&rendered);
         }
     }
 
@@ -138,14 +141,8 @@ fn render_ai_section(items: &[ReportSection], signals: &[String]) -> String {
 fn render_web3_section(items: &[ReportSection]) -> String {
     let mut s = String::from("## ⛓️ Web3 技术\n\n");
     for item in items {
-        if item.url.is_empty() {
-            s.push_str(&format!(
-                "**{}** — {}\n\n",
-                sanitize(&item.title),
-                sanitize(&item.comment)
-            ));
-        } else {
-            s.push_str(&format_section_item(item));
+        if let Some(rendered) = format_section_item(item) {
+            s.push_str(&rendered);
         }
     }
     s
@@ -154,7 +151,9 @@ fn render_web3_section(items: &[ReportSection]) -> String {
 fn render_tech_section(items: &[ReportSection], timeline: &[String]) -> String {
     let mut s = String::from("## 🔧 技术 & 开源\n\n");
     for item in items {
-        s.push_str(&format_section_item(item));
+        if let Some(rendered) = format_section_item(item) {
+            s.push_str(&rendered);
+        }
     }
     if timeline.len() >= 2 {
         s.push_str(":::timeline\n");
@@ -208,7 +207,13 @@ fn build_refs_block(items: &[PublicNewsItem]) -> String {
     block
 }
 
-fn format_section_item(item: &ReportSection) -> String {
+/// 渲染一条 section 条目。url 为空时返回 None（拒绝渲染编造内容）。
+fn format_section_item(item: &ReportSection) -> Option<String> {
+    let url = item.url.trim();
+    if url.is_empty() {
+        return None;
+    }
+
     let points_part = if item.points > 0 {
         format!("（来源：{}，{} points）", item.source, item.points)
     } else if !item.source.is_empty() {
@@ -217,22 +222,13 @@ fn format_section_item(item: &ReportSection) -> String {
         String::new()
     };
 
-    if item.url.is_empty() {
-        format!(
-            "**{}** — {}{}\n\n",
-            sanitize(&item.title),
-            sanitize(&item.comment),
-            points_part
-        )
-    } else {
-        format!(
-            "**[{}]({})** — {}{}\n\n",
-            sanitize(&item.title),
-            item.url,
-            sanitize(&item.comment),
-            points_part
-        )
-    }
+    Some(format!(
+        "**[{}]({})** — {}{}\n\n",
+        sanitize(&item.title),
+        url,
+        sanitize(&item.comment),
+        points_part
+    ))
 }
 
 pub(super) fn sanitize(s: &str) -> String {
