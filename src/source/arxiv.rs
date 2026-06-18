@@ -1,3 +1,4 @@
+use std::sync::OnceLock;
 use std::time::Duration;
 
 use async_trait::async_trait;
@@ -45,18 +46,15 @@ impl PublicNewsSource for ArxivSource {
 
 pub fn parse_arxiv_feed(xml: &str, max_items: usize) -> Vec<PublicNewsItem> {
     let max_items = max_items.max(1);
-    let entry_re = Regex::new(r"(?s)<entry>(.*?)</entry>").unwrap();
-    let title_re = Regex::new(r"(?s)<title[^>]*>(.*?)</title>").unwrap();
-    let id_re = Regex::new(r"(?s)<id>(.*?)</id>").unwrap();
-
     let mut items = Vec::new();
-    for cap in entry_re.captures_iter(xml) {
+
+    for cap in entry_re().captures_iter(xml) {
         if items.len() >= max_items {
             break;
         }
         let entry = cap.get(1).map_or("", |m| m.as_str());
 
-        let title = match title_re.captures(entry) {
+        let title = match title_re().captures(entry) {
             Some(c) => collapse_whitespace(c.get(1).map_or("", |m| m.as_str())),
             None => continue,
         };
@@ -64,7 +62,7 @@ pub fn parse_arxiv_feed(xml: &str, max_items: usize) -> Vec<PublicNewsItem> {
             continue;
         }
 
-        let raw_id = match id_re.captures(entry) {
+        let raw_id = match id_re().captures(entry) {
             Some(c) => c.get(1).map_or("", |m| m.as_str()).trim().to_string(),
             None => continue,
         };
@@ -72,14 +70,13 @@ pub fn parse_arxiv_feed(xml: &str, max_items: usize) -> Vec<PublicNewsItem> {
             continue;
         }
 
-        // https://arxiv.org/abs/2606.00001v1  ->  https://arxiv.org/abs/2606.00001
         let id_url = strip_arxiv_version(&raw_id.replace("http://", "https://"));
 
         items.push(PublicNewsItem {
             source: "ArXiv AI".to_string(),
             title,
             url: id_url,
-            score: Some(50), // baseline so AI papers appear mid-list, not buried at bottom
+            score: Some(50),
             comments: None,
             ai_score: None,
             category: Some("AI".to_string()),
@@ -88,10 +85,28 @@ pub fn parse_arxiv_feed(xml: &str, max_items: usize) -> Vec<PublicNewsItem> {
     items
 }
 
+fn entry_re() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| Regex::new(r"(?s)<entry>(.*?)</entry>").unwrap())
+}
+
+fn title_re() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| Regex::new(r"(?s)<title[^>]*>(.*?)</title>").unwrap())
+}
+
+fn id_re() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| Regex::new(r"(?s)<id>(.*?)</id>").unwrap())
+}
+
+fn version_re() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| Regex::new(r"v\d+$").unwrap())
+}
+
 fn strip_arxiv_version(url: &str) -> String {
-    // Remove trailing vN suffix: ".../abs/2606.00001v2" -> ".../abs/2606.00001"
-    let re = Regex::new(r"v\d+$").unwrap();
-    re.replace(url, "").into_owned()
+    version_re().replace(url, "").into_owned()
 }
 
 fn collapse_whitespace(s: &str) -> String {
@@ -119,14 +134,8 @@ mod tests {
     #[test]
     fn parses_entries() {
         let xml = sample_feed(&[
-            (
-                "Scaling AI Agents",
-                "http://arxiv.org/abs/2606.00001v1",
-            ),
-            (
-                "LLM Reasoning Survey",
-                "http://arxiv.org/abs/2606.00002v2",
-            ),
+            ("Scaling AI Agents", "http://arxiv.org/abs/2606.00001v1"),
+            ("LLM Reasoning Survey", "http://arxiv.org/abs/2606.00002v2"),
         ]);
         let items = parse_arxiv_feed(&xml, 10);
         assert_eq!(items.len(), 2);

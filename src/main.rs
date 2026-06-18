@@ -22,18 +22,8 @@ use qunmind::diagnostic::{
 };
 use qunmind::error::QunMindError;
 use qunmind::scheduler::daily_report::DailyReportScheduler;
-use qunmind::source::CompositePublicNewsSource;
+use qunmind::source;
 use qunmind::source::PublicNewsSource;
-use qunmind::source::arxiv::ArxivSource;
-use qunmind::source::coingecko::CoinGeckoTrendingSource;
-use qunmind::source::coinmarketcap::CoinMarketCapSource;
-use qunmind::source::defillama::DeFiLlamaProtocolsSource;
-use qunmind::source::dune::DuneQuerySource;
-use qunmind::source::ethresear::EthResearchSource;
-use qunmind::source::github_trending::GitHubTrendingSource;
-use qunmind::source::hacker_news::HackerNewsSource;
-use qunmind::source::hn_daily::HnDailySource;
-use qunmind::source::slerf_blog::SlerfBlogSource;
 use qunmind::storage::MessageStore;
 use qunmind::storage::postgres::PostgresMessageStore;
 use tracing::{error, info};
@@ -133,50 +123,7 @@ fn build_channel(config: &Config) -> anyhow::Result<Arc<dyn Channel>> {
 }
 
 fn build_public_news_source(config: &Config) -> anyhow::Result<Option<Arc<dyn PublicNewsSource>>> {
-    let public_sources = &config.public_sources;
-    let mut sources: Vec<Arc<dyn PublicNewsSource>> = Vec::new();
-
-    // Public sources are opt-in because they affect cost, latency, and the editorial voice of quiet-group reports.
-    if public_sources.hacker_news_enabled {
-        sources.push(Arc::new(HackerNewsSource::new(public_sources)?));
-    }
-    if public_sources.coinmarketcap_enabled {
-        sources.push(Arc::new(CoinMarketCapSource::new(public_sources)?));
-    }
-    if public_sources.coingecko_enabled {
-        sources.push(Arc::new(CoinGeckoTrendingSource::new(public_sources)?));
-    }
-    if public_sources.defillama_enabled {
-        sources.push(Arc::new(DeFiLlamaProtocolsSource::new(public_sources)?));
-    }
-    if public_sources.dune_enabled {
-        sources.push(Arc::new(DuneQuerySource::new(public_sources)?));
-    }
-    if public_sources.github_trending_enabled {
-        sources.push(Arc::new(GitHubTrendingSource::new(public_sources)?));
-    }
-    if public_sources.slerf_blog_enabled {
-        sources.push(Arc::new(SlerfBlogSource::new(public_sources)?));
-    }
-    if public_sources.hn_daily_enabled {
-        sources.push(Arc::new(HnDailySource::new(public_sources)?));
-    }
-    if public_sources.arxiv_enabled {
-        sources.push(Arc::new(ArxivSource::new(public_sources)?));
-    }
-    if public_sources.ethresear_enabled {
-        sources.push(Arc::new(EthResearchSource::new(public_sources)?));
-    }
-
-    if sources.is_empty() {
-        return Ok(None);
-    }
-
-    Ok(Some(Arc::new(CompositePublicNewsSource::new(
-        sources,
-        public_sources.topic_keywords.clone(),
-        public_sources.max_items,
-    ))))
+    source::registry::build(&config.public_sources).map_err(Into::into)
 }
 
 async fn run_diagnostic_command(
@@ -199,8 +146,6 @@ async fn run_diagnostic_command(
             let generator = DailyReportGenerator::new(
                 ai_client,
                 public_news_source,
-                config.schedule.daily_report_scoring_prompt.clone(),
-                config.schedule.daily_report_prompt.clone(),
                 String::new(),
             );
 

@@ -7,6 +7,7 @@ pub mod ethresear;
 pub mod github_trending;
 pub mod hacker_news;
 pub mod hn_daily;
+pub mod registry;
 pub mod slerf_blog;
 
 use async_trait::async_trait;
@@ -140,8 +141,8 @@ impl PublicNewsSource for CompositePublicNewsSource {
                 }
 
                 // Different feeds may point to the same story; keeping the first source makes prompts compact.
-                let key = format!("{}:{}", item.source, item.url);
-                if seen.insert(key) {
+                // dedup by URL only — same story from different feeds counts once
+                if seen.insert(item.url.clone()) {
                     items.push(item);
                 }
             }

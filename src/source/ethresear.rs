@@ -73,7 +73,7 @@ struct Topic {
     pinned_globally: bool,
 }
 
-pub fn parse_topics(topics: Vec<Topic>, max_items: usize) -> Vec<PublicNewsItem> {
+fn parse_topics(topics: Vec<Topic>, max_items: usize) -> Vec<PublicNewsItem> {
     topics
         .into_iter()
         .filter(|t| !t.pinned && !t.pinned_globally)

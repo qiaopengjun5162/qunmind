@@ -147,8 +147,6 @@ impl DailyReportScheduler {
         let generator = DailyReportGenerator::new(
             Arc::clone(&self.ai),
             Arc::clone(source),
-            self.config.daily_report_scoring_prompt.clone(),
-            target.prompt.clone(),
             target.daily_quote.clone(),
         );
 
