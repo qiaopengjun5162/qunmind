@@ -1,5 +1,65 @@
 # Progress
 
+## 2026-06-22
+
+### Done
+
+- **不编造原则** — prompt 层 + 代码层双重保护。AI 角色定义为"信息通道"（筛选/归类/转述，不创作/不评论/不预测）。所有字段 URL 必填，Web3 板块不再允许空 URL 编造内容。`format_section_item` 返回 `Option<String>`，空 URL 直接 `None`，代码强制执行。语言风格改为客观中性动词（"发布""讨论""出现"）。
+
+## 2026-06-18
+
+### Done
+
+- **`daily_report.rs` 模块拆分** — 598 行单文件 → `daily_report/` 目录：`types.rs`（数据结构）、`prompt.rs`（AI prompt 模板）、`parser.rs`（JSON 解析 + 容忍重复 key 降级）、`render.rs`（按 section 拆分的 markdown 组装函数）、`mod.rs`（`DailyReportGenerator`，3 字段，无死参数）。
+- **`source/registry.rs` 解耦** — 所有 source 构建统一入口，main.rs 从导入 12 个 source 类型缩减为 2 个。新增 source 只需改 `registry.rs` 一处。
+- **`reads.summary` 修复** — prompt 强化为必填（≥20 字）；render 跳过空 summary 的 blockquote。
+- **GitHub Trending 标题清洁** — `repo_name_from_href()` 从 URL 提取干净 `owner/repo`，不再被 h2 中 "Sponsor""Star" 等 UI 标记污染。
+- **Curated-source 关键词绕过** — github.com / arxiv.org / ethresear.ch 条目自动通过 `matches_topics` 过滤器，不再因无关键词而被丢弃。
+- **容忍重复 key JSON 解析** — `remove_duplicate_keys()` 扫描顶层 key，遇重复保留最后一次出现。DeepSeek 偶尔输出两个 `summary` 字段时自动降级重试。
+- **死代码清理** — 删除旧 AI 评分系统：`ScoredItem`、`build_scoring_prompt`、`parse_scoring_json`、`ScheduleConfig.daily_report_scoring_prompt`（-152 行）。
+- **示例配置同步** — `config.example.toml` / `config.docker.example.toml` 补齐 `arxiv_*`、`ethresear_*`、`hn_daily_*` 字段。
+- **`DailyReportGenerator::new` 去死参** — 移除 `_scoring_prompt` 和 `_report_prompt`（JSON schema 方案不再需要）。
+- **Clippy 零错误** — `sort_by_key`、`collapsible_if`（if-let chain）修复。
+- **`parse_topics` 私有化** — 解决 `private_interfaces` warning。
+
+### Architecture (updated)
+
+```
+qunmind (常驻进程)
+  └─ DailyReportScheduler (cron 8:00)
+       └─ DailyReportGenerator (daily_report/mod.rs)
+            │  news_source.fetch_top_items()
+            │    └─ CompositePublicNewsSource (source/mod.rs)
+            │         ├─ HackerNewsSource
+            │         ├─ HnDailySource
+            │         ├─ GitHubTrendingSource
+            │         ├─ ArxivSource          (cs.AI/LG/CL, 基线 50 分)
+            │         └─ EthResearchSource     (ethresear.ch)
+            │  按 source score 排序, 取 top 25
+            │  build_json_prompt() → DeepSeek → JSON
+            │  parse_report_json() (tolerant: 容忍重复 key)
+            │  assemble_markdown() → 按 section 组装
+            │    ├─ render_frontmatter()
+            │    ├─ render_ai_section()     → AI_SUBSECTIONS 分组
+            │    ├─ render_web3_section()   → 仅渲染有 URL 的条目
+            │    ├─ render_tech_section()   → + timeline
+            │    ├─ render_reads_section()  → 空 summary 跳过
+            │    └─ build_refs_block()      → 完全由 Rust 生成
+            └─ markdown → moonpub publish → 微信草稿箱
+```
+
+### Editorial principle
+
+- **信息通道，不是观点作者** — 筛选/归类/转述，不创作/不评论/不预测
+- **两层保护** — prompt 禁止空 URL + `format_section_item` 返回 `Option`（空 URL → None）
+- **所有 URL 必须来自新闻列表** — 宁可少写一条，不能编一条
+
+### Next
+
+- 内容源扩展：更多 AI/Web3 垂直源
+- 每日一句自动配置
+- `diagnostic.rs` (2993 行) 模块化
+
 ## 2026-06-17
 
 ### Done
