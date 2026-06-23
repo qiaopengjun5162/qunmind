@@ -217,6 +217,8 @@ Xiaohongshu support.
 
 `src/research/learning.rs` tracks the recommended LLM, API, coding-agent, agent-framework, Hermes execution-layer, and AI x Web3 learning resources. It includes the AI x Web3 School learning-agent startup prompt and handbook as structured references, so future prompt design, model-provider integration, tool calling, skills, memory, and long-running agent execution decisions can be reviewed without turning the WeChat message path into a documentation dump.
 
+That catalog now also includes multimodal-agent references such as JoyAI-VL-Interaction. For now, those are roadmap inputs for separate video/visual PoCs, not code that should be embedded into the current QunMind runtime. See [docs/multimodal-roadmap.md](docs/multimodal-roadmap.md).
+
 ## Development
 
 ```bash
