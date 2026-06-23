@@ -7,8 +7,11 @@ use super::dry_run::wx_cli_dry_run_item;
 use super::support::{
     ai_provider_name, args_contain_placeholder, channel_kind_name, has_duplicate_message_ids,
     has_unseen_daily_report_targets, has_unseen_group_overrides,
-    wx_cli_daily_report_target_statuses, wx_cli_group_override_statuses,
-    wx_cli_group_reply_candidate_message_ids, wx_cli_reply_candidate_message_ids,
+    has_wechat_daily_report_target_without_articles_dir,
+    has_wechat_daily_report_target_without_bin,
+    has_wechat_daily_report_target_without_public_sources, wx_cli_daily_report_target_statuses,
+    wx_cli_group_override_statuses, wx_cli_group_reply_candidate_message_ids,
+    wx_cli_reply_candidate_message_ids,
 };
 
 pub fn wx_cli_capture_report(
@@ -125,6 +128,15 @@ pub(super) fn wx_cli_doctor_warnings(
     }
     if config.schedule.daily_report_chat_id.is_empty() && config.schedule.daily_reports.is_empty() {
         warnings.push("daily_report_targets_empty");
+    }
+    if has_wechat_daily_report_target_without_bin(config) {
+        warnings.push("wechat_daily_report_bin_empty");
+    }
+    if has_wechat_daily_report_target_without_articles_dir(config) {
+        warnings.push("wechat_daily_report_articles_dir_empty");
+    }
+    if has_wechat_daily_report_target_without_public_sources(config) {
+        warnings.push("wechat_daily_report_public_sources_disabled");
     }
 
     if let Some(messages) = messages {

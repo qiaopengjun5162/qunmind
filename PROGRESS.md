@@ -39,8 +39,8 @@
 2. **真实 wx-cli 样本联调**  
    用真实 capture fixture 验证 poll / dry-run / handle-once / send 的实际行为，而不是只停留在合成样本。
 
-3. **多群日报配置实测**  
-   验证 `schedule.daily_reports`、群级 persona、context 和日报目标群的真实组合行为。
+3. **`QunMind × moonpub` 联调固化**  
+   把微信公众号日报依赖前置检查、联调清单和上线前提写实，避免“代码能调起 moonpub”被误判为“日报已经可上线”。
 
 4. **对外描述统一**  
    README / README_zh / PROGRESS 持续保持同一口径，让“当前做到哪、下一步做什么”始终可直接引用。
@@ -50,13 +50,15 @@
 我们下一步建议直接做：
 
 1. 把 `main.rs` 的 wx-cli 子命令分发再拆一层。
-2. 为真实 capture fixture 预留目录和测试入口。
-3. 把“当前阶段 + 下一步”同步到 README，方便对外介绍。
+2. 把 `moonpub` 依赖 readiness 纳入诊断输出。
+3. 为真实 capture fixture 预留目录和测试入口。
 
 ## 2026-06-23
 
 ### Done
 
+- **微信公众号日报 readiness 补齐** — `wx-cli doctor` / capture 摘要现在会把 `schedule.daily_reports` 中 `output = "wechat"` 的目标额外标记 `output`、`config_ready` 和 `dependency_blockers`，能在正式联调前直接看出 `wechat_articles_dir` 为空、`public_sources` 未启用等上线前置条件缺口。
+- **`moonpub` 依赖现状核对** — 已确认 `QunMind` 当前通过 `src/wechat_publisher.rs` 调用 `moonpub --articles <dir> push <temp_markdown> --render`；本地上游项目 `moonpub` 处于 Beta / early adopter 阶段，本地 `moonpub-data/moonpub.toml` 已存在 `theme = "geek"`、`collection = "书"`、`account_type = "personal"`、`auto_publish = false` 配置，说明“草稿生成链路可对接”比“自动上线发布”更成熟。
 - **`diagnostic` 模块化** — 把 2993 行 `src/diagnostic.rs` 按职责拆成 `dry_run`、`doctor`、`formal_test`、`pipeline`、`support` 5 个子模块，保留原有对外函数接口，`main.rs` / `mcp` 无需行为改写。
 - **诊断测试迁移** — 原有 49 个 `diagnostic` 纯函数/JSON 输出测试迁移到 `src/diagnostic/tests.rs`，继续覆盖 doctor、capture、formal test plan、dry-run、message_id guard 和 shell script 渲染。
 - **分支命名约束补档** — 项目级 `AGENTS.md` 记录当前仓库因历史 `codex-*` 平铺分支导致 `codex/<topic>` ref 冲突，后续默认改用 `codex-<topic>`。
@@ -67,9 +69,33 @@
 ### Verified
 
 - `cargo fmt --all`
+- `cargo nextest run --all-features diagnostic`
 - `cargo nextest run --all-features diagnostic`：49 tests passing, 161 skipped
 - `cargo clippy --all-targets --all-features --tests --benches -- -D warnings`
 - `cargo nextest run --all-features wx_cli mcp diagnostic`：103 tests passing, 109 skipped
+
+### Daily Report Timeline
+
+当前基于源码和本地配置核对后的更可信判断：
+
+- **可开始本地联调**：`2026-06-23`
+  前提是 `schedule.daily_reports` 的微信日报目标补齐 `wechat_articles_dir`，并至少启用一个 `public_sources`。
+- **可做第一次真实日报草稿生成测试**：`2026-06-24`
+  标准是 `qunmind daily-report` 先能本地生成 markdown，随后定时任务或手工入口能稳定调起 `moonpub push --render` 进入微信公众号草稿箱。
+- **可做内部灰度**：`2026-06-25` 到 `2026-06-26`
+  条件是连续两天日报生成成功，且 `moonpub` 的 CDP 自动化没有因为微信后台 UI 变化而卡住关键步骤。
+- **不建议承诺正式稳定上线早于**：`2026-06-27`
+  因为当前最大不确定性不是 QunMind 文本生成，而是普通微信真实群消息样本、moonpub 草稿配置自动化和微信后台稳定性。
+
+### Integration Checklist
+
+`QunMind × moonpub` 现在的实际上线前提：
+
+1. `QunMind` 里目标日报配置使用 `output = "wechat"`，并补齐 `wechat_bin` 与 `wechat_articles_dir`。
+2. `public_sources` 至少启用一个来源，否则微信日报生成器没有素材输入。
+3. `moonpub-data/moonpub.toml` 可被 `moonpub --articles <dir>` 正常识别。
+4. `moonpub push --render` 本地可单独成功，把 markdown 推进微信公众号草稿箱。
+5. 微信登录态、AppID / Secret、Chrome / CDP 自动化链路保持有效。
 
 ## 2026-06-22
 

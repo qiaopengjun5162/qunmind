@@ -28,12 +28,12 @@
 
 ## 当前状态
 
-项目处在 MVP 基础阶段，还不是生产可用版本。下一步重点是真实 wx-cli 群聊联调，以及在已保存消息流之上继续完善多群日报配置。
+项目处在 MVP 基础阶段，还不是生产可用版本。下一步重点是真实 wx-cli 群聊联调，以及把 `QunMind × moonpub` 微信公众号日报链路补到“可提前发现阻塞、可灰度试跑”的状态。
 
 当前阶段可以概括为：
 
 - **已经完成**：核心 Rust 骨架、消息持久化、群级配置、wx-cli 诊断/重放、MCP 接入、日报生成与发布主链路。
-- **正在补强**：`main.rs` / MCP 命令层去重、真实 wx-cli 样本验证、多群日报配置实测、文档口径统一。
+- **正在补强**：`main.rs` / MCP 命令层去重、真实 wx-cli 样本验证、`QunMind × moonpub` 联调 readiness、多群日报配置实测、文档口径统一。
 - **还没完成**：真实普通微信群稳定联调、生产级部署验证、长期记忆/权限/运维能力。
 
 粗粒度进度条：
@@ -60,14 +60,36 @@
 
 1. 继续拆薄 `main.rs` 和 `src/mcp/tools.rs`，减少命令层重复。
 2. 补真实 wx-cli capture fixture，验证 poll / dry-run / handle-once / send。
-3. 实测多群 persona、群级 context 和 `schedule.daily_reports` 组合行为。
-4. 持续同步 README / PROGRESS / AGENTS，让项目进度对内对外都清楚。
+3. 把微信公众号日报的 `moonpub` / `public_sources` 依赖前置暴露，减少“定时任务跑到一半才发现缺配置”。
+4. 实测多群 persona、群级 context 和 `schedule.daily_reports` 组合行为。
+5. 持续同步 README / PROGRESS / AGENTS，让项目进度对内对外都清楚。
 
 下一步马上要做的事：
 
 1. 继续做 wx-cli 命令编排层模块化。
 2. 为真实 capture fixture 建立目录和测试入口。
 3. 让 README / PROGRESS 的阶段描述持续可复用。
+
+## 日报联调状态
+
+`QunMind` 当前的微信公众号日报不是独立闭环，而是依赖本地 `moonpub`：
+
+- 调用路径：`moonpub --articles <dir> push <temp_markdown_file> --render`
+- 当前上游状态：本地 `moonpub` 已是 Beta / early adopter ready，更适合“生成草稿并人工复核”，还不适合承诺完全无人值守发布
+- `wx-cli doctor` 现在会把 `output = "wechat"` 的日报目标额外标记 `config_ready` 和 `dependency_blockers`
+
+这意味着现在可以更早看出几类典型阻塞：
+
+- `wechat_articles_dir` 没填
+- `public_sources` 一个都没启用
+- 配了微信公众号日报目标，但实际还没满足生成素材和推草稿的前提
+
+当前更可信的时间判断：
+
+- `2026-06-23`：可以开始本地联调和配置补齐
+- `2026-06-24`：可以做第一次真实日报草稿生成测试
+- `2026-06-25` 到 `2026-06-26`：可以做内部灰度
+- 不建议承诺正式稳定上线早于 `2026-06-27`
 
 ## 快速开始
 

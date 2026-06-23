@@ -36,12 +36,12 @@ The project currently supports:
 
 ## Status
 
-This is an MVP foundation, not a production-ready bot yet. The next important step is real wx-cli group testing and per-group report configuration on top of the stored message stream.
+This is an MVP foundation, not a production-ready bot yet. The next important step is real wx-cli group testing and turning the `QunMind × moonpub` report path into something diagnosable before runtime, not only after a failed scheduled job.
 
 The current project phase is:
 
 - **Done**: core Rust backend boundaries, persistence, per-group config, wx-cli diagnostics/replay, MCP integration, and daily report generation/publishing.
-- **In progress**: command-layer dedup between `main.rs` and MCP tools, real wx-cli sample validation, multi-group report verification, and tighter doc consistency.
+- **In progress**: command-layer dedup between `main.rs` and MCP tools, real wx-cli sample validation, `QunMind × moonpub` readiness checks, multi-group report verification, and tighter doc consistency.
 - **Not done yet**: stable real-world normal WeChat group validation, production hardening, and long-term memory / permission / ops capabilities.
 
 Rough progress bars:
@@ -68,14 +68,36 @@ Next small goals:
 
 1. Keep shrinking `main.rs` and `src/mcp/tools.rs` by removing command-layer duplication.
 2. Add real wx-cli capture fixtures to validate poll / dry-run / handle-once / send against real samples.
-3. Verify multi-group persona, context, and `schedule.daily_reports` combinations in practice.
-4. Keep README / PROGRESS / AGENTS aligned so project status is reusable for internal and external communication.
+3. Surface `moonpub` and `public_sources` prerequisites before a WeChat daily-report target is treated as ready.
+4. Verify multi-group persona, context, and `schedule.daily_reports` combinations in practice.
+5. Keep README / PROGRESS / AGENTS aligned so project status is reusable for internal and external communication.
 
 Immediate next step:
 
 1. Continue modularizing the wx-cli command orchestration layer.
 2. Create a fixture/testing entry for real captures.
 3. Keep the stage summary in docs continuously up to date.
+
+## Daily Report Integration Status
+
+The WeChat public-account report path currently depends on local `moonpub`, not on a standalone internal publisher:
+
+- Call path: `moonpub --articles <dir> push <temp_markdown_file> --render`
+- Upstream state: local `moonpub` is currently Beta / early adopter ready, better suited for draft generation plus manual review than for promising unattended publishing
+- `wx-cli doctor` now marks `output = "wechat"` report targets with `config_ready` and `dependency_blockers`
+
+That lets us surface the main blockers earlier:
+
+- missing `wechat_articles_dir`
+- no enabled `public_sources`
+- a configured WeChat report target that still cannot generate source material or hand off to `moonpub`
+
+Current working timeline:
+
+- June 23, 2026: local integration and config completion can start
+- June 24, 2026: first real draft-generation test is realistic
+- June 25-26, 2026: internal gray rollout is realistic if draft generation stays stable
+- not recommended to promise stable launch before June 27, 2026
 
 ## Quick Start
 

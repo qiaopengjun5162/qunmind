@@ -142,6 +142,9 @@ fn wx_cli_doctor_summarizes_captured_messages_when_ready() {
                 "chat_id": "room@chatroom",
                 "name": "",
                 "source": "schedule.daily_report_chat_id",
+                "output": "channel",
+                "config_ready": true,
+                "dependency_blockers": [],
                 "seen_in_capture": true
             }
         ])
@@ -426,13 +429,78 @@ fn wx_cli_doctor_warns_when_enabled_report_target_is_not_seen_in_capture() {
                 "chat_id": "room@chatroom",
                 "name": "联调群日报",
                 "source": "schedule.daily_reports",
+                "output": "chat",
+                "config_ready": true,
+                "dependency_blockers": [],
                 "seen_in_capture": true
             },
             {
                 "chat_id": "missing@chatroom",
                 "name": "未捕获群日报",
                 "source": "schedule.daily_reports",
+                "output": "chat",
+                "config_ready": true,
+                "dependency_blockers": [],
                 "seen_in_capture": false
+            }
+        ])
+    );
+}
+
+#[test]
+fn wx_cli_doctor_warns_when_wechat_daily_report_dependencies_are_incomplete() {
+    let config = config_from(
+        r#"
+        [channel]
+        kind = "wx_cli"
+
+        [ai]
+        api_key = "token"
+
+        [wx_cli]
+        bin = "wx"
+        poll_args = ["poll", "--json"]
+        send_args = ["send", "--chat", "{chat_id}", "--text", "{text}"]
+
+        [bot]
+        mention_names = ["@bot"]
+
+        [[schedule.daily_reports]]
+        chat_id = "room@chatroom"
+        name = "微信公众号日报"
+        output = "wechat"
+        "#,
+    );
+    let messages = vec![test_message("m-1")];
+
+    let report = wx_cli_doctor_report(&config, Some(&messages), 10);
+
+    assert!(array_contains(
+        &report["warnings"],
+        "wechat_daily_report_articles_dir_empty"
+    ));
+    assert!(array_contains(
+        &report["warnings"],
+        "wechat_daily_report_public_sources_disabled"
+    ));
+    assert!(!array_contains(
+        &report["warnings"],
+        "wechat_daily_report_bin_empty"
+    ));
+    assert_eq!(
+        report["capture"]["daily_report_targets"],
+        serde_json::json!([
+            {
+                "chat_id": "room@chatroom",
+                "name": "微信公众号日报",
+                "source": "schedule.daily_reports",
+                "output": "wechat",
+                "seen_in_capture": true,
+                "config_ready": false,
+                "dependency_blockers": [
+                    "wechat_daily_report_articles_dir_empty",
+                    "wechat_daily_report_public_sources_disabled"
+                ]
             }
         ])
     );

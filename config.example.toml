@@ -60,7 +60,7 @@ name = "投研群日报"
 # cron = "0 0 8 * * *"
 # output = "wechat"
 # wechat_bin = "moonpub"
-# wechat_articles_dir = "/data/moonpub"
+# wechat_articles_dir = "/data/moonpub"   # moonpub 的 articles 根目录，且 [public_sources] 至少启用一个来源
 # daily_quote = ""   # 可选: 日报底部每日一句
 
 [storage]

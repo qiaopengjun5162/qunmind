@@ -1,5 +1,5 @@
 use crate::channel::{IncomingMessage, MsgType};
-use crate::config::{AiProvider, ChannelKind, Config, GroupConfig};
+use crate::config::{AiProvider, ChannelKind, Config, DailyReportConfig, GroupConfig};
 use std::collections::BTreeSet;
 
 pub fn select_wx_cli_messages(
@@ -98,10 +98,40 @@ pub(super) fn wx_cli_daily_report_target_statuses(
                 "chat_id": target.chat_id,
                 "name": target.name,
                 "source": target.source,
-                "seen_in_capture": seen_in_capture
+                "output": target.output,
+                "seen_in_capture": seen_in_capture,
+                "config_ready": target.dependency_blockers.is_empty(),
+                "dependency_blockers": target.dependency_blockers
             })
         })
         .collect()
+}
+
+pub(super) fn has_wechat_daily_report_target_without_public_sources(config: &Config) -> bool {
+    effective_daily_report_targets(config).iter().any(|target| {
+        target.output == "wechat"
+            && target
+                .dependency_blockers
+                .contains(&"wechat_daily_report_public_sources_disabled")
+    })
+}
+
+pub(super) fn has_wechat_daily_report_target_without_articles_dir(config: &Config) -> bool {
+    effective_daily_report_targets(config).iter().any(|target| {
+        target.output == "wechat"
+            && target
+                .dependency_blockers
+                .contains(&"wechat_daily_report_articles_dir_empty")
+    })
+}
+
+pub(super) fn has_wechat_daily_report_target_without_bin(config: &Config) -> bool {
+    effective_daily_report_targets(config).iter().any(|target| {
+        target.output == "wechat"
+            && target
+                .dependency_blockers
+                .contains(&"wechat_daily_report_bin_empty")
+    })
 }
 
 pub(super) fn wx_cli_reply_candidate_message_ids(
@@ -240,6 +270,8 @@ struct DiagnosticDailyReportTarget {
     chat_id: String,
     name: String,
     source: &'static str,
+    output: String,
+    dependency_blockers: Vec<&'static str>,
 }
 
 fn effective_daily_report_targets(config: &Config) -> Vec<DiagnosticDailyReportTarget> {
@@ -254,6 +286,8 @@ fn effective_daily_report_targets(config: &Config) -> Vec<DiagnosticDailyReportT
                 chat_id: report.chat_id.clone(),
                 name: report.name.clone(),
                 source: "schedule.daily_reports",
+                output: report.output.clone(),
+                dependency_blockers: daily_report_target_dependency_blockers(config, report),
             })
             .collect();
     }
@@ -267,5 +301,42 @@ fn effective_daily_report_targets(config: &Config) -> Vec<DiagnosticDailyReportT
         chat_id: chat_id.to_string(),
         name: String::new(),
         source: "schedule.daily_report_chat_id",
+        output: "channel".to_string(),
+        dependency_blockers: Vec::new(),
     }]
+}
+
+fn daily_report_target_dependency_blockers(
+    config: &Config,
+    report: &DailyReportConfig,
+) -> Vec<&'static str> {
+    if report.output != "wechat" {
+        return Vec::new();
+    }
+
+    let mut blockers = Vec::new();
+    if report.wechat_bin.trim().is_empty() {
+        blockers.push("wechat_daily_report_bin_empty");
+    }
+    if report.wechat_articles_dir.trim().is_empty() {
+        blockers.push("wechat_daily_report_articles_dir_empty");
+    }
+    if !has_enabled_public_sources(config) {
+        blockers.push("wechat_daily_report_public_sources_disabled");
+    }
+    blockers
+}
+
+fn has_enabled_public_sources(config: &Config) -> bool {
+    let sources = &config.public_sources;
+    sources.hacker_news_enabled
+        || sources.coinmarketcap_enabled
+        || sources.coingecko_enabled
+        || sources.defillama_enabled
+        || sources.dune_enabled
+        || sources.github_trending_enabled
+        || sources.slerf_blog_enabled
+        || sources.hn_daily_enabled
+        || sources.arxiv_enabled
+        || sources.ethresear_enabled
 }

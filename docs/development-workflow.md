@@ -23,6 +23,8 @@ For every non-trivial project change, follow this order:
 
 Do not treat local edits as finished work until the branch is pushed and the PR exists, unless the user explicitly asks to stop earlier.
 
+If the change depends on an upstream local project such as `moonpub`, check that project's current branch, local diff, and user-facing status before claiming the dependent flow is ready. Record the dependency state in `PROGRESS.md` or README when it materially affects testing or launch dates.
+
 ## Documentation Update Rule
 
 When a change touches architecture, workflow, commands, constraints, roadmap, or project positioning, update the relevant docs in the same branch:
