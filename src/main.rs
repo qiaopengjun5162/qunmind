@@ -22,8 +22,8 @@ use qunmind::error::QunMindError;
 use qunmind::scheduler::daily_report::DailyReportScheduler;
 use qunmind::source;
 use qunmind::source::PublicNewsSource;
-use qunmind::storage::MessageStore;
 use qunmind::storage::postgres::PostgresMessageStore;
+use qunmind::storage::{MessageStore, StoredPublishReceipt};
 use std::path::Path;
 use std::sync::Arc;
 use tracing::{error, info};
@@ -151,7 +151,60 @@ async fn run_diagnostic_command(
             println!("日报已写入 {}", output.display());
             Ok(())
         }
+        CliCommand::PublishHistory { report_name, limit } => {
+            let message_store = build_message_store(config).await?;
+            let report_name = effective_publish_history_name(config, &report_name)?;
+            let receipts = message_store
+                .recent_publish_receipts(&report_name, limit)
+                .await?;
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&serde_json::json!({
+                    "ok": true,
+                    "report_name": report_name,
+                    "count": receipts.len(),
+                    "items": receipts
+                        .into_iter()
+                        .map(publish_receipt_json)
+                        .collect::<Vec<_>>(),
+                }))?
+            );
+            Ok(())
+        }
     }
+}
+
+fn effective_publish_history_name(config: &Config, requested: &str) -> anyhow::Result<String> {
+    if !requested.trim().is_empty() {
+        return Ok(requested.to_string());
+    }
+
+    if !config.schedule.daily_reports.is_empty() {
+        return Err(QunMindError::Config(
+            "publish-history 在多日报目标配置下需要显式 --report-name".to_string(),
+        )
+        .into());
+    }
+
+    if config.schedule.daily_report_chat_id.is_empty() {
+        return Err(QunMindError::Config(
+            "publish-history 需要已配置日报目标，或显式传入 --report-name".to_string(),
+        )
+        .into());
+    }
+
+    Ok(config.schedule.daily_report_chat_id.clone())
+}
+
+fn publish_receipt_json(receipt: StoredPublishReceipt) -> serde_json::Value {
+    serde_json::json!({
+        "report_name": receipt.report_name,
+        "target": receipt.target,
+        "destination": receipt.destination,
+        "published_at": receipt.published_at.to_rfc3339(),
+        "summary": receipt.summary,
+        "raw_output": receipt.raw_output,
+    })
 }
 
 async fn run_wx_cli_command(
@@ -527,6 +580,50 @@ mod tests {
         };
 
         assert!(err.to_string().contains("dune_api_key"));
+    }
+
+    #[test]
+    fn effective_publish_history_name_uses_requested_name() {
+        let config = config_from("");
+        let name = must(
+            effective_publish_history_name(&config, "技术群日报"),
+            "publish history name",
+        );
+        assert_eq!(name, "技术群日报");
+    }
+
+    #[test]
+    fn effective_publish_history_name_uses_legacy_chat_id_when_single_target() {
+        let config = config_from(
+            r#"
+            [schedule]
+            daily_report_chat_id = "legacy-group"
+            "#,
+        );
+        let name = must(
+            effective_publish_history_name(&config, ""),
+            "publish history legacy name",
+        );
+        assert_eq!(name, "legacy-group");
+    }
+
+    #[test]
+    fn effective_publish_history_name_rejects_ambiguous_multi_target_setup() {
+        let config = config_from(
+            r#"
+            [schedule]
+            daily_report_chat_id = "legacy-group"
+
+            [[schedule.daily_reports]]
+            chat_id = "group-1"
+            name = "技术群日报"
+            "#,
+        );
+        let err = match effective_publish_history_name(&config, "") {
+            Ok(_) => panic!("ambiguous publish history name should fail"),
+            Err(err) => err,
+        };
+        assert!(err.to_string().contains("--report-name"));
     }
 
     #[tokio::test]

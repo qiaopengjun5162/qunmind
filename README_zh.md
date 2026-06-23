@@ -206,6 +206,8 @@ QunMind 会在保存文本消息时抽取 `http://` / `https://` 链接，写入
 
 接下来更小但很实用的一步，就是让这些回执可以从同一套存储边界里查出来。这样即使还没有完整后台，也能先看到最近几次草稿推送记录。
 
+面向操作者的第一个入口更适合做成独立 CLI 子命令，而不是继续塞进 `doctor`。因为发布历史本质上是运行状态查看，不是 wx-cli 联调体检。
+
 完整说明见 [docs/multi-platform-publishing.md](docs/multi-platform-publishing.md)。后续如果要接抖音，优先走官方 API 形态；小红书默认按“手动 / 半自动 / 等官方 API”处理，而不是一开始就把高风控自动化塞进 QunMind。
 
 ## AI / Agent 学习地图

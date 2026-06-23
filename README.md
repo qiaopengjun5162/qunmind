@@ -221,6 +221,10 @@ The next small improvement is local queryability: recent publish receipts should
 be readable from the same storage boundary, so operators can inspect recent
 draft pushes before a full multi-platform dashboard exists.
 
+The first operator-facing entry for that is the CLI. A dedicated history command
+is preferable to overloading diagnostics, because publish history is an
+operational status view, not a wx-cli readiness check.
+
 See [docs/multi-platform-publishing.md](docs/multi-platform-publishing.md) for
 the full rationale and the recommended split for WeChat, Douyin, and future
 Xiaohongshu support.

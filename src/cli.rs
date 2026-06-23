@@ -34,6 +34,16 @@ pub enum CliCommand {
         #[arg(long, default_value_t = 24)]
         hours: i64,
     },
+    /// 查看最近的日报发布回执
+    #[command(name = "publish-history")]
+    PublishHistory {
+        /// 日报目标名称；为空时使用 legacy daily_report_chat_id 兼容名称
+        #[arg(long, default_value = "")]
+        report_name: String,
+        /// 最多返回多少条记录
+        #[arg(long, default_value_t = 5)]
+        limit: i64,
+    },
 }
 
 #[derive(Debug, Subcommand)]
@@ -542,6 +552,26 @@ mod tests {
                 assert_eq!(hours, 24);
             }
             _ => panic!("daily-report command should parse"),
+        }
+    }
+
+    #[test]
+    fn parses_publish_history_command() {
+        let args = parse_args(&[
+            "qunmind",
+            "publish-history",
+            "--report-name",
+            "技术群日报",
+            "--limit",
+            "3",
+        ]);
+
+        match args.command {
+            Some(CliCommand::PublishHistory { report_name, limit }) => {
+                assert_eq!(report_name, "技术群日报");
+                assert_eq!(limit, 3);
+            }
+            _ => panic!("publish-history command should parse"),
         }
     }
 }
