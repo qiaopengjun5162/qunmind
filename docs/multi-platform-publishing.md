@@ -97,3 +97,6 @@ publisher boundary handles "how this target accepts the content".
 3. Add target-specific readiness diagnostics before runtime.
 4. Start a dedicated publisher project when WeChat + Douyin dual publishing
    becomes a real delivery goal.
+
+The first persistence step now belongs inside `QunMind`: successful publishes
+should record the receipt even before a full external publisher service exists.

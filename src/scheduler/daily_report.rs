@@ -166,6 +166,17 @@ impl DailyReportScheduler {
             },
         ) {
             Ok(receipt) => {
+                if let Err(err) = self
+                    .message_store
+                    .save_publish_receipt(&target.name, &receipt)
+                    .await
+                {
+                    error!(
+                        name = %target.name,
+                        error = %err,
+                        "微信日报发布成功，但保存发布回执失败"
+                    );
+                }
                 let receipt_summary = publish_receipt_summary(&receipt);
                 info!(
                     name = %target.name,
@@ -554,6 +565,7 @@ mod tests {
         links: Vec<StoredLink>,
         text_queries: Mutex<Vec<(String, i64)>>,
         link_queries: Mutex<Vec<(String, i64)>>,
+        publish_receipts: Mutex<Vec<(String, PublishReceipt)>>,
     }
 
     #[async_trait]
@@ -588,6 +600,18 @@ mod tests {
                 .await
                 .push((chat_id.to_string(), limit));
             Ok(self.links.clone())
+        }
+
+        async fn save_publish_receipt(
+            &self,
+            report_name: &str,
+            receipt: &PublishReceipt,
+        ) -> Result<()> {
+            self.publish_receipts
+                .lock()
+                .await
+                .push((report_name.to_string(), receipt.clone()));
+            Ok(())
         }
     }
 
@@ -1093,6 +1117,28 @@ mod tests {
         assert!(requests[0][0].content.contains("今天完成了 PG 存储"));
         assert!(requests[0][0].content.contains("链接情报"));
         assert!(requests[0][0].content.contains("https://example.com/rust"));
+    }
+
+    #[tokio::test]
+    async fn wechat_report_persists_publish_receipt_when_publish_succeeds() {
+        let store = Arc::new(RecordingStore::default());
+        let receipt = PublishReceipt {
+            target: "wechat_draft".to_string(),
+            destination: "/tmp/articles".to_string(),
+            published_at: "2026-06-23T12:00:00+00:00".to_string(),
+            summary: "moonpub draft push completed".to_string(),
+            raw_output: "ok".to_string(),
+        };
+
+        must(
+            store.save_publish_receipt("技术群日报", &receipt).await,
+            "save publish receipt",
+        );
+
+        let receipts = store.publish_receipts.lock().await;
+        assert_eq!(receipts.len(), 1);
+        assert_eq!(receipts[0].0, "技术群日报");
+        assert_eq!(receipts[0].1, receipt);
     }
 
     #[tokio::test]

@@ -213,6 +213,10 @@ Successful publish calls now return a structured `PublishReceipt` with target,
 destination, publish time, summary, and raw adapter output. That keeps future
 status persistence and multi-platform reconciliation on the same boundary.
 
+The next step is already partially in place: `QunMind` can persist successful
+publish receipts even before a separate publisher service exists, so future
+status history and retry workflows have a stable starting point.
+
 See [docs/multi-platform-publishing.md](docs/multi-platform-publishing.md) for
 the full rationale and the recommended split for WeChat, Douyin, and future
 Xiaohongshu support.

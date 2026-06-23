@@ -8,6 +8,7 @@ use crate::channel::MsgType;
 use crate::config::StorageConfig;
 use crate::error::Result;
 use crate::intelligence::links::extract_links;
+use crate::publisher::PublishReceipt;
 
 pub struct PostgresMessageStore {
     pool: PgPool,
@@ -97,6 +98,31 @@ impl PostgresMessageStore {
         .execute(&self.pool)
         .await?;
 
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS publish_receipts (
+                id BIGSERIAL PRIMARY KEY,
+                report_name TEXT NOT NULL,
+                target TEXT NOT NULL,
+                destination TEXT NOT NULL,
+                published_at TIMESTAMPTZ NOT NULL,
+                summary TEXT NOT NULL,
+                raw_output TEXT NOT NULL
+            )
+            "#,
+        )
+        .execute(&self.pool)
+        .await?;
+
+        sqlx::query(
+            r#"
+            CREATE INDEX IF NOT EXISTS idx_publish_receipts_report_time
+            ON publish_receipts(report_name, published_at DESC)
+            "#,
+        )
+        .execute(&self.pool)
+        .await?;
+
         Ok(())
     }
 }
@@ -160,6 +186,40 @@ impl MessageStore for PostgresMessageStore {
                 .await?;
             }
         }
+
+        Ok(())
+    }
+
+    async fn save_publish_receipt(
+        &self,
+        report_name: &str,
+        receipt: &PublishReceipt,
+    ) -> Result<()> {
+        let published_at = DateTime::parse_from_rfc3339(&receipt.published_at)
+            .map(|time| time.with_timezone(&Utc))
+            .map_err(|err| crate::error::QunMindError::Storage(err.to_string()))?;
+
+        sqlx::query(
+            r#"
+            INSERT INTO publish_receipts (
+                report_name,
+                target,
+                destination,
+                published_at,
+                summary,
+                raw_output
+            )
+            VALUES ($1, $2, $3, $4, $5, $6)
+            "#,
+        )
+        .bind(report_name)
+        .bind(&receipt.target)
+        .bind(&receipt.destination)
+        .bind(published_at)
+        .bind(&receipt.summary)
+        .bind(&receipt.raw_output)
+        .execute(&self.pool)
+        .await?;
 
         Ok(())
     }
