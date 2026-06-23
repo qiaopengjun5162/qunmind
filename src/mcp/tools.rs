@@ -5,6 +5,9 @@ use crate::channel::wx_cli::{
 };
 use crate::config::Config;
 use crate::diagnostic;
+use crate::error::QunMindError;
+use crate::storage::postgres::PostgresMessageStore;
+use crate::storage::{MessageStore, StoredPublishReceipt};
 
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct Tool {
@@ -16,6 +19,24 @@ pub struct Tool {
 
 pub fn list_tools() -> Vec<Tool> {
     vec![
+        Tool {
+            name: "publish_history".into(),
+            description: "Read recent persisted publish receipts for one report target.".into(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "report_name": {
+                        "type": "string",
+                        "description": "Explicit daily report target name. Required when multiple schedule.daily_reports entries exist."
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "Max receipts to return (default: 5)."
+                    }
+                },
+                "required": []
+            }),
+        },
         Tool {
             name: "wxcli_doctor".into(),
             description: "Validate wx-cli readiness. Optionally parse a captured JSON file for group reply candidate analysis.".into(),
@@ -168,6 +189,7 @@ pub async fn call_tool(
     arguments: &serde_json::Value,
 ) -> anyhow::Result<String> {
     match tool_name {
+        "publish_history" => tool_publish_history(config, arguments).await,
         "wxcli_doctor" => tool_doctor(config, arguments),
         "wxcli_capture" => tool_capture(config, config_path, arguments).await,
         "wxcli_test_plan" => tool_test_plan(config, config_path, arguments),
@@ -182,6 +204,28 @@ pub async fn call_tool(
 // ---------------------------------------------------------------------------
 // Tool implementations
 // ---------------------------------------------------------------------------
+
+async fn tool_publish_history(config: &Config, args: &serde_json::Value) -> anyhow::Result<String> {
+    let report_name = args
+        .get("report_name")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    let limit = args.get("limit").and_then(|v| v.as_i64()).unwrap_or(5);
+
+    let report_name = effective_publish_history_name(config, report_name)?;
+    let store = PostgresMessageStore::connect(&config.storage).await?;
+    let receipts = store.recent_publish_receipts(&report_name, limit).await?;
+
+    Ok(serde_json::to_string_pretty(&serde_json::json!({
+        "ok": true,
+        "report_name": report_name,
+        "count": receipts.len(),
+        "items": receipts
+            .into_iter()
+            .map(publish_receipt_json)
+            .collect::<Vec<_>>(),
+    }))?)
+}
 
 fn tool_doctor(config: &Config, args: &serde_json::Value) -> anyhow::Result<String> {
     let limit = args
@@ -348,6 +392,41 @@ fn load_messages_or_none(
     }
 }
 
+fn effective_publish_history_name(config: &Config, requested: &str) -> anyhow::Result<String> {
+    if !requested.trim().is_empty() {
+        return Ok(requested.to_string());
+    }
+
+    if !config.schedule.daily_reports.is_empty() {
+        return Err(QunMindError::Config(
+            "publish_history requires explicit report_name when multiple daily report targets exist"
+                .to_string(),
+        )
+        .into());
+    }
+
+    if config.schedule.daily_report_chat_id.is_empty() {
+        return Err(QunMindError::Config(
+            "publish_history requires a configured report target or an explicit report_name"
+                .to_string(),
+        )
+        .into());
+    }
+
+    Ok(config.schedule.daily_report_chat_id.clone())
+}
+
+fn publish_receipt_json(receipt: StoredPublishReceipt) -> serde_json::Value {
+    serde_json::json!({
+        "report_name": receipt.report_name,
+        "target": receipt.target,
+        "destination": receipt.destination,
+        "published_at": receipt.published_at.to_rfc3339(),
+        "summary": receipt.summary,
+        "raw_output": receipt.raw_output,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -393,10 +472,11 @@ mod tests {
     }
 
     #[test]
-    fn list_tools_returns_seven_tools() {
+    fn list_tools_returns_eight_tools() {
         let tools = list_tools();
-        assert_eq!(tools.len(), 7);
+        assert_eq!(tools.len(), 8);
         let names: Vec<&str> = tools.iter().map(|t| t.name.as_str()).collect();
+        assert!(names.contains(&"publish_history"));
         assert!(names.contains(&"wxcli_doctor"));
         assert!(names.contains(&"wxcli_capture"));
         assert!(names.contains(&"wxcli_test_plan"));
@@ -445,6 +525,58 @@ mod tests {
     fn required_string_accepts_non_empty_value() {
         let args = serde_json::json!({"input": "wx-output.json"});
         assert_eq!(required_string(&args, "input").unwrap(), "wx-output.json");
+    }
+
+    #[test]
+    fn publish_history_name_uses_requested_name() {
+        let config = test_config();
+        let name = effective_publish_history_name(&config, "技术群日报").unwrap();
+        assert_eq!(name, "技术群日报");
+    }
+
+    #[test]
+    fn publish_history_name_rejects_ambiguous_multi_target_setup() {
+        let config = config_from(
+            r#"
+            [schedule]
+            daily_report_chat_id = "legacy-group"
+
+            [[schedule.daily_reports]]
+            chat_id = "group-1"
+            name = "技术群日报"
+            "#,
+        );
+
+        let err = effective_publish_history_name(&config, "").unwrap_err();
+        assert!(err.to_string().contains("report_name"));
+    }
+
+    #[tokio::test]
+    async fn tool_publish_history_rejects_ambiguous_multi_target_setup() {
+        let config = config_from(
+            r#"
+            [storage]
+            database_url = "postgres://postgres:postgres@localhost:5432/qunmind"
+
+            [schedule]
+            daily_report_chat_id = "legacy-group"
+
+            [[schedule.daily_reports]]
+            chat_id = "group-1"
+            name = "技术群日报"
+            "#,
+        );
+
+        let err = call_tool(
+            &config,
+            std::path::Path::new("test-config.toml"),
+            "publish_history",
+            &serde_json::json!({}),
+        )
+        .await
+        .unwrap_err();
+
+        assert!(err.to_string().contains("report_name"));
     }
 
     #[tokio::test]

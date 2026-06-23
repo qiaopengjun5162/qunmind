@@ -225,6 +225,10 @@ The first operator-facing entry for that is the CLI. A dedicated history command
 is preferable to overloading diagnostics, because publish history is an
 operational status view, not a wx-cli readiness check.
 
+The same rule now extends to MCP: publish history is exposed as a dedicated tool
+instead of being folded into wx-cli diagnostics, so operator-state queries and
+message-pipeline diagnostics stay separate.
+
 See [docs/multi-platform-publishing.md](docs/multi-platform-publishing.md) for
 the full rationale and the recommended split for WeChat, Douyin, and future
 Xiaohongshu support.

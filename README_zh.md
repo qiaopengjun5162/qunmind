@@ -208,6 +208,8 @@ QunMind 会在保存文本消息时抽取 `http://` / `https://` 链接，写入
 
 面向操作者的第一个入口更适合做成独立 CLI 子命令，而不是继续塞进 `doctor`。因为发布历史本质上是运行状态查看，不是 wx-cli 联调体检。
 
+同样的边界也延续到 MCP：发布历史应该是独立 tool，而不是混进 wx-cli 诊断工具里。这样 Agent 或外部系统调它时，语义会更清楚。
+
 完整说明见 [docs/multi-platform-publishing.md](docs/multi-platform-publishing.md)。后续如果要接抖音，优先走官方 API 形态；小红书默认按“手动 / 半自动 / 等官方 API”处理，而不是一开始就把高风控自动化塞进 QunMind。
 
 ## AI / Agent 学习地图
