@@ -97,7 +97,7 @@ fn parse_fragments(fragments: Vec<&str>, max_items: usize) -> Vec<PublicNewsItem
             continue;
         };
         let summary = extract_first(fragment, &[description_re(), summary_re()])
-            .map(|value| collapse_whitespace(&decode_xml(value)))
+            .map(clean_summary)
             .filter(|value| !value.is_empty());
         let author = extract_first(fragment, &[author_re(), creator_re()])
             .map(|value| collapse_whitespace(&decode_xml(value)))
@@ -215,8 +215,41 @@ fn decode_xml(value: &str) -> String {
         .replace("]]>", "")
 }
 
+fn clean_summary(value: &str) -> String {
+    truncate_chars(&collapse_whitespace(&strip_tags(&decode_xml(value))), 180)
+}
+
+fn strip_tags(value: &str) -> String {
+    let mut result = String::new();
+    let mut in_tag = false;
+
+    for ch in value.chars() {
+        match ch {
+            '<' => in_tag = true,
+            '>' => in_tag = false,
+            _ if !in_tag => result.push(ch),
+            _ => {}
+        }
+    }
+
+    result
+}
+
 fn collapse_whitespace(s: &str) -> String {
     s.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+fn truncate_chars(value: &str, max_chars: usize) -> String {
+    let max_chars = max_chars.max(1);
+    let mut result = String::new();
+    for (idx, ch) in value.chars().enumerate() {
+        if idx >= max_chars {
+            result.push_str("...");
+            break;
+        }
+        result.push(ch);
+    }
+    result
 }
 
 #[cfg(test)]
@@ -304,5 +337,24 @@ mod tests {
         let items = parse_wechat_feed(xml, 10);
 
         assert!(items.is_empty());
+    }
+
+    #[test]
+    fn summary_strips_html_and_truncates() {
+        let xml = r#"
+        <rss><channel><item>
+          <title>AI Summary</title>
+          <link>https://mp.weixin.qq.com/s/example-3</link>
+          <description><![CDATA[<p>Hello <strong>Rust</strong> Agent</p><p>12345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890</p>]]></description>
+        </item></channel></rss>
+        "#;
+
+        let items = parse_wechat_feed(xml, 10);
+
+        assert_eq!(items.len(), 1);
+        let summary = items[0].summary.as_deref().unwrap_or("");
+        assert!(summary.starts_with("Hello Rust Agent"));
+        assert!(!summary.contains("<strong>"));
+        assert!(summary.ends_with("..."));
     }
 }
