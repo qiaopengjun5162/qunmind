@@ -96,11 +96,23 @@ fn parse_fragments(fragments: Vec<&str>, max_items: usize) -> Vec<PublicNewsItem
         let Some(url) = url.filter(|url| !url.trim().is_empty()) else {
             continue;
         };
+        let summary = extract_first(fragment, &[description_re(), summary_re()])
+            .map(|value| collapse_whitespace(&decode_xml(value)))
+            .filter(|value| !value.is_empty());
+        let author = extract_first(fragment, &[author_re(), creator_re()])
+            .map(|value| collapse_whitespace(&decode_xml(value)))
+            .filter(|value| !value.is_empty());
+        let published_at = extract_first(fragment, &[pub_date_re(), updated_re(), published_re()])
+            .map(|value| collapse_whitespace(&decode_xml(value)))
+            .filter(|value| !value.is_empty());
 
         items.push(PublicNewsItem {
             source: "WeChat RSS".to_string(),
             title,
             url,
+            summary,
+            author,
+            published_at,
             score: None,
             comments: None,
             ai_score: None,
@@ -157,6 +169,41 @@ fn atom_link_href_re() -> &'static Regex {
     RE.get_or_init(|| Regex::new(r#"(?s)<link[^>]*href=["']([^"']+)["'][^>]*/?>"#).unwrap())
 }
 
+fn description_re() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| Regex::new(r"(?s)<description[^>]*>(.*?)</description>").unwrap())
+}
+
+fn summary_re() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| Regex::new(r"(?s)<summary[^>]*>(.*?)</summary>").unwrap())
+}
+
+fn author_re() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| Regex::new(r"(?s)<author[^>]*>(.*?)</author>").unwrap())
+}
+
+fn creator_re() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| Regex::new(r"(?s)<dc:creator[^>]*>(.*?)</dc:creator>").unwrap())
+}
+
+fn pub_date_re() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| Regex::new(r"(?s)<pubDate[^>]*>(.*?)</pubDate>").unwrap())
+}
+
+fn updated_re() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| Regex::new(r"(?s)<updated[^>]*>(.*?)</updated>").unwrap())
+}
+
+fn published_re() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| Regex::new(r"(?s)<published[^>]*>(.*?)</published>").unwrap())
+}
+
 fn decode_xml(value: &str) -> String {
     value
         .replace("&amp;", "&")
@@ -196,6 +243,7 @@ mod tests {
         assert_eq!(items[0].url, "https://mp.weixin.qq.com/s/example-1");
         assert_eq!(items[0].source, "WeChat RSS");
         assert_eq!(items[0].category.as_deref(), Some("wechat_article"));
+        assert_eq!(items[0].summary, None);
     }
 
     #[test]
@@ -205,6 +253,9 @@ mod tests {
           <entry>
             <title>Rust Agent Notes</title>
             <link href="https://mp.weixin.qq.com/s/example-2" />
+            <summary>Weekly notes about Rust agents.</summary>
+            <author>Qiao</author>
+            <updated>2026-06-23T08:00:00Z</updated>
           </entry>
         </feed>
         "#;
@@ -214,6 +265,15 @@ mod tests {
         assert_eq!(items.len(), 1);
         assert_eq!(items[0].title, "Rust Agent Notes");
         assert_eq!(items[0].url, "https://mp.weixin.qq.com/s/example-2");
+        assert_eq!(
+            items[0].summary.as_deref(),
+            Some("Weekly notes about Rust agents.")
+        );
+        assert_eq!(items[0].author.as_deref(), Some("Qiao"));
+        assert_eq!(
+            items[0].published_at.as_deref(),
+            Some("2026-06-23T08:00:00Z")
+        );
     }
 
     #[test]
