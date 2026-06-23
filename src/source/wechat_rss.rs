@@ -2,6 +2,7 @@ use std::sync::OnceLock;
 use std::time::Duration;
 
 use async_trait::async_trait;
+use chrono::{DateTime, Utc};
 use regex::Regex;
 use reqwest::Client;
 
@@ -99,12 +100,8 @@ fn parse_fragments(fragments: Vec<&str>, max_items: usize) -> Vec<PublicNewsItem
         let summary = extract_first(fragment, &[description_re(), summary_re()])
             .map(clean_summary)
             .filter(|value| !value.is_empty());
-        let author = extract_first(fragment, &[author_re(), creator_re()])
-            .map(|value| collapse_whitespace(&decode_xml(value)))
-            .filter(|value| !value.is_empty());
-        let published_at = extract_first(fragment, &[pub_date_re(), updated_re(), published_re()])
-            .map(|value| collapse_whitespace(&decode_xml(value)))
-            .filter(|value| !value.is_empty());
+        let author = extract_author(fragment).filter(|value| !value.is_empty());
+        let published_at = extract_published_at(fragment).filter(|value| !value.is_empty());
 
         items.push(PublicNewsItem {
             source: "WeChat RSS".to_string(),
@@ -135,6 +132,30 @@ fn extract_item_url(fragment: &str) -> Option<String> {
         .captures(fragment)
         .and_then(|cap| cap.get(1).map(|m| decode_xml(m.as_str())))
         .filter(|value| !value.trim().is_empty())
+}
+
+fn extract_author(fragment: &str) -> Option<String> {
+    if let Some(author) = extract_atom_author_name(fragment) {
+        return Some(author);
+    }
+
+    extract_first(fragment, &[author_re(), creator_re()])
+        .map(|value| collapse_whitespace(&decode_xml(value)))
+}
+
+fn extract_atom_author_name(fragment: &str) -> Option<String> {
+    let author_block = extract_first(fragment, &[author_re()])?;
+    extract_first(author_block, &[name_re()])
+        .map(|value| collapse_whitespace(&decode_xml(value)))
+        .filter(|value| !value.is_empty())
+}
+
+fn extract_published_at(fragment: &str) -> Option<String> {
+    let raw = extract_first(
+        fragment,
+        &[pub_date_re(), updated_re(), published_re(), dc_date_re()],
+    )?;
+    Some(normalize_timestamp(raw))
 }
 
 fn extract_first<'a>(input: &'a str, patterns: &[&Regex]) -> Option<&'a str> {
@@ -189,6 +210,11 @@ fn creator_re() -> &'static Regex {
     RE.get_or_init(|| Regex::new(r"(?s)<dc:creator[^>]*>(.*?)</dc:creator>").unwrap())
 }
 
+fn name_re() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| Regex::new(r"(?s)<name[^>]*>(.*?)</name>").unwrap())
+}
+
 fn pub_date_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     RE.get_or_init(|| Regex::new(r"(?s)<pubDate[^>]*>(.*?)</pubDate>").unwrap())
@@ -204,6 +230,11 @@ fn published_re() -> &'static Regex {
     RE.get_or_init(|| Regex::new(r"(?s)<published[^>]*>(.*?)</published>").unwrap())
 }
 
+fn dc_date_re() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| Regex::new(r"(?s)<dc:date[^>]*>(.*?)</dc:date>").unwrap())
+}
+
 fn decode_xml(value: &str) -> String {
     value
         .replace("&amp;", "&")
@@ -217,6 +248,20 @@ fn decode_xml(value: &str) -> String {
 
 fn clean_summary(value: &str) -> String {
     truncate_chars(&collapse_whitespace(&strip_tags(&decode_xml(value))), 180)
+}
+
+fn normalize_timestamp(value: &str) -> String {
+    let value = collapse_whitespace(&decode_xml(value));
+
+    if let Ok(time) = DateTime::parse_from_rfc3339(&value) {
+        return time.with_timezone(&Utc).to_rfc3339();
+    }
+
+    if let Ok(time) = DateTime::parse_from_rfc2822(&value) {
+        return time.with_timezone(&Utc).to_rfc3339();
+    }
+
+    value
 }
 
 fn strip_tags(value: &str) -> String {
@@ -287,7 +332,7 @@ mod tests {
             <title>Rust Agent Notes</title>
             <link href="https://mp.weixin.qq.com/s/example-2" />
             <summary>Weekly notes about Rust agents.</summary>
-            <author>Qiao</author>
+            <author><name>Qiao</name></author>
             <updated>2026-06-23T08:00:00Z</updated>
           </entry>
         </feed>
@@ -305,7 +350,32 @@ mod tests {
         assert_eq!(items[0].author.as_deref(), Some("Qiao"));
         assert_eq!(
             items[0].published_at.as_deref(),
-            Some("2026-06-23T08:00:00Z")
+            Some("2026-06-23T08:00:00+00:00")
+        );
+    }
+
+    #[test]
+    fn parses_rss_creator_and_pubdate() {
+        let xml = r#"
+        <rss xmlns:dc="http://purl.org/dc/elements/1.1/">
+          <channel>
+            <item>
+              <title>Feed with creator</title>
+              <link>https://mp.weixin.qq.com/s/example-4</link>
+              <dc:creator><![CDATA[寻月隐君]]></dc:creator>
+              <pubDate>Tue, 23 Jun 2026 08:00:00 +0800</pubDate>
+            </item>
+          </channel>
+        </rss>
+        "#;
+
+        let items = parse_wechat_feed(xml, 10);
+
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].author.as_deref(), Some("寻月隐君"));
+        assert_eq!(
+            items[0].published_at.as_deref(),
+            Some("2026-06-23T00:00:00+00:00")
         );
     }
 

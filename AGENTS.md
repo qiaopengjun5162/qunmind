@@ -145,6 +145,11 @@
   - 对 QunMind 的启发是：后续如需把公众号文章纳入日报或研究素材，可优先把它视为独立上游服务或参考其接口边界，而不是把扫码登录、代理池和反风控逻辑直接耦合进主机器人进程。
   - 判断原则：**吸收能力，不照搬实现**。优先吸收“文章列表 / 文章正文 / RSS / markdown 输出”这类内容接口边界；不要把它的登录态管理、代理池、反风控和服务端形态直接内嵌进 QunMind。
 
+- https://github.com/Panniantong/Agent-Reach
+  - 多平台内容获取与 Agent 能力层参考，更适合借鉴“doctor / 路由 / skill 安装 / 多后端切换”的产品结构，而不是照搬其 Python 工具编排实现。
+  - 对 QunMind 的启发是把公共投研来源继续抽象成独立 connector / capability layer，让微信群消息主链路与外部研究素材采集保持边界清晰。
+  - 不要把高风控平台登录态、Cookie、浏览器自动化或账号运营逻辑直接并入 QunMind 主进程；优先吸收低风险、可公开、可测试的来源边界。
+
 - https://mp.weixin.qq.com/s/djeUolNR4bms8wGsvBTAZQ
   - 文章标题：`wx-cli 的 AI Agent Skill 来了！让 AI 直接帮你管微信私域`。
   - 可借鉴“把 wx-cli 能力包装成 AI Agent Skill，让用户用自然语言触发微信私域数据分析”的产品与交互思路。
