@@ -1,5 +1,76 @@
 # Progress
 
+## Snapshot
+
+### Final Goal
+
+把 `QunMind` 做成一个**可真实运行的微信群 AI 群智中枢**：
+
+- 能稳定接入企业微信内部群与普通微信 / 外部群入口。
+- 能保存群消息、抽取链接、读取短期上下文，并按群配置决定是否回复。
+- 能通过可诊断、可重放、可验证的链路完成“收消息 -> 过滤 -> AI -> 回复”。
+- 能基于群消息与公共来源生成日报，并支持多群、不同 persona、不同日报目标。
+- 能以 Rust 为核心，保持清晰模块边界、稳定测试覆盖和可持续演进的工程结构。
+
+### Current Phase
+
+当前处于：**MVP 骨架完成，正在从“功能存在”走向“真实可验证、可对外介绍”**
+
+粗粒度进度条：
+
+- 产品主链路：`[########--] ~80%`
+- wx-cli 诊断与重放：`[########--] ~80%`
+- 日报生成与发布：`[#######---] ~75%`
+- 真实微信联调验证：`[###-------] ~30%`
+- 生产可用度：`[###-------] ~35%`
+
+这里的百分比是工程判断，不是精确度量。含义是：
+
+- **代码骨架和模块边界已经基本成型**
+- **真实环境验证、生产稳定性和长期运维能力仍明显不足**
+
+### Small Goals
+
+接下来几个小目标，按优先级排序：
+
+1. **命令层继续收口**  
+   继续拆薄 `main.rs` 和 `src/mcp/tools.rs`，减少 wx-cli 命令适配重复。
+
+2. **真实 wx-cli 样本联调**  
+   用真实 capture fixture 验证 poll / dry-run / handle-once / send 的实际行为，而不是只停留在合成样本。
+
+3. **多群日报配置实测**  
+   验证 `schedule.daily_reports`、群级 persona、context 和日报目标群的真实组合行为。
+
+4. **对外描述统一**  
+   README / README_zh / PROGRESS 持续保持同一口径，让“当前做到哪、下一步做什么”始终可直接引用。
+
+### Next Action
+
+我们下一步建议直接做：
+
+1. 把 `main.rs` 的 wx-cli 子命令分发再拆一层。
+2. 为真实 capture fixture 预留目录和测试入口。
+3. 把“当前阶段 + 下一步”同步到 README，方便对外介绍。
+
+## 2026-06-23
+
+### Done
+
+- **`diagnostic` 模块化** — 把 2993 行 `src/diagnostic.rs` 按职责拆成 `dry_run`、`doctor`、`formal_test`、`pipeline`、`support` 5 个子模块，保留原有对外函数接口，`main.rs` / `mcp` 无需行为改写。
+- **诊断测试迁移** — 原有 49 个 `diagnostic` 纯函数/JSON 输出测试迁移到 `src/diagnostic/tests.rs`，继续覆盖 doctor、capture、formal test plan、dry-run、message_id guard 和 shell script 渲染。
+- **分支命名约束补档** — 项目级 `AGENTS.md` 记录当前仓库因历史 `codex-*` 平铺分支导致 `codex/<topic>` ref 冲突，后续默认改用 `codex-<topic>`。
+- **wx-cli capture I/O 去重** — 把 capture JSON 读写 helper 收到 `src/channel/wx_cli.rs`，CLI 与 MCP 复用同一套文件读写路径，继续压薄 `main.rs` / `src/mcp/tools.rs` 的命令层重复。
+- **MCP config path 对齐** — `qunmind mcp` 里的 capture / test-plan 现在复用真实 config path，不再在输出里硬编码占位 `config.toml`。
+- **流程文档化** — 新增 `docs/development-workflow.md`、`docs/visual-operations.md` 和 `skills/qunmind-dev-routine/SKILL.md`，把“文档同步、视觉操作留痕、Commit + Push + PR”固化成项目默认流程。
+
+### Verified
+
+- `cargo fmt --all`
+- `cargo nextest run --all-features diagnostic`：49 tests passing, 161 skipped
+- `cargo clippy --all-targets --all-features --tests --benches -- -D warnings`
+- `cargo nextest run --all-features wx_cli mcp diagnostic`：103 tests passing, 109 skipped
+
 ## 2026-06-22
 
 ### Done
@@ -58,13 +129,13 @@ qunmind (常驻进程)
 
 - 内容源扩展：更多 AI/Web3 垂直源
 - 每日一句自动配置
-- `diagnostic.rs` (2993 行) 模块化
+- `main.rs` / `mcp/tools.rs` 的 wx-cli 命令层继续去重，减少 capture / input-file 适配重复
 
 ## 2026-06-17
 
 ### Done
 
-- **日报生成器 (`src/daily_report.rs`)** — 两段式 pipeline 简化为单段 AI 生成 + 源数据排序。采集多源新闻，按 HN 分数/GitHub stars 排序，DeepSeek 生成正文，代码自动补齐 YAML frontmatter 和标题。
+- **日报生成器 (`src/daily_report/`)** — 两段式 pipeline 简化为单段 AI 生成 + 源数据排序。采集多源新闻，按 HN 分数/GitHub stars 排序，DeepSeek 生成正文，代码自动补齐 YAML frontmatter 和标题。
 - **微信发布集成 (`src/wechat_publisher.rs`)** — moonpub subprocess 封装，RAII 临时文件管理，`--articles` 参数传递。
 - **Scheduler 微信路由 (`src/scheduler/daily_report.rs`)** — `output = "wechat"` 时调用 moonpub 发布到微信草稿，同时保留群聊发送路径。
 - **CLI 手动测试** — `qunmind daily-report --output <path>` 命令。

@@ -1,6 +1,3 @@
-use std::path::Path;
-use std::sync::Arc;
-
 use anyhow::Context;
 use clap::Parser;
 use qunmind::ai;
@@ -10,8 +7,9 @@ use qunmind::bot::handler::BotHandler;
 use qunmind::channel::Channel;
 use qunmind::channel::IncomingMessage;
 use qunmind::channel::wecom::WeComChannel;
-use qunmind::channel::wx_cli::WxCliChannel;
-use qunmind::channel::wx_cli::parse_wx_cli_messages_from_str;
+use qunmind::channel::wx_cli::{
+    WxCliChannel, load_wx_cli_messages_from_file, write_wx_cli_capture_file,
+};
 use qunmind::cli::{Args, CliCommand, WxCliCommand};
 use qunmind::config::{AiProvider, ChannelKind, Config};
 use qunmind::daily_report::DailyReportGenerator;
@@ -26,6 +24,8 @@ use qunmind::source;
 use qunmind::source::PublicNewsSource;
 use qunmind::storage::MessageStore;
 use qunmind::storage::postgres::PostgresMessageStore;
+use std::path::Path;
+use std::sync::Arc;
 use tracing::{error, info};
 use tracing_subscriber::EnvFilter;
 
@@ -176,7 +176,7 @@ async fn run_wx_cli_command(
         }
         WxCliCommand::Capture { output } => {
             let messages = load_wx_cli_messages(config, None).await?;
-            write_wx_cli_capture(&output, &messages)?;
+            write_wx_cli_capture_file(&output, &messages)?;
             println!(
                 "{}",
                 serde_json::to_string_pretty(&wx_cli_capture_report(
@@ -345,36 +345,18 @@ async fn load_wx_cli_messages(
     input: Option<&std::path::PathBuf>,
 ) -> anyhow::Result<Vec<IncomingMessage>> {
     if let Some(input) = input {
-        let raw = std::fs::read_to_string(input)
-            .with_context(|| format!("读取 wx-cli 输入文件失败: {}", input.display()))?;
-        return Ok(parse_wx_cli_messages_from_str(
-            &raw,
-            &config.wx_cli.group_chat_id,
-        )?);
+        return load_wx_cli_messages_from_file(input, &config.wx_cli.group_chat_id);
     }
 
     let channel = WxCliChannel::new(&config.wx_cli);
     Ok(channel.poll_once().await?)
 }
 
-fn write_wx_cli_capture(output: &Path, messages: &[IncomingMessage]) -> anyhow::Result<()> {
-    if let Some(parent) = output
-        .parent()
-        .filter(|parent| !parent.as_os_str().is_empty())
-    {
-        std::fs::create_dir_all(parent)
-            .with_context(|| format!("创建 wx-cli 捕获目录失败: {}", parent.display()))?;
-    }
-    let body = serde_json::to_string_pretty(messages)?;
-    std::fs::write(output, body)
-        .with_context(|| format!("写入 wx-cli 捕获文件失败: {}", output.display()))?;
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use qunmind::channel::MsgType;
+    use qunmind::channel::wx_cli::parse_wx_cli_messages_from_str;
 
     fn config_from(input: &str) -> Config {
         must(toml::from_str(input), "config")
@@ -589,7 +571,7 @@ mod tests {
             msg_type: MsgType::Text,
         }];
 
-        must(write_wx_cli_capture(&path, &messages), "write capture");
+        must(write_wx_cli_capture_file(&path, &messages), "write capture");
         let raw = must(std::fs::read_to_string(&path), "read capture");
         let replayed = must(
             parse_wx_cli_messages_from_str(&raw, ""),

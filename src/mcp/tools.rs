@@ -1,6 +1,8 @@
 use std::path::PathBuf;
 
-use crate::channel::wx_cli::{self, WxCliChannel};
+use crate::channel::wx_cli::{
+    WxCliChannel, load_wx_cli_messages_from_file, write_wx_cli_capture_file,
+};
 use crate::config::Config;
 use crate::diagnostic;
 
@@ -161,13 +163,14 @@ pub fn list_tools() -> Vec<Tool> {
 
 pub async fn call_tool(
     config: &Config,
+    config_path: &std::path::Path,
     tool_name: &str,
     arguments: &serde_json::Value,
 ) -> anyhow::Result<String> {
     match tool_name {
         "wxcli_doctor" => tool_doctor(config, arguments),
-        "wxcli_capture" => tool_capture(config, arguments).await,
-        "wxcli_test_plan" => tool_test_plan(config, arguments),
+        "wxcli_capture" => tool_capture(config, config_path, arguments).await,
+        "wxcli_test_plan" => tool_test_plan(config, config_path, arguments),
         "wxcli_dry_run" => tool_dry_run(config, arguments),
         "wxcli_poll" => tool_poll(config, arguments).await,
         "wxcli_send" => tool_send(config, arguments),
@@ -190,7 +193,11 @@ fn tool_doctor(config: &Config, args: &serde_json::Value) -> anyhow::Result<Stri
     Ok(serde_json::to_string_pretty(&report)?)
 }
 
-async fn tool_capture(config: &Config, args: &serde_json::Value) -> anyhow::Result<String> {
+async fn tool_capture(
+    config: &Config,
+    config_path: &std::path::Path,
+    args: &serde_json::Value,
+) -> anyhow::Result<String> {
     let output = required_string(args, "output")?;
     let output = PathBuf::from(&output);
 
@@ -200,24 +207,17 @@ async fn tool_capture(config: &Config, args: &serde_json::Value) -> anyhow::Resu
         .await
         .map_err(|e| anyhow::anyhow!("wx-cli poll failed: {e}"))?;
 
-    // Write capture file (mirrors main.rs write_wx_cli_capture).
-    if let Some(parent) = output.parent().filter(|p| !p.as_os_str().is_empty()) {
-        std::fs::create_dir_all(parent)?;
-    }
-    let body = serde_json::to_string_pretty(&messages)?;
-    std::fs::write(&output, body)?;
+    write_wx_cli_capture_file(&output, &messages)?;
 
-    // config_path is not available in the MCP context; use a placeholder.
-    let report = diagnostic::wx_cli_capture_report(
-        config,
-        std::path::Path::new("config.toml"),
-        &output,
-        &messages,
-    );
+    let report = diagnostic::wx_cli_capture_report(config, config_path, &output, &messages);
     Ok(serde_json::to_string_pretty(&report)?)
 }
 
-fn tool_test_plan(config: &Config, args: &serde_json::Value) -> anyhow::Result<String> {
+fn tool_test_plan(
+    config: &Config,
+    config_path: &std::path::Path,
+    args: &serde_json::Value,
+) -> anyhow::Result<String> {
     let capture_file = required_string(args, "capture_file")?;
     let capture_file = PathBuf::from(&capture_file);
     let input = args.get("input").and_then(|v| v.as_str());
@@ -231,13 +231,16 @@ fn tool_test_plan(config: &Config, args: &serde_json::Value) -> anyhow::Result<S
 
     let input = input.map(PathBuf::from);
     let messages = match input.as_ref() {
-        Some(input) => Some(load_wx_cli_messages_from_file(config, input)?),
+        Some(input) => Some(load_wx_cli_messages_from_file(
+            input,
+            &config.wx_cli.group_chat_id,
+        )?),
         None => None,
     };
 
     let plan = diagnostic::wx_cli_formal_test_plan(
         config,
-        std::path::Path::new("config.toml"),
+        config_path,
         &capture_file,
         message_id,
         chat_id,
@@ -258,7 +261,8 @@ fn tool_dry_run(config: &Config, args: &serde_json::Value) -> anyhow::Result<Str
         .and_then(|v| v.as_u64())
         .map_or(10, |v| v as usize);
     let message_id = args.get("message_id").and_then(|v| v.as_str());
-    let messages = load_wx_cli_messages_from_file(config, &required_input_path(args)?)?;
+    let messages =
+        load_wx_cli_messages_from_file(&required_input_path(args)?, &config.wx_cli.group_chat_id)?;
 
     let total_polled = messages.len();
     if let Some(report) =
@@ -274,7 +278,7 @@ fn tool_dry_run(config: &Config, args: &serde_json::Value) -> anyhow::Result<Str
 
 async fn tool_poll(config: &Config, args: &serde_json::Value) -> anyhow::Result<String> {
     let messages = if let Some(input) = args.get("input").and_then(|v| v.as_str()) {
-        load_wx_cli_messages_from_file(config, &PathBuf::from(input))?
+        load_wx_cli_messages_from_file(&PathBuf::from(input), &config.wx_cli.group_chat_id)?
     } else {
         let channel = WxCliChannel::new(&config.wx_cli);
         channel
@@ -305,7 +309,8 @@ async fn tool_handle_once(config: &Config, args: &serde_json::Value) -> anyhow::
         .get("limit")
         .and_then(|v| v.as_u64())
         .map_or(1, |v| v as usize);
-    let messages = load_wx_cli_messages_from_file(config, &required_input_path(args)?)?;
+    let messages =
+        load_wx_cli_messages_from_file(&required_input_path(args)?, &config.wx_cli.group_chat_id)?;
 
     // MCP tools never send real WeChat messages.
     let (report, _suppressed) =
@@ -336,22 +341,11 @@ fn load_messages_or_none(
 ) -> anyhow::Result<Option<Vec<crate::channel::IncomingMessage>>> {
     match args.get("input").and_then(|v| v.as_str()) {
         Some(input) => Ok(Some(load_wx_cli_messages_from_file(
-            config,
             &PathBuf::from(input),
+            &config.wx_cli.group_chat_id,
         )?)),
         None => Ok(None),
     }
-}
-
-fn load_wx_cli_messages_from_file(
-    config: &Config,
-    input: &std::path::Path,
-) -> anyhow::Result<Vec<crate::channel::IncomingMessage>> {
-    let raw = std::fs::read_to_string(input)?;
-    Ok(wx_cli::parse_wx_cli_messages_from_str(
-        &raw,
-        &config.wx_cli.group_chat_id,
-    )?)
 }
 
 #[cfg(test)]
@@ -456,9 +450,14 @@ mod tests {
     #[tokio::test]
     async fn tool_doctor_reports_ok_when_config_is_complete() {
         let config = test_config();
-        let report_str = call_tool(&config, "wxcli_doctor", &serde_json::json!({}))
-            .await
-            .unwrap();
+        let report_str = call_tool(
+            &config,
+            std::path::Path::new("test-config.toml"),
+            "wxcli_doctor",
+            &serde_json::json!({}),
+        )
+        .await
+        .unwrap();
         let report: serde_json::Value = serde_json::from_str(&report_str).unwrap();
 
         assert_eq!(report["ok"], true);
@@ -475,6 +474,7 @@ mod tests {
         let config = test_config();
         let report_str = call_tool(
             &config,
+            std::path::Path::new("test-config.toml"),
             "wxcli_doctor",
             &serde_json::json!({"input": input.to_str().unwrap()}),
         )
@@ -499,6 +499,7 @@ mod tests {
         let config = test_config();
         let report_str = call_tool(
             &config,
+            std::path::Path::new("test-config.toml"),
             "wxcli_dry_run",
             &serde_json::json!({"input": input.to_str().unwrap(), "limit": 10}),
         )
@@ -518,9 +519,14 @@ mod tests {
     async fn tool_dry_run_rejects_missing_input() {
         let config = test_config();
         assert!(
-            call_tool(&config, "wxcli_dry_run", &serde_json::json!({}))
-                .await
-                .is_err()
+            call_tool(
+                &config,
+                std::path::Path::new("test-config.toml"),
+                "wxcli_dry_run",
+                &serde_json::json!({}),
+            )
+            .await
+            .is_err()
         );
     }
 
@@ -534,6 +540,7 @@ mod tests {
         let config = test_config();
         let report_str = call_tool(
             &config,
+            std::path::Path::new("test-config.toml"),
             "wxcli_poll",
             &serde_json::json!({"input": input.to_str().unwrap()}),
         )
@@ -553,6 +560,7 @@ mod tests {
         let config = test_config();
         let report_str = call_tool(
             &config,
+            std::path::Path::new("test-config.toml"),
             "wxcli_send",
             &serde_json::json!({
                 "chat_id": "test@chatroom",
@@ -574,6 +582,7 @@ mod tests {
         assert!(
             call_tool(
                 &config,
+                std::path::Path::new("test-config.toml"),
                 "wxcli_send",
                 &serde_json::json!({"chat_id": "chat"})
             )
@@ -581,9 +590,14 @@ mod tests {
             .is_err()
         );
         assert!(
-            call_tool(&config, "wxcli_send", &serde_json::json!({"text": "hi"}))
-                .await
-                .is_err()
+            call_tool(
+                &config,
+                std::path::Path::new("test-config.toml"),
+                "wxcli_send",
+                &serde_json::json!({"text": "hi"}),
+            )
+            .await
+            .is_err()
         );
     }
 
@@ -591,9 +605,14 @@ mod tests {
     async fn tool_test_plan_requires_capture_file() {
         let config = test_config();
         assert!(
-            call_tool(&config, "wxcli_test_plan", &serde_json::json!({}))
-                .await
-                .is_err()
+            call_tool(
+                &config,
+                std::path::Path::new("test-config.toml"),
+                "wxcli_test_plan",
+                &serde_json::json!({}),
+            )
+            .await
+            .is_err()
         );
     }
 
@@ -608,6 +627,7 @@ mod tests {
         let config = test_config();
         let report_str = call_tool(
             &config,
+            std::path::Path::new("test-config.toml"),
             "wxcli_test_plan",
             &serde_json::json!({
                 "capture_file": "wx-output.json",
@@ -640,6 +660,7 @@ mod tests {
         let config = test_config();
         let script = call_tool(
             &config,
+            std::path::Path::new("test-config.toml"),
             "wxcli_test_plan",
             &serde_json::json!({
                 "capture_file": "wx-output.json",
@@ -669,6 +690,7 @@ mod tests {
         let config = test_config();
         let report_str = call_tool(
             &config,
+            std::path::Path::new("test-config.toml"),
             "wxcli_handle_once",
             &serde_json::json!({
                 "input": input.to_str().unwrap(),
@@ -695,9 +717,14 @@ mod tests {
     async fn unknown_tool_returns_error() {
         let config = test_config();
         assert!(
-            call_tool(&config, "nonexistent_tool", &serde_json::json!({}))
-                .await
-                .is_err()
+            call_tool(
+                &config,
+                std::path::Path::new("test-config.toml"),
+                "nonexistent_tool",
+                &serde_json::json!({}),
+            )
+            .await
+            .is_err()
         );
     }
 }

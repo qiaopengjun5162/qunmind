@@ -1,5 +1,11 @@
 # AGENTS.md
 
+每次项目发生实质性修改后，都要同步更新相关文档，不要把文档更新留到“之后再说”。至少检查 `AGENTS.md`、`PROGRESS.md`、`README.md`、`README_zh.md`、`CONTRIBUTING.md` 和 `.github/pull_request_template.md` 是否需要同步。
+
+如果本次工作涉及绘画、图示、生成图片、界面草图或其他可视化操作，必须把来源、输出文件和备注追加记录到 `docs/visual-operations.md`，避免后续重复生成和重复消耗 token。
+
+默认把一次完整项目修改视为 **代码/文档完成 + 验证完成 + Commit + Push + PR 已创建**。除非用户明确要求停在本地修改，否则不要把“只改完文件”当成流程结束。
+
 ## 项目定位
 
 `QunMind` 是一个 Rust 编写的微信群 AI 群智中枢，不是前端看板。当前支持企业微信内部群智能机器人通道，也支持通过 wx-cli 形态的本地微信通道做普通微信群/外部群 PoC。消息处理链路是：
@@ -16,7 +22,9 @@
 
 `src/research/learning.rs` 维护 AI / Agent 学习资源目录，覆盖 LLM 基础、API 调用、coding agent、agent 框架、Hermes 执行层、微信 Agent Skill 和 AI x Web3 参考。新增课程、文档、Prompt、Handbook 或微信私域 Agent 参考时先放进该目录，避免把学习资料直接耦合进微信消息处理链路。
 
-`src/diagnostic.rs` 维护 wx-cli 诊断和捕获消息重放的纯逻辑，包括 dry-run 输出、按 `message_id` 选择消息和群级配置预览；`main.rs` 只负责 CLI I/O、依赖初始化和命令编排。
+`src/diagnostic/` 目录维护 wx-cli 诊断和捕获消息重放的纯逻辑，当前拆成 `doctor`、`dry_run`、`formal_test`、`pipeline`、`support`；`main.rs` 只负责 CLI I/O、依赖初始化和命令编排。
+
+`src/channel/wx_cli.rs` 同时承载 wx-cli / 微信数据库通道的捕获文件读写 helper（例如 capture JSON 读写）和通道侧解析；凡是会被 CLI 与 MCP 复用、但不属于 `diagnostic` 纯逻辑的文件 I/O，优先放这里，避免在 `main.rs` 和 `src/mcp/tools.rs` 各写一份。
 
 `src/mcp/mod.rs` 维护 MCP JSON-RPC 2.0 server，`src/mcp/tools.rs` 维护 7 个 MCP tool 的 inputSchema 定义和 diagnostic 纯函数适配。新增 MCP tool 时优先在 `tools.rs` 补纯函数测试，不要往 `mod.rs` 塞业务逻辑。
 
@@ -81,9 +89,11 @@
 - 新增测试放在 `tests/`，命名使用 `*_test.rs`。
 - Commit message 使用 Conventional Commits，英文消息。
 - 默认使用 PR-first 工作流：从 `master` 创建 `codex/<short-topic>` 分支，提交并 push 分支，再用 `gh pr create --base master --head <branch>` 自己给自己提 PR；除非用户明确要求，后续不要直接 push 到 `master`。
+- 当前仓库里已有历史平铺分支名 `codex-wx-cli-replay-docs`，会阻塞新的 `codex/<short-topic>` ref 目录创建；在清理该历史分支前，新分支统一使用 `codex-<short-topic>`，避免 `cannot lock ref 'refs/heads/codex/...'`。
 - Release 使用 tag-first 自动化：推送 `v*` tag 后，`.github/workflows/release.yml` 会用 GitHub Actions 自动创建对应 GitHub Release；正式发版前仍先确认 `master` CI 通过。
 - Release workflow 也会把镜像发布到 `ghcr.io/qiaopengjun5162/qunmind:<tag>` 和 `ghcr.io/qiaopengjun5162/qunmind:latest`；修改 Dockerfile、Compose 或部署文档时至少跑 `docker compose config`，有 Docker daemon 时继续跑 `docker build --tag qunmind:local .`。
 - 如果后续加入 Rust/WASM 前端，使用 `wasm-pack` 构建；`wasm-bindgen` 暴露函数时避免 `Option<&str>` 这类不支持的参数形态。
+- 提交流程默认必须走 `git add` → `git commit` → `git push` → `gh pr create`。如果本次修改形成了可复用流程或经验，优先沉淀到 `skills/` 下的本地 Skill，而不是只留在聊天记录里。
 
 ## 本地约束
 

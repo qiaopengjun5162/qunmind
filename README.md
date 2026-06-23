@@ -38,6 +38,45 @@ The project currently supports:
 
 This is an MVP foundation, not a production-ready bot yet. The next important step is real wx-cli group testing and per-group report configuration on top of the stored message stream.
 
+The current project phase is:
+
+- **Done**: core Rust backend boundaries, persistence, per-group config, wx-cli diagnostics/replay, MCP integration, and daily report generation/publishing.
+- **In progress**: command-layer dedup between `main.rs` and MCP tools, real wx-cli sample validation, multi-group report verification, and tighter doc consistency.
+- **Not done yet**: stable real-world normal WeChat group validation, production hardening, and long-term memory / permission / ops capabilities.
+
+Rough progress bars:
+
+- Product core loop: `[########--] ~80%`
+- wx-cli diagnostics and replay: `[########--] ~80%`
+- Daily report generation and publishing: `[#######---] ~75%`
+- Real WeChat validation: `[###-------] ~30%`
+- Production readiness: `[###-------] ~35%`
+
+One-sentence external summary:
+
+> QunMind already has the backend skeleton, diagnostics, and report pipeline for a WeChat AI group hub, and is now moving from MVP feature completeness to real-environment validation and stable demos.
+
+## Roadmap
+
+Final goal:
+
+- Build a real WeChat group AI hub, not just a demo bot or report script.
+- Close the full loop: receive -> persist -> context -> AI -> reply -> reports.
+- Keep Rust as the core with clear module boundaries, testability, diagnosability, and long-term maintainability.
+
+Next small goals:
+
+1. Keep shrinking `main.rs` and `src/mcp/tools.rs` by removing command-layer duplication.
+2. Add real wx-cli capture fixtures to validate poll / dry-run / handle-once / send against real samples.
+3. Verify multi-group persona, context, and `schedule.daily_reports` combinations in practice.
+4. Keep README / PROGRESS / AGENTS aligned so project status is reusable for internal and external communication.
+
+Immediate next step:
+
+1. Continue modularizing the wx-cli command orchestration layer.
+2. Create a fixture/testing entry for real captures.
+3. Keep the stage summary in docs continuously up to date.
+
 ## Quick Start
 
 ```bash
@@ -143,7 +182,7 @@ Use `cargo nextest`, not `cargo test`, for project test runs.
 
 ## Contributing
 
-QunMind uses a PR-first workflow. Create a `codex/<short-topic>` branch, keep the
+QunMind uses a PR-first workflow. Create a `codex-<short-topic>` branch, keep the
 change focused, run `just clippy` and `just test`, push the branch, and open a
 pull request back to `master`. See [CONTRIBUTING.md](CONTRIBUTING.md) for the
 full workflow and review checklist.
