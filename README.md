@@ -190,6 +190,8 @@ QunMind extracts `http://` / `https://` links from incoming text messages and st
 
 For an actual learning order instead of a flat list, use [docs/research-tools.md](docs/research-tools.md). It now captures the foundation path, onchain analyst path, project due-diligence path, and automation-first path.
 
+For WeChat public-account article material, QunMind now prefers a lighter integration shape: consuming RSS / Atom style upstream output through `[public_sources] wechat_rss_*`, instead of embedding a full login/proxy/anti-bot service into the main bot process.
+
 ## AI / Agent Learning Map
 
 `src/research/learning.rs` tracks the recommended LLM, API, coding-agent, agent-framework, Hermes execution-layer, and AI x Web3 learning resources. It includes the AI x Web3 School learning-agent startup prompt and handbook as structured references, so future prompt design, model-provider integration, tool calling, skills, memory, and long-running agent execution decisions can be reviewed without turning the WeChat message path into a documentation dump.

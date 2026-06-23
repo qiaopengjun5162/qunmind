@@ -181,6 +181,12 @@ QunMind 会在保存文本消息时抽取 `http://` / `https://` 链接，写入
 
 如果要按学习顺序推进，而不是只看工具名单，直接参考 [docs/research-tools.md](docs/research-tools.md)。其中已经整理了基础入门路径、链上分析路径、项目尽调路径和自动化优先级。
 
+如果后续要补公众号文章、历史文章列表或 RSS 形态的公共素材入口，可以参考 `tmwgsicp/wechat-download-api` 这类独立服务，但它更适合做上游采集或研究素材补充，不适合作为 QunMind 的群消息主通道。
+
+更准确的推进方式是：吸收它的内容获取能力边界，再按 QunMind 当前架构把真正需要的部分实现为独立公共素材源或上游 connector，而不是把整套登录、代理和反风控实现直接搬进主机器人进程。
+
+当前已经先落了一版更轻的接入方向：`[public_sources] wechat_rss_*`。它允许 QunMind 直接消费公众号文章 RSS / Atom 上游输出，适合对接 `wechat-download-api` 一类独立服务，但仍然保持主机器人进程不承载扫码登录、代理池和反风控复杂度。
+
 ## AI / Agent 学习地图
 
 `src/research/learning.rs` 维护推荐的 LLM、API、coding agent、agent 框架、Hermes 执行层和 AI x Web3 学习资源。它已经把 AI x Web3 School 的 Learning Agent 启动 Prompt 和 Handbook 作为结构化参考纳入 Rust 代码，方便后续设计 prompt、模型供应商对接、tool calling、skills、记忆和长期执行能力，同时不把微信消息主链路变成资料清单。

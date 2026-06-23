@@ -9,6 +9,7 @@ pub mod hacker_news;
 pub mod hn_daily;
 pub mod registry;
 pub mod slerf_blog;
+pub mod wechat_rss;
 
 use async_trait::async_trait;
 use std::collections::HashSet;
@@ -110,7 +111,10 @@ fn matches_topics(item: &PublicNewsItem, topic_keywords: &[String]) -> bool {
 }
 
 fn is_curated_source_url(url: &str) -> bool {
-    url.contains("github.com") || url.contains("arxiv.org") || url.contains("ethresear.ch")
+    url.contains("github.com")
+        || url.contains("arxiv.org")
+        || url.contains("ethresear.ch")
+        || url.contains("mp.weixin.qq.com")
 }
 
 #[cfg(test)]

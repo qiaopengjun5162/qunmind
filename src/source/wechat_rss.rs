@@ -1,0 +1,248 @@
+use std::sync::OnceLock;
+use std::time::Duration;
+
+use async_trait::async_trait;
+use regex::Regex;
+use reqwest::Client;
+
+use super::{PublicNewsItem, PublicNewsSource};
+use crate::config::PublicSourcesConfig;
+use crate::error::Result;
+
+pub struct WechatRssSource {
+    client: Client,
+    urls: Vec<String>,
+    max_items: usize,
+}
+
+impl WechatRssSource {
+    pub fn new(config: &PublicSourcesConfig) -> Result<Self> {
+        let client = Client::builder()
+            .timeout(Duration::from_secs(config.wechat_rss_timeout_secs))
+            .user_agent("qunmind/0.1")
+            .build()?;
+
+        Ok(Self {
+            client,
+            urls: config.wechat_rss_urls.clone(),
+            max_items: config.wechat_rss_max_items.max(1),
+        })
+    }
+
+    async fn fetch_feed(&self, url: &str) -> Result<Vec<PublicNewsItem>> {
+        let xml = self
+            .client
+            .get(url)
+            .send()
+            .await?
+            .error_for_status()?
+            .text()
+            .await?;
+
+        Ok(parse_wechat_feed(&xml, self.max_items))
+    }
+}
+
+#[async_trait]
+impl PublicNewsSource for WechatRssSource {
+    async fn fetch_top_items(&self) -> Result<Vec<PublicNewsItem>> {
+        let mut items = Vec::new();
+        for url in &self.urls {
+            items.extend(self.fetch_feed(url).await?);
+            if items.len() >= self.max_items {
+                break;
+            }
+        }
+        items.truncate(self.max_items);
+        Ok(items)
+    }
+}
+
+pub fn parse_wechat_feed(xml: &str, max_items: usize) -> Vec<PublicNewsItem> {
+    let max_items = max_items.max(1);
+    let item_fragments = rss_item_re()
+        .captures_iter(xml)
+        .filter_map(|cap| cap.get(1).map(|m| m.as_str()))
+        .collect::<Vec<_>>();
+
+    if !item_fragments.is_empty() {
+        return parse_fragments(item_fragments, max_items);
+    }
+
+    let entry_fragments = atom_entry_re()
+        .captures_iter(xml)
+        .filter_map(|cap| cap.get(1).map(|m| m.as_str()))
+        .collect::<Vec<_>>();
+
+    parse_fragments(entry_fragments, max_items)
+}
+
+fn parse_fragments(fragments: Vec<&str>, max_items: usize) -> Vec<PublicNewsItem> {
+    let mut items = Vec::new();
+
+    for fragment in fragments {
+        if items.len() >= max_items {
+            break;
+        }
+
+        let title = extract_first(fragment, &[title_re()])
+            .map(|value| collapse_whitespace(&decode_xml(value)))
+            .unwrap_or_default();
+        if title.is_empty() {
+            continue;
+        }
+
+        let url = extract_item_url(fragment);
+        let Some(url) = url.filter(|url| !url.trim().is_empty()) else {
+            continue;
+        };
+
+        items.push(PublicNewsItem {
+            source: "WeChat RSS".to_string(),
+            title,
+            url,
+            score: None,
+            comments: None,
+            ai_score: None,
+            category: Some("wechat_article".to_string()),
+        });
+    }
+
+    items
+}
+
+fn extract_item_url(fragment: &str) -> Option<String> {
+    if let Some(link) = extract_first(fragment, &[rss_link_re()]) {
+        let value = collapse_whitespace(&decode_xml(link));
+        if !value.is_empty() {
+            return Some(value);
+        }
+    }
+
+    atom_link_href_re()
+        .captures(fragment)
+        .and_then(|cap| cap.get(1).map(|m| decode_xml(m.as_str())))
+        .filter(|value| !value.trim().is_empty())
+}
+
+fn extract_first<'a>(input: &'a str, patterns: &[&Regex]) -> Option<&'a str> {
+    patterns
+        .iter()
+        .find_map(|pattern| pattern.captures(input))
+        .and_then(|cap| cap.get(1).map(|m| m.as_str()))
+}
+
+fn rss_item_re() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| Regex::new(r"(?s)<item>(.*?)</item>").unwrap())
+}
+
+fn atom_entry_re() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| Regex::new(r"(?s)<entry[^>]*>(.*?)</entry>").unwrap())
+}
+
+fn title_re() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| Regex::new(r"(?s)<title[^>]*>(.*?)</title>").unwrap())
+}
+
+fn rss_link_re() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| Regex::new(r"(?s)<link[^>]*>(.*?)</link>").unwrap())
+}
+
+fn atom_link_href_re() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| Regex::new(r#"(?s)<link[^>]*href=["']([^"']+)["'][^>]*/?>"#).unwrap())
+}
+
+fn decode_xml(value: &str) -> String {
+    value
+        .replace("&amp;", "&")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&quot;", "\"")
+        .replace("&#39;", "'")
+        .replace("<![CDATA[", "")
+        .replace("]]>", "")
+}
+
+fn collapse_whitespace(s: &str) -> String {
+    s.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_rss_items() {
+        let xml = r#"
+        <rss>
+          <channel>
+            <item>
+              <title><![CDATA[AI x WeChat Weekly]]></title>
+              <link>https://mp.weixin.qq.com/s/example-1</link>
+            </item>
+          </channel>
+        </rss>
+        "#;
+
+        let items = parse_wechat_feed(xml, 10);
+
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].title, "AI x WeChat Weekly");
+        assert_eq!(items[0].url, "https://mp.weixin.qq.com/s/example-1");
+        assert_eq!(items[0].source, "WeChat RSS");
+        assert_eq!(items[0].category.as_deref(), Some("wechat_article"));
+    }
+
+    #[test]
+    fn parses_atom_entries() {
+        let xml = r#"
+        <feed xmlns="http://www.w3.org/2005/Atom">
+          <entry>
+            <title>Rust Agent Notes</title>
+            <link href="https://mp.weixin.qq.com/s/example-2" />
+          </entry>
+        </feed>
+        "#;
+
+        let items = parse_wechat_feed(xml, 10);
+
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].title, "Rust Agent Notes");
+        assert_eq!(items[0].url, "https://mp.weixin.qq.com/s/example-2");
+    }
+
+    #[test]
+    fn respects_max_items() {
+        let xml = r#"
+        <rss><channel>
+          <item><title>A</title><link>https://mp.weixin.qq.com/s/a</link></item>
+          <item><title>B</title><link>https://mp.weixin.qq.com/s/b</link></item>
+          <item><title>C</title><link>https://mp.weixin.qq.com/s/c</link></item>
+        </channel></rss>
+        "#;
+
+        let items = parse_wechat_feed(xml, 2);
+
+        assert_eq!(items.len(), 2);
+        assert_eq!(items[0].title, "A");
+        assert_eq!(items[1].title, "B");
+    }
+
+    #[test]
+    fn skips_items_without_link() {
+        let xml = r#"
+        <rss><channel>
+          <item><title>No Link</title></item>
+        </channel></rss>
+        "#;
+
+        let items = parse_wechat_feed(xml, 10);
+
+        assert!(items.is_empty());
+    }
+}
