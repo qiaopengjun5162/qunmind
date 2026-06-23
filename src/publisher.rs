@@ -16,7 +16,33 @@ pub enum PublishTarget {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PublishReceipt {
     pub target: String,
+    pub destination: String,
+    pub published_at: String,
+    pub summary: String,
     pub raw_output: String,
+}
+
+impl PublishTarget {
+    pub fn kind(&self) -> &'static str {
+        match self {
+            PublishTarget::WechatDraft { .. } => "wechat_draft",
+        }
+    }
+
+    pub fn destination(&self) -> &str {
+        match self {
+            PublishTarget::WechatDraft { articles_dir, .. } => articles_dir,
+        }
+    }
+}
+
+impl PublishReceipt {
+    pub fn compact_summary(&self) -> String {
+        format!(
+            "{} -> {} at {} ({})",
+            self.target, self.destination, self.published_at, self.summary
+        )
+    }
 }
 
 /// RAII guard that removes the temp file on drop.
@@ -88,8 +114,12 @@ fn publish_to_wechat_draft(
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
     info!(stdout = %stdout, "moonpub 发布成功");
 
+    let published_at = chrono::Utc::now().to_rfc3339();
     Ok(PublishReceipt {
         target: "wechat_draft".to_string(),
+        destination: articles_dir.to_string(),
+        published_at,
+        summary: "moonpub draft push completed".to_string(),
         raw_output: stdout,
     })
 }
@@ -122,5 +152,33 @@ mod tests {
         );
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("启动 moonpub"));
+    }
+
+    #[test]
+    fn target_exposes_kind_and_destination() {
+        let target = PublishTarget::WechatDraft {
+            bin: "/tmp/moonpub".to_string(),
+            articles_dir: "/tmp/articles".to_string(),
+        };
+
+        assert_eq!(target.kind(), "wechat_draft");
+        assert_eq!(target.destination(), "/tmp/articles");
+    }
+
+    #[test]
+    fn receipt_compact_summary_includes_core_fields() {
+        let receipt = PublishReceipt {
+            target: "wechat_draft".to_string(),
+            destination: "/tmp/articles".to_string(),
+            published_at: "2026-06-23T12:00:00+00:00".to_string(),
+            summary: "moonpub draft push completed".to_string(),
+            raw_output: "ok".to_string(),
+        };
+
+        let summary = receipt.compact_summary();
+        assert!(summary.contains("wechat_draft"));
+        assert!(summary.contains("/tmp/articles"));
+        assert!(summary.contains("2026-06-23T12:00:00+00:00"));
+        assert!(summary.contains("moonpub draft push completed"));
     }
 }

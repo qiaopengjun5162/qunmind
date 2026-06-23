@@ -200,6 +200,8 @@ QunMind 会在保存文本消息时抽取 `http://` / `https://` 链接，写入
 
 现在第一步已经落到代码里：新增了 `src/publisher.rs`，通过统一的 `publish_markdown(..., PublishTarget)` 边界承接平台发布；当前只有 `PublishTarget::WechatDraft`，继续复用本地 `moonpub` 推公众号草稿。
 
+现在成功发布后也会返回结构化 `PublishReceipt`，包含目标、目的地、发布时间、摘要和适配器原始输出，后面补发布状态持久化、多平台对账或失败重试时可以直接复用，不需要再拆一遍接口。
+
 完整说明见 [docs/multi-platform-publishing.md](docs/multi-platform-publishing.md)。后续如果要接抖音，优先走官方 API 形态；小红书默认按“手动 / 半自动 / 等官方 API”处理，而不是一开始就把高风控自动化塞进 QunMind。
 
 ## AI / Agent 学习地图

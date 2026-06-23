@@ -7,7 +7,7 @@ use crate::channel::Channel;
 use crate::config::ScheduleConfig;
 use crate::daily_report::DailyReportGenerator;
 use crate::error::Result;
-use crate::publisher::{PublishTarget, publish_markdown};
+use crate::publisher::{PublishReceipt, PublishTarget, publish_markdown};
 use crate::source::{PublicNewsItem, PublicNewsSource};
 use crate::storage::{MessageStore, StoredLink, StoredMessage};
 
@@ -165,7 +165,19 @@ impl DailyReportScheduler {
                 articles_dir: target.wechat_articles_dir.clone(),
             },
         ) {
-            Ok(_) => info!(name = %target.name, "微信日报发布成功"),
+            Ok(receipt) => {
+                let receipt_summary = publish_receipt_summary(&receipt);
+                info!(
+                    name = %target.name,
+                    target = %receipt.target,
+                    destination = %receipt.destination,
+                    published_at = %receipt.published_at,
+                    summary = %receipt.summary,
+                    raw_output = %receipt.raw_output,
+                    receipt_summary = %receipt_summary,
+                    "微信日报发布成功"
+                )
+            }
             Err(e) => error!("微信日报发布失败: {}", e),
         }
     }
@@ -410,6 +422,10 @@ fn str_or<'a>(value: Option<&'a str>, fallback: &'a str) -> &'a str {
     } else {
         fallback
     }
+}
+
+fn publish_receipt_summary(receipt: &PublishReceipt) -> String {
+    receipt.compact_summary()
 }
 
 fn build_public_report_prompt(
@@ -847,6 +863,21 @@ mod tests {
         assert_eq!(targets[1].lookback_hours, 24);
         assert_eq!(targets[1].max_messages, 200);
         assert_eq!(targets[1].max_links, 20);
+    }
+
+    #[test]
+    fn publish_receipt_summary_contains_destination_and_status() {
+        let summary = publish_receipt_summary(&PublishReceipt {
+            target: "wechat_draft".to_string(),
+            destination: "/tmp/articles".to_string(),
+            published_at: "2026-06-23T12:00:00+00:00".to_string(),
+            summary: "moonpub draft push completed".to_string(),
+            raw_output: "ok".to_string(),
+        });
+
+        assert!(summary.contains("wechat_draft"));
+        assert!(summary.contains("/tmp/articles"));
+        assert!(summary.contains("moonpub draft push completed"));
     }
 
     #[tokio::test]
