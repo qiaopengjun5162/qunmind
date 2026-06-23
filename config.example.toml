@@ -112,10 +112,6 @@ slerf_blog_enabled = false
 slerf_blog_max_items = 8
 slerf_blog_timeout_secs = 10
 slerf_blog_urls = ["https://blog.slerf.tools/"]
-wechat_rss_enabled = false
-wechat_rss_max_items = 10
-wechat_rss_timeout_secs = 10
-wechat_rss_urls = ["http://127.0.0.1:8080/rss.xml"] # 可对接 wechat-download-api 一类上游 RSS 输出
 topic_keywords = [
   "rust",
   "wasm",
@@ -133,6 +129,12 @@ topic_keywords = [
   "zero knowledge",
   "zero-knowledge",
 ]
+wechat_rss_enabled = false
+wechat_rss_max_items = 10
+wechat_rss_timeout_secs = 10
+wechat_rss_urls = [
+  "http://127.0.0.1:8080/rss.xml",
+] # 可对接 wechat-download-api 一类上游 RSS 输出
 
 [[groups]]
 chat_id = "group-chat-id-1"
