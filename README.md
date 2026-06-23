@@ -206,7 +206,7 @@ Use `cargo nextest`, not `cargo test`, for project test runs.
 
 QunMind uses a PR-first workflow. Create a `codex-<short-topic>` branch, keep the
 change focused, run `just clippy` and `just test`, push the branch, and open a
-pull request back to `master`. See [CONTRIBUTING.md](CONTRIBUTING.md) for the
+pull request back to `main`. See [CONTRIBUTING.md](CONTRIBUTING.md) for the
 full workflow and review checklist.
 
 ## Release Automation

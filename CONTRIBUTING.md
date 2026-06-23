@@ -43,7 +43,7 @@ QUNMIND_TEST_DATABASE_URL="postgres://postgres:postgres@localhost:5432/qunmind_t
 - For Docker, Compose, or release workflow changes, make sure the Docker image build passes locally or in CI.
 - Fill out the pull request template with behavior changes, verification, and remaining risks.
 - Use Conventional Commits, for example `feat: add message store`.
-- Prefer opening a pull request from your own branch instead of pushing directly to `master`.
+- Prefer opening a pull request from your own branch instead of pushing directly to `main`.
 - Treat the work as unfinished until the branch is pushed and the PR is open, unless the user explicitly asks to stop earlier.
 
 ## Self-PR Workflow
@@ -57,7 +57,7 @@ just test
 git add .
 git commit -m "feat: describe your change"
 git push origin codex-your-change
-gh pr create --base master --head codex-your-change
+gh pr create --base main --head codex-your-change
 ```
 
 After CI passes, review the diff on GitHub, merge the PR, and delete the branch.

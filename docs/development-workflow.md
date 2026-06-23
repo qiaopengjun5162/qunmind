@@ -19,7 +19,7 @@ For every non-trivial project change, follow this order:
 4. Run verification commands appropriate to the change.
 5. Update `PROGRESS.md` with real status and next steps when the project state changes.
 6. Stage files, commit with a Conventional Commit message, and push the branch.
-7. Open a pull request against `master`.
+7. Open a pull request against `main`.
 
 Do not treat local edits as finished work until the branch is pushed and the PR exists, unless the user explicitly asks to stop earlier.
 
@@ -65,7 +65,7 @@ Required finish sequence:
 git add <files>
 git commit -m "feat: describe change"
 git push -u origin <branch>
-gh pr create --base master --head <branch>
+gh pr create --base main --head <branch>
 ```
 
 The branch is not considered complete until the PR is open.

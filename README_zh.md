@@ -197,7 +197,7 @@ just test
 
 QunMind 默认采用 PR-first 工作流。每个改动先创建 `codex-<short-topic>`
 分支，保持 PR 聚焦，运行 `just clippy` 和 `just test`，push 分支后再向
-`master` 提 pull request。完整流程和检查清单见 [CONTRIBUTING.md](CONTRIBUTING.md)。
+`main` 提 pull request。完整流程和检查清单见 [CONTRIBUTING.md](CONTRIBUTING.md)。
 
 ## Release 自动化
 

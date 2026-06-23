@@ -188,7 +188,7 @@ qunmind (常驻进程)
 - 代码模板 + AI 只写叙述（解决 DeepSeek 不跟格式指令的问题）
 - 每条新闻强制带 URL（代码生成而非依赖 AI）
 - 内容富化、RSS 源、评论收集（参考 Horizon）
-- PR #34, #35 已合并到 master
+- PR #34, #35 已合并到当时的默认分支
 
 ## 2026-06-10
 
@@ -268,9 +268,9 @@ qunmind (常驻进程)
 - Moved wx-cli dry-run and handle-once replay JSON report and message-id guard construction into `src/diagnostic.rs` with pure Rust tests, keeping `main.rs` focused on CLI I/O.
 - Added wx-cli captured-message readiness output for effective daily report targets, including a warning when an enabled report target is not seen in the capture.
 - Added wx-cli captured-message readiness output for configured group overrides, including a warning when a group-level config is not seen in the capture.
-- Merged PR #1 into `master` after GitHub CI passed, preserving the PR-first development flow.
+- Merged PR #1 into the default branch after GitHub CI passed, preserving the PR-first development flow.
 - Created the local disposable `qunmind_test` PostgreSQL database and verified the ignored `postgres_store` integration test against it.
-- Added a PR-first contribution workflow, PR template, and `master` branch CI trigger so Codex changes can be pushed as branches and opened as self PRs.
+- Added a PR-first contribution workflow, PR template, and default-branch CI trigger so Codex changes can be pushed as branches and opened as self PRs.
 - Added tag-triggered GitHub Release automation so pushing a `v*` tag creates the matching release and unblocks the README release badge.
 - Added Dockerfile, Docker Compose, Docker-specific example config, deployment guide, Justfile deployment commands, CI Docker build validation, and GHCR image publishing on `v*` release tags.
 - Added optional Hacker News, CoinMarketCap, CoinGecko, DeFi Llama, Dune, GitHub Trending, and Slerf Blog fallback material for daily reports when the report group has no messages.
