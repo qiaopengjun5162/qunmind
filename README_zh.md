@@ -179,6 +179,8 @@ QunMind 会在保存文本消息时抽取 `http://` / `https://` 链接，写入
 
 `src/research/tools.rs` 维护项目投研工具目录，当前按六类组织：基础信息与行情数据、链上数据与分析、项目代码与安全、社区与社交媒体、投资与资金动向、研究报告与专家观点。后续新增 CoinGecko、DeFi Llama、Dune、区块链浏览器、审计报告或社交数据来源时，优先从这个目录选择可自动化的工具，再实现成 Rust source / connector。
 
+如果要按学习顺序推进，而不是只看工具名单，直接参考 [docs/research-tools.md](docs/research-tools.md)。其中已经整理了基础入门路径、链上分析路径、项目尽调路径和自动化优先级。
+
 ## AI / Agent 学习地图
 
 `src/research/learning.rs` 维护推荐的 LLM、API、coding agent、agent 框架、Hermes 执行层和 AI x Web3 学习资源。它已经把 AI x Web3 School 的 Learning Agent 启动 Prompt 和 Handbook 作为结构化参考纳入 Rust 代码，方便后续设计 prompt、模型供应商对接、tool calling、skills、记忆和长期执行能力，同时不把微信消息主链路变成资料清单。

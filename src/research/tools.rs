@@ -303,11 +303,80 @@ pub fn automatable_tools() -> Vec<&'static ResearchTool> {
         .collect()
 }
 
+pub fn foundation_path() -> Vec<&'static ResearchTool> {
+    tool_path(&[
+        "CoinMarketCap",
+        "CoinGecko",
+        "DeFi Llama",
+        "TradingView",
+        "Etherscan",
+        "Dune",
+        "GitHub",
+        "Twitter",
+        "Crunchbase",
+        "Research Reports",
+    ])
+}
+
+pub fn onchain_analyst_path() -> Vec<&'static ResearchTool> {
+    tool_path(&[
+        "SQL",
+        "Visualization Reports",
+        "Etherscan",
+        "BscScan",
+        "PolygonScan",
+        "TronScan",
+        "Dune",
+        "Nansen",
+        "Glassnode",
+        "Messari",
+        "Footprint Analytics",
+    ])
+}
+
+pub fn project_due_diligence_path() -> Vec<&'static ResearchTool> {
+    tool_path(&[
+        "CoinMarketCap",
+        "CoinGecko",
+        "DeFi Llama",
+        "Etherscan",
+        "Dune",
+        "GitHub",
+        "CertiK",
+        "Code4rena",
+        "Twitter",
+        "Crunchbase",
+        "Research Reports",
+        "Community AMA",
+    ])
+}
+
+pub fn automation_priority_path() -> Vec<&'static ResearchTool> {
+    tool_path(&[
+        "CoinMarketCap",
+        "CoinGecko",
+        "DeFi Llama",
+        "Dune",
+        "Etherscan",
+        "BscScan",
+        "PolygonScan",
+        "TronScan",
+        "GitHub",
+        "GitLab",
+        "Whale Alert",
+        "WhaleStats",
+    ])
+}
+
 pub fn find_tool(name: &str) -> Option<&'static ResearchTool> {
     let normalized = normalize_name(name);
     RESEARCH_TOOLS
         .iter()
         .find(|tool| normalize_name(tool.name) == normalized)
+}
+
+fn tool_path(names: &[&str]) -> Vec<&'static ResearchTool> {
+    names.iter().filter_map(|name| find_tool(name)).collect()
 }
 
 fn normalize_name(name: &str) -> String {
@@ -363,5 +432,57 @@ mod tests {
         assert!(names.contains(&"DeFi Llama"));
         assert!(names.contains(&"Dune"));
         assert!(!names.contains(&"Telegram"));
+    }
+
+    #[test]
+    fn foundation_path_covers_market_to_research_loop() {
+        let names = foundation_path()
+            .into_iter()
+            .map(|tool| tool.name)
+            .collect::<Vec<_>>();
+
+        assert_eq!(names[0], "CoinMarketCap");
+        assert!(names.contains(&"Dune"));
+        assert!(names.contains(&"GitHub"));
+        assert!(names.contains(&"Research Reports"));
+    }
+
+    #[test]
+    fn onchain_analyst_path_includes_sql_explorer_and_dashboard_stack() {
+        let names = onchain_analyst_path()
+            .into_iter()
+            .map(|tool| tool.name)
+            .collect::<Vec<_>>();
+
+        assert_eq!(names[0], "SQL");
+        assert!(names.contains(&"Etherscan"));
+        assert!(names.contains(&"Dune"));
+        assert!(names.contains(&"Footprint Analytics"));
+    }
+
+    #[test]
+    fn project_due_diligence_path_covers_market_code_security_and_community() {
+        let names = project_due_diligence_path()
+            .into_iter()
+            .map(|tool| tool.name)
+            .collect::<Vec<_>>();
+
+        assert!(names.contains(&"CoinGecko"));
+        assert!(names.contains(&"CertiK"));
+        assert!(names.contains(&"Code4rena"));
+        assert!(names.contains(&"Community AMA"));
+    }
+
+    #[test]
+    fn automation_priority_path_prefers_connector_friendly_sources() {
+        let names = automation_priority_path()
+            .into_iter()
+            .map(|tool| tool.name)
+            .collect::<Vec<_>>();
+
+        assert!(names.contains(&"CoinMarketCap"));
+        assert!(names.contains(&"Dune"));
+        assert!(names.contains(&"GitHub"));
+        assert!(!names.contains(&"Discord"));
     }
 }

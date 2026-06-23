@@ -37,6 +37,8 @@ When a change touches architecture, workflow, commands, constraints, roadmap, or
 - `.github/pull_request_template.md`
 - this file
 
+When a change expands the project's research / diligence toolkit, update both the structured Rust catalog and the human-facing roadmap doc together. In this repository that means checking `src/research/tools.rs` and `docs/research-tools.md` in the same change.
+
 ## Visual Operation Log
 
 When a change includes image generation, image editing, diagrams, UI mockups, or other visual operations that may need to be reproduced later, record:
