@@ -210,6 +210,8 @@ QunMind 会在保存文本消息时抽取 `http://` / `https://` 链接，写入
 
 同样的边界也延续到 MCP：发布历史应该是独立 tool，而不是混进 wx-cli 诊断工具里。这样 Agent 或外部系统调它时，语义会更清楚。
 
+如果是临近交付、只想知道“明天到底能不能用”，那就更适合直接看 `report-status` 这类专用视图：它应该直接告诉你 ready、不 ready 的 blockers，以及最近有没有成功发布记录。
+
 完整说明见 [docs/multi-platform-publishing.md](docs/multi-platform-publishing.md)。后续如果要接抖音，优先走官方 API 形态；小红书默认按“手动 / 半自动 / 等官方 API”处理，而不是一开始就把高风控自动化塞进 QunMind。
 
 ## AI / Agent 学习地图

@@ -229,6 +229,10 @@ The same rule now extends to MCP: publish history is exposed as a dedicated tool
 instead of being folded into wx-cli diagnostics, so operator-state queries and
 message-pipeline diagnostics stay separate.
 
+For near-term delivery pressure, a dedicated report-status style view is more
+useful than raw internals: it should answer whether a report target is ready,
+what is blocking it, and whether recent publish receipts exist.
+
 See [docs/multi-platform-publishing.md](docs/multi-platform-publishing.md) for
 the full rationale and the recommended split for WeChat, Douyin, and future
 Xiaohongshu support.

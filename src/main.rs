@@ -171,7 +171,42 @@ async fn run_diagnostic_command(
             );
             Ok(())
         }
+        CliCommand::ReportStatus { report_name, limit } => {
+            let message_store = build_message_store(config).await?;
+            let report_name = effective_publish_history_name(config, &report_name)?;
+            let target = effective_report_status_target(config, &report_name)?;
+            let receipts = message_store
+                .recent_publish_receipts(&report_name, limit)
+                .await?;
+            let blockers = report_status_blockers(config, &target);
+            let ready = blockers.is_empty();
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&serde_json::json!({
+                    "ok": true,
+                    "ready": ready,
+                    "report_name": report_name,
+                    "output": target.output,
+                    "chat_id": target.chat_id,
+                    "blockers": blockers,
+                    "recent_receipts_count": receipts.len(),
+                    "recent_receipts": receipts
+                        .into_iter()
+                        .map(publish_receipt_json)
+                        .collect::<Vec<_>>(),
+                }))?
+            );
+            Ok(())
+        }
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ReportStatusTarget {
+    chat_id: String,
+    output: String,
+    wechat_bin: String,
+    wechat_articles_dir: String,
 }
 
 fn effective_publish_history_name(config: &Config, requested: &str) -> anyhow::Result<String> {
@@ -194,6 +229,68 @@ fn effective_publish_history_name(config: &Config, requested: &str) -> anyhow::R
     }
 
     Ok(config.schedule.daily_report_chat_id.clone())
+}
+
+fn effective_report_status_target(
+    config: &Config,
+    report_name: &str,
+) -> anyhow::Result<ReportStatusTarget> {
+    if !config.schedule.daily_reports.is_empty() {
+        let report = config
+            .schedule
+            .daily_reports
+            .iter()
+            .find(|report| report.name == report_name || report.chat_id == report_name)
+            .ok_or_else(|| {
+                QunMindError::Config(format!("report-status 找不到日报目标: {}", report_name))
+            })?;
+
+        return Ok(ReportStatusTarget {
+            chat_id: report.chat_id.clone(),
+            output: report.output.clone(),
+            wechat_bin: report.wechat_bin.clone(),
+            wechat_articles_dir: report.wechat_articles_dir.clone(),
+        });
+    }
+
+    Ok(ReportStatusTarget {
+        chat_id: config.schedule.daily_report_chat_id.clone(),
+        output: "channel".to_string(),
+        wechat_bin: String::new(),
+        wechat_articles_dir: String::new(),
+    })
+}
+
+fn report_status_blockers(config: &Config, target: &ReportStatusTarget) -> Vec<&'static str> {
+    if target.output != "wechat" {
+        return Vec::new();
+    }
+
+    let mut blockers = Vec::new();
+    if target.wechat_bin.trim().is_empty() {
+        blockers.push("wechat_daily_report_bin_empty");
+    }
+    if target.wechat_articles_dir.trim().is_empty() {
+        blockers.push("wechat_daily_report_articles_dir_empty");
+    }
+    if !has_enabled_public_sources(config) {
+        blockers.push("wechat_daily_report_public_sources_disabled");
+    }
+    blockers
+}
+
+fn has_enabled_public_sources(config: &Config) -> bool {
+    let sources = &config.public_sources;
+    sources.hacker_news_enabled
+        || sources.coinmarketcap_enabled
+        || sources.coingecko_enabled
+        || sources.defillama_enabled
+        || sources.dune_enabled
+        || sources.github_trending_enabled
+        || sources.slerf_blog_enabled
+        || sources.hn_daily_enabled
+        || sources.arxiv_enabled
+        || sources.ethresear_enabled
 }
 
 fn publish_receipt_json(receipt: StoredPublishReceipt) -> serde_json::Value {
@@ -624,6 +721,51 @@ mod tests {
             Err(err) => err,
         };
         assert!(err.to_string().contains("--report-name"));
+    }
+
+    #[test]
+    fn effective_report_status_target_uses_named_daily_report() {
+        let config = config_from(
+            r#"
+            [[schedule.daily_reports]]
+            chat_id = "group-1"
+            name = "技术群日报"
+            output = "wechat"
+            wechat_bin = "/usr/local/bin/moonpub"
+            wechat_articles_dir = "/tmp/articles"
+            "#,
+        );
+
+        let target = must(
+            effective_report_status_target(&config, "技术群日报"),
+            "report status target",
+        );
+        assert_eq!(target.chat_id, "group-1");
+        assert_eq!(target.output, "wechat");
+        assert_eq!(target.wechat_bin, "/usr/local/bin/moonpub");
+    }
+
+    #[test]
+    fn report_status_blockers_detect_wechat_prerequisites() {
+        let config = config_from(
+            r#"
+            [[schedule.daily_reports]]
+            chat_id = "group-1"
+            name = "技术群日报"
+            output = "wechat"
+            "#,
+        );
+        let target = ReportStatusTarget {
+            chat_id: "group-1".to_string(),
+            output: "wechat".to_string(),
+            wechat_bin: String::new(),
+            wechat_articles_dir: String::new(),
+        };
+
+        let blockers = report_status_blockers(&config, &target);
+        assert!(blockers.contains(&"wechat_daily_report_bin_empty"));
+        assert!(blockers.contains(&"wechat_daily_report_articles_dir_empty"));
+        assert!(blockers.contains(&"wechat_daily_report_public_sources_disabled"));
     }
 
     #[tokio::test]
