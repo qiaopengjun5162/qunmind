@@ -7,9 +7,9 @@ use crate::channel::Channel;
 use crate::config::ScheduleConfig;
 use crate::daily_report::DailyReportGenerator;
 use crate::error::Result;
+use crate::publisher::{PublishTarget, publish_markdown};
 use crate::source::{PublicNewsItem, PublicNewsSource};
 use crate::storage::{MessageStore, StoredLink, StoredMessage};
-use crate::wechat_publisher::publish_to_wechat;
 
 pub struct DailyReportScheduler {
     channel: Arc<dyn Channel>,
@@ -158,7 +158,13 @@ impl DailyReportScheduler {
             }
         };
 
-        match publish_to_wechat(&markdown, &target.wechat_bin, &target.wechat_articles_dir) {
+        match publish_markdown(
+            &markdown,
+            &PublishTarget::WechatDraft {
+                bin: target.wechat_bin.clone(),
+                articles_dir: target.wechat_articles_dir.clone(),
+            },
+        ) {
             Ok(_) => info!(name = %target.name, "微信日报发布成功"),
             Err(e) => error!("微信日报发布失败: {}", e),
         }

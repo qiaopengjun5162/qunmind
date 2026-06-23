@@ -189,6 +189,19 @@ QunMind 会在保存文本消息时抽取 `http://` / `https://` 链接，写入
 
 当前这层 `wechat_rss` 也补了几种常见 feed 字段兼容：Atom 的 `<author><name>`、RSS 的 `dc:creator`，以及 `pubDate` / `updated` / `published` / `dc:date` 时间字段都会尽量归一成统一的 `author` 和 UTC `published_at`，减少不同上游服务接入后摘要 prompt 字段风格漂移。
 
+## 多平台发布边界
+
+`QunMind` 后续可以支持“同一份日报分发到多个平台”，但更合适的拆分不是把所有平台发布逻辑都塞进主项目。
+
+建议固定为：
+
+- `QunMind`：负责生成日报、调度发布时间、检查目标是否 ready、记录发布结果
+- 独立发布层 / 子项目：负责平台鉴权、平台素材渲染、媒体上传、审核轮询、失败重试
+
+现在第一步已经落到代码里：新增了 `src/publisher.rs`，通过统一的 `publish_markdown(..., PublishTarget)` 边界承接平台发布；当前只有 `PublishTarget::WechatDraft`，继续复用本地 `moonpub` 推公众号草稿。
+
+完整说明见 [docs/multi-platform-publishing.md](docs/multi-platform-publishing.md)。后续如果要接抖音，优先走官方 API 形态；小红书默认按“手动 / 半自动 / 等官方 API”处理，而不是一开始就把高风控自动化塞进 QunMind。
+
 ## AI / Agent 学习地图
 
 `src/research/learning.rs` 维护推荐的 LLM、API、coding agent、agent 框架、Hermes 执行层和 AI x Web3 学习资源。它已经把 AI x Web3 School 的 Learning Agent 启动 Prompt 和 Handbook 作为结构化参考纳入 Rust 代码，方便后续设计 prompt、模型供应商对接、tool calling、skills、记忆和长期执行能力，同时不把微信消息主链路变成资料清单。

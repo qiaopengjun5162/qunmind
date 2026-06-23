@@ -194,6 +194,25 @@ For WeChat public-account article material, QunMind now prefers a lighter integr
 
 The current `wechat_rss` reader also normalizes a few common feed variants so mixed upstream services stay usable: Atom `<author><name>`, RSS `dc:creator`, and `pubDate` / `updated` / `published` / `dc:date` timestamps are mapped into the same `author` and UTC `published_at` fields before they enter the daily-report prompt.
 
+## Multi-Platform Publishing Boundary
+
+QunMind should keep report generation and publish orchestration, but not become
+the home for every platform-specific publishing workflow. The current direction
+is:
+
+- `QunMind`: generate reports, schedule them, expose readiness blockers, and
+  choose logical publish targets
+- dedicated publisher layer/project: own platform auth, rendering, media
+  upload, moderation polling, and retry logic
+
+The first step is already reflected in code: `src/publisher.rs` now provides a
+generic `publish_markdown(..., PublishTarget)` boundary, while the currently
+implemented `WechatDraft` target still delegates to local `moonpub`.
+
+See [docs/multi-platform-publishing.md](docs/multi-platform-publishing.md) for
+the full rationale and the recommended split for WeChat, Douyin, and future
+Xiaohongshu support.
+
 ## AI / Agent Learning Map
 
 `src/research/learning.rs` tracks the recommended LLM, API, coding-agent, agent-framework, Hermes execution-layer, and AI x Web3 learning resources. It includes the AI x Web3 School learning-agent startup prompt and handbook as structured references, so future prompt design, model-provider integration, tool calling, skills, memory, and long-running agent execution decisions can be reviewed without turning the WeChat message path into a documentation dump.
