@@ -80,6 +80,14 @@ pub trait MessageStore: Send + Sync {
         Ok(())
     }
 
+    async fn recent_publish_receipts(
+        &self,
+        _report_name: &str,
+        _limit: i64,
+    ) -> Result<Vec<StoredPublishReceipt>> {
+        Ok(Vec::new())
+    }
+
     async fn text_messages(
         &self,
         chat_id: &str,

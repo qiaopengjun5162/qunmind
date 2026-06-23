@@ -217,6 +217,10 @@ The next step is already partially in place: `QunMind` can persist successful
 publish receipts even before a separate publisher service exists, so future
 status history and retry workflows have a stable starting point.
 
+The next small improvement is local queryability: recent publish receipts should
+be readable from the same storage boundary, so operators can inspect recent
+draft pushes before a full multi-platform dashboard exists.
+
 See [docs/multi-platform-publishing.md](docs/multi-platform-publishing.md) for
 the full rationale and the recommended split for WeChat, Douyin, and future
 Xiaohongshu support.

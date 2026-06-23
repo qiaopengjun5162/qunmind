@@ -100,3 +100,7 @@ publisher boundary handles "how this target accepts the content".
 
 The first persistence step now belongs inside `QunMind`: successful publishes
 should record the receipt even before a full external publisher service exists.
+
+The next local step is queryability: `QunMind` should be able to read recent
+publish receipts so operators can inspect the last successful handoffs before a
+full publisher dashboard exists.

@@ -486,7 +486,7 @@ mod tests {
     use crate::channel::MsgType;
     use crate::error::QunMindError;
     use crate::source::PublicNewsSource;
-    use crate::storage::{NewMessage, StoredLink};
+    use crate::storage::{NewMessage, StoredLink, StoredPublishReceipt};
 
     fn test_target(chat_id: &str, prompt: &str) -> DailyReportTarget {
         DailyReportTarget {
@@ -612,6 +612,30 @@ mod tests {
                 .await
                 .push((report_name.to_string(), receipt.clone()));
             Ok(())
+        }
+
+        async fn recent_publish_receipts(
+            &self,
+            report_name: &str,
+            limit: i64,
+        ) -> Result<Vec<StoredPublishReceipt>> {
+            let mut receipts = self
+                .publish_receipts
+                .lock()
+                .await
+                .iter()
+                .filter(|(name, _)| name == report_name)
+                .map(|(name, receipt)| StoredPublishReceipt {
+                    report_name: name.clone(),
+                    target: receipt.target.clone(),
+                    destination: receipt.destination.clone(),
+                    published_at: utc_time(&receipt.published_at),
+                    summary: receipt.summary.clone(),
+                    raw_output: receipt.raw_output.clone(),
+                })
+                .collect::<Vec<_>>();
+            receipts.truncate(limit.max(1) as usize);
+            Ok(receipts)
         }
     }
 
@@ -1139,6 +1163,66 @@ mod tests {
         assert_eq!(receipts.len(), 1);
         assert_eq!(receipts[0].0, "技术群日报");
         assert_eq!(receipts[0].1, receipt);
+    }
+
+    #[tokio::test]
+    async fn recent_publish_receipts_returns_latest_receipts_for_report() {
+        let store = Arc::new(RecordingStore::default());
+        must(
+            store
+                .save_publish_receipt(
+                    "技术群日报",
+                    &PublishReceipt {
+                        target: "wechat_draft".to_string(),
+                        destination: "/tmp/articles-a".to_string(),
+                        published_at: "2026-06-23T12:00:00+00:00".to_string(),
+                        summary: "first".to_string(),
+                        raw_output: "ok-a".to_string(),
+                    },
+                )
+                .await,
+            "save receipt a",
+        );
+        must(
+            store
+                .save_publish_receipt(
+                    "技术群日报",
+                    &PublishReceipt {
+                        target: "wechat_draft".to_string(),
+                        destination: "/tmp/articles-b".to_string(),
+                        published_at: "2026-06-23T13:00:00+00:00".to_string(),
+                        summary: "second".to_string(),
+                        raw_output: "ok-b".to_string(),
+                    },
+                )
+                .await,
+            "save receipt b",
+        );
+        must(
+            store
+                .save_publish_receipt(
+                    "别的日报",
+                    &PublishReceipt {
+                        target: "wechat_draft".to_string(),
+                        destination: "/tmp/articles-c".to_string(),
+                        published_at: "2026-06-23T14:00:00+00:00".to_string(),
+                        summary: "third".to_string(),
+                        raw_output: "ok-c".to_string(),
+                    },
+                )
+                .await,
+            "save receipt c",
+        );
+
+        let receipts = must(
+            store.recent_publish_receipts("技术群日报", 2).await,
+            "recent receipts",
+        );
+
+        assert_eq!(receipts.len(), 2);
+        assert_eq!(receipts[0].report_name, "技术群日报");
+        assert_eq!(receipts[0].summary, "first");
+        assert_eq!(receipts[1].summary, "second");
     }
 
     #[tokio::test]
