@@ -212,7 +212,7 @@ just report-history report="微信公众号日报"
 ```
 
 推荐顺序是：
-- 先确认 `report-status` 显示 `ready_for_first_publish`，并区分好硬 blocker 与 warning
+- 先确认 `report-status` 里的 `blockers` 和 `missing_publish_env` 已清空；只要还看到 `WECHAT_APPID` / `WECHAT_SECRET`，就先不要继续真实试发
 - 再生成一版本地 markdown，确认 RSS 上游内容已经进入日报素材
 - 最后再执行 `report-publish` 推到 `moonpub` 的公众号草稿箱
 

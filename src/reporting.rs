@@ -14,6 +14,27 @@ pub struct ReportStatusTarget {
     pub wechat_articles_dir: String,
 }
 
+pub fn missing_wechat_publish_env_vars(target: &ReportStatusTarget) -> Vec<&'static str> {
+    if target.output != "wechat" {
+        return Vec::new();
+    }
+
+    let mut missing = Vec::new();
+    if std::env::var("WECHAT_APPID")
+        .ok()
+        .is_none_or(|value| value.trim().is_empty())
+    {
+        missing.push("WECHAT_APPID");
+    }
+    if std::env::var("WECHAT_SECRET")
+        .ok()
+        .is_none_or(|value| value.trim().is_empty())
+    {
+        missing.push("WECHAT_SECRET");
+    }
+    missing
+}
+
 pub fn effective_publish_history_name(config: &Config, requested: &str) -> anyhow::Result<String> {
     if !requested.trim().is_empty() {
         return Ok(requested.to_string());
@@ -84,16 +105,10 @@ pub fn report_status_blockers(_config: &Config, target: &ReportStatusTarget) -> 
     } else if !Path::new(&target.wechat_articles_dir).is_dir() {
         blockers.push("wechat_daily_report_articles_dir_not_dir");
     }
-    if std::env::var("WECHAT_APPID")
-        .ok()
-        .is_none_or(|value| value.trim().is_empty())
-    {
+    if missing_wechat_publish_env_vars(target).contains(&"WECHAT_APPID") {
         blockers.push("wechat_daily_report_appid_missing");
     }
-    if std::env::var("WECHAT_SECRET")
-        .ok()
-        .is_none_or(|value| value.trim().is_empty())
-    {
+    if missing_wechat_publish_env_vars(target).contains(&"WECHAT_SECRET") {
         blockers.push("wechat_daily_report_secret_missing");
     }
     blockers
@@ -117,6 +132,7 @@ pub fn report_status_json(
     receipts: Vec<StoredPublishReceipt>,
 ) -> serde_json::Value {
     let blockers = report_status_blockers(config, target);
+    let missing_publish_env = missing_wechat_publish_env_vars(target);
     let ready = blockers.is_empty();
     let status = if !ready {
         "blocked"
@@ -135,6 +151,7 @@ pub fn report_status_json(
         "output": target.output,
         "chat_id": target.chat_id,
         "blockers": blockers,
+        "missing_publish_env": missing_publish_env,
         "next_steps": next_steps,
         "recent_receipts_count": receipts.len(),
         "recent_receipts": receipts
@@ -449,6 +466,10 @@ mod tests {
         assert_eq!(report["ready"], false);
         assert_eq!(report["status"], "blocked");
         assert_eq!(
+            report["missing_publish_env"],
+            serde_json::json!(["WECHAT_APPID", "WECHAT_SECRET"])
+        );
+        assert_eq!(
             report["next_steps"],
             serde_json::json!([
                 "install_or_fix_moonpub_bin_then_rerun_report_status",
@@ -486,6 +507,7 @@ mod tests {
 
         assert_eq!(report["ready"], true);
         assert_eq!(report["status"], "ready_for_first_publish");
+        assert_eq!(report["missing_publish_env"], serde_json::json!([]));
 
         std::fs::remove_dir_all(&dir).unwrap();
     }

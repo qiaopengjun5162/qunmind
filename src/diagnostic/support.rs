@@ -1,6 +1,9 @@
 use crate::channel::{IncomingMessage, MsgType};
 use crate::config::{AiProvider, ChannelKind, Config, DailyReportConfig, GroupConfig};
-use crate::reporting::{ReportStatusTarget, has_enabled_public_sources, report_status_blockers};
+use crate::reporting::{
+    ReportStatusTarget, has_enabled_public_sources, missing_wechat_publish_env_vars,
+    report_status_blockers,
+};
 use std::collections::BTreeSet;
 
 pub fn select_wx_cli_messages(
@@ -102,7 +105,8 @@ pub(super) fn wx_cli_daily_report_target_statuses(
                 "output": target.output,
                 "seen_in_capture": seen_in_capture,
                 "config_ready": target.dependency_blockers.is_empty(),
-                "dependency_blockers": target.dependency_blockers
+                "dependency_blockers": target.dependency_blockers,
+                "missing_publish_env": target.missing_publish_env
             })
         })
         .collect()
@@ -288,6 +292,7 @@ struct DiagnosticDailyReportTarget {
     source: &'static str,
     output: String,
     dependency_blockers: Vec<&'static str>,
+    missing_publish_env: Vec<&'static str>,
 }
 
 fn effective_daily_report_targets(config: &Config) -> Vec<DiagnosticDailyReportTarget> {
@@ -304,6 +309,7 @@ fn effective_daily_report_targets(config: &Config) -> Vec<DiagnosticDailyReportT
                 source: "schedule.daily_reports",
                 output: report.output.clone(),
                 dependency_blockers: daily_report_target_dependency_blockers(config, report),
+                missing_publish_env: daily_report_target_missing_publish_env(report),
             })
             .collect();
     }
@@ -319,6 +325,7 @@ fn effective_daily_report_targets(config: &Config) -> Vec<DiagnosticDailyReportT
         source: "schedule.daily_report_chat_id",
         output: "channel".to_string(),
         dependency_blockers: Vec::new(),
+        missing_publish_env: Vec::new(),
     }]
 }
 
@@ -335,4 +342,13 @@ fn daily_report_target_dependency_blockers(
             wechat_articles_dir: report.wechat_articles_dir.clone(),
         },
     )
+}
+
+fn daily_report_target_missing_publish_env(report: &DailyReportConfig) -> Vec<&'static str> {
+    missing_wechat_publish_env_vars(&ReportStatusTarget {
+        chat_id: report.chat_id.clone(),
+        output: report.output.clone(),
+        wechat_bin: report.wechat_bin.clone(),
+        wechat_articles_dir: report.wechat_articles_dir.clone(),
+    })
 }

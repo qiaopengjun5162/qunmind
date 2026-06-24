@@ -207,7 +207,7 @@ just report-history report="微信公众号日报"
 ```
 
 Recommended order:
-- confirm `report-status` shows `ready_for_first_publish`
+- confirm `report-status` has empty `blockers` and `missing_publish_env`; if `WECHAT_APPID` or `WECHAT_SECRET` still appears, stop there before any real publish attempt
 - generate local markdown first and verify the RSS-backed article material appears in the report
 - only then run `report-publish` to push the draft through `moonpub`
 

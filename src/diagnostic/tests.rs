@@ -145,6 +145,7 @@ fn wx_cli_doctor_summarizes_captured_messages_when_ready() {
                 "output": "channel",
                 "config_ready": true,
                 "dependency_blockers": [],
+                "missing_publish_env": [],
                 "seen_in_capture": true
             }
         ])
@@ -432,6 +433,7 @@ fn wx_cli_doctor_warns_when_enabled_report_target_is_not_seen_in_capture() {
                 "output": "chat",
                 "config_ready": true,
                 "dependency_blockers": [],
+                "missing_publish_env": [],
                 "seen_in_capture": true
             },
             {
@@ -441,6 +443,7 @@ fn wx_cli_doctor_warns_when_enabled_report_target_is_not_seen_in_capture() {
                 "output": "chat",
                 "config_ready": true,
                 "dependency_blockers": [],
+                "missing_publish_env": [],
                 "seen_in_capture": false
             }
         ])
@@ -512,6 +515,9 @@ fn wx_cli_doctor_warns_when_wechat_daily_report_dependencies_are_incomplete() {
                     "wechat_daily_report_bin_not_found",
                     "wechat_daily_report_articles_dir_empty",
                     "wechat_daily_report_secret_missing"
+                ],
+                "missing_publish_env": [
+                    "WECHAT_SECRET"
                 ]
             }
         ])
@@ -569,7 +575,8 @@ fn wx_cli_doctor_keeps_wechat_rss_report_ready_without_public_sources() {
                 "output": "wechat",
                 "seen_in_capture": true,
                 "config_ready": true,
-                "dependency_blockers": []
+                "dependency_blockers": [],
+                "missing_publish_env": []
             }
         ])
     );
