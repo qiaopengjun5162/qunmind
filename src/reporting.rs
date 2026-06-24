@@ -168,30 +168,30 @@ fn report_status_next_steps(status: &str, blockers: &[&str]) -> Vec<&'static str
             .iter()
             .any(|blocker| blocker.starts_with("wechat_daily_report_bin"))
         {
-            next_steps.push("install_or_fix_moonpub_bin");
+            next_steps.push("install_or_fix_moonpub_bin_then_rerun_report_status");
         }
         if blockers.contains(&"wechat_daily_report_articles_dir_empty")
             || blockers.contains(&"wechat_daily_report_articles_dir_not_dir")
         {
-            next_steps.push("configure_wechat_articles_dir");
+            next_steps.push("configure_wechat_articles_dir_then_rerun_report_status");
         }
         if blockers.contains(&"wechat_daily_report_public_sources_disabled") {
-            next_steps.push("enable_at_least_one_public_source");
+            next_steps.push("enable_at_least_one_public_source_then_rerun_report_status");
         }
         if next_steps.is_empty() {
-            next_steps.push("fix_report_status_blockers");
+            next_steps.push("fix_report_status_blockers_then_rerun_report_status");
         }
         return next_steps;
     }
 
     if status == "ready_for_first_publish" {
         return vec![
-            "run_report_status_again_after_manual_publish_test",
             "generate_markdown_and_push_wechat_draft",
+            "rerun_report_status_after_manual_publish_test",
         ];
     }
 
-    vec!["continue_monitoring_recent_publish_receipts"]
+    vec!["continue_monitoring_recent_publish_receipts_and_draft_flow"]
 }
 
 #[cfg(test)]
@@ -360,9 +360,9 @@ mod tests {
         assert_eq!(
             report["next_steps"],
             serde_json::json!([
-                "install_or_fix_moonpub_bin",
-                "configure_wechat_articles_dir",
-                "enable_at_least_one_public_source"
+                "install_or_fix_moonpub_bin_then_rerun_report_status",
+                "configure_wechat_articles_dir_then_rerun_report_status",
+                "enable_at_least_one_public_source_then_rerun_report_status"
             ])
         );
     }
@@ -406,7 +406,7 @@ mod tests {
         assert_eq!(report["status"], "recently_published");
         assert_eq!(
             report["next_steps"],
-            serde_json::json!(["continue_monitoring_recent_publish_receipts"])
+            serde_json::json!(["continue_monitoring_recent_publish_receipts_and_draft_flow"])
         );
 
         std::fs::remove_dir_all(&dir).unwrap();
