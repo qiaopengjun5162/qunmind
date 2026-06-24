@@ -241,7 +241,7 @@ impl DailyReportScheduler {
 
         let messages = vec![ChatMessage {
             role: "user".to_string(),
-            content: build_report_prompt(target, &messages, &links, since, until),
+            content: build_group_report_prompt(&target.prompt, &messages, &links, since, until),
         }];
 
         let report = match self.ai.chat(&messages).await {
@@ -369,8 +369,8 @@ fn report_targets(config: &ScheduleConfig) -> Vec<DailyReportTarget> {
     }]
 }
 
-fn build_report_prompt(
-    target: &DailyReportTarget,
+pub fn build_group_report_prompt(
+    prompt: &str,
     messages: &[StoredMessage],
     links: &[StoredLink],
     since: chrono::DateTime<chrono::Utc>,
@@ -378,7 +378,7 @@ fn build_report_prompt(
 ) -> String {
     let mut prompt = format!(
         "{}\n\n时间范围: {} 到 {}\n群消息:\n",
-        target.prompt,
+        prompt,
         since.to_rfc3339(),
         until.to_rfc3339()
     );
@@ -758,7 +758,7 @@ mod tests {
             received_at: since,
         }];
 
-        let prompt = build_report_prompt(&target, &messages, &links, since, until);
+        let prompt = build_group_report_prompt(&target.prompt, &messages, &links, since, until);
 
         assert!(prompt.contains("请总结"));
         assert!(

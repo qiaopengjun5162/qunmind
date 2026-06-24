@@ -44,6 +44,8 @@
 
 如果只配置了一个 `schedule.daily_reports` 目标，手工 `daily-report` 应优先自动复用它，而不是退回成脱离正式目标配置的空白 markdown 模式；只有在存在多个日报目标时，才要求显式传 `--report-name`，避免手工联调和正式目标配置脱节。
 
+手工 `daily-report` 的内容来源也应尽量与正式日报目标保持一致：目标群在回看窗口内有已保存消息时，优先基于群消息和链接情报生成；只有群消息为空时，才回退到 `public_sources`。不要让“手工联调”和“定时正式日报”走出两套不同的内容来源语义。
+
 `src/source/hn_daily.rs` 抓取 HN Daily 每日 top 10 文章作为日报素材源，HTML 解析逻辑保持无依赖（纯字符串匹配），不需要额外 HTML parser。新增类似轻量抓取来源时参考其模式。
 
 公众号文章这类外部内容入口优先走 `PublicNewsSource` 边界。当前更推荐的第一步是消费 RSS / Atom 上游输出（例如 `wechat-download-api` 提供的 RSS），而不是把登录、代理和反风控逻辑直接嵌进 `QunMind` 主进程。

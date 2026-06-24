@@ -195,6 +195,8 @@ QunMind 会在保存文本消息时抽取 `http://` / `https://` 链接，写入
 
 为了减少临近交付时的手工操作，如果配置里只有一个 `schedule.daily_reports` 目标，`qunmind daily-report` 现在会默认复用它；只有在配置了多个日报目标时，才需要显式传 `--report-name`。
 
+手工日报现在也会优先复用正式日报目标的素材来源：如果目标群在回看窗口内已经有保存的群消息和链接情报，就直接按该目标的 prompt 和限制生成；只有群消息为空时，才回退到 `public_sources`。这样临时手工跑一版和定时正式跑出来的结果，不会再因为素材入口不同而偏离太多。
+
 当前这层 `wechat_rss` 也补了几种常见 feed 字段兼容：Atom 的 `<author><name>`、RSS 的 `dc:creator`，以及 `pubDate` / `updated` / `published` / `dc:date` 时间字段都会尽量归一成统一的 `author` 和 UTC `published_at`，减少不同上游服务接入后摘要 prompt 字段风格漂移。
 
 ## 多平台发布边界

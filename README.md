@@ -202,6 +202,8 @@ That manual publish path now also attempts to persist the structured publish rec
 
 To reduce operator friction near delivery time, `qunmind daily-report` now auto-reuses the configured target when exactly one `schedule.daily_reports` entry exists. An explicit `--report-name` is only required when multiple report targets are configured.
 
+Manual report runs now also stay aligned with the configured report target's primary content source. If the target group already has stored messages and link intelligence within the lookback window, `qunmind daily-report` uses that group context first and only falls back to `public_sources` when the group is empty.
+
 ## Multi-Platform Publishing Boundary
 
 QunMind should keep report generation and publish orchestration, but not become

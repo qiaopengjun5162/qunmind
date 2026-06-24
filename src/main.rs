@@ -21,6 +21,7 @@ use qunmind::reporting::{
     report_status_json,
 };
 use qunmind::scheduler::daily_report::DailyReportScheduler;
+use qunmind::scheduler::daily_report::build_group_report_prompt;
 use qunmind::source;
 use qunmind::source::PublicNewsSource;
 use qunmind::storage::MessageStore;
@@ -152,18 +153,17 @@ async fn run_diagnostic_command(
             publish,
         } => {
             let ai_client = build_ai_client(config)?;
-            let public_news_source = build_public_news_source(config)?.ok_or_else(|| {
-                QunMindError::Config("daily-report 需要启用至少一个 public_sources".to_string())
-            })?;
             let report_target = resolve_manual_daily_report_target(config, &report_name)?;
-
-            let generator = DailyReportGenerator::new(
-                ai_client,
+            let message_store = build_message_store(config).await?;
+            let public_news_source = build_public_news_source(config)?;
+            let markdown = generate_manual_daily_report_markdown(
+                config,
+                &report_target,
+                Arc::clone(&ai_client),
+                Arc::clone(&message_store),
                 public_news_source,
-                report_target.daily_quote.clone(),
-            );
-
-            let markdown = generator.generate().await?;
+            )
+            .await?;
             std::fs::write(&output, &markdown)
                 .with_context(|| format!("写入日报文件失败: {}", output.display()))?;
             let publish_receipt = if publish {
@@ -174,12 +174,8 @@ async fn run_diagnostic_command(
             };
             let publish_persistence = match publish_receipt.as_ref() {
                 Some(receipt) => Some(
-                    persist_manual_publish_receipt(
-                        build_message_store(config).await,
-                        &report_target.name,
-                        receipt,
-                    )
-                    .await,
+                    persist_manual_publish_receipt(Ok(message_store), &report_target.name, receipt)
+                        .await,
                 ),
                 None => None,
             };
@@ -287,7 +283,12 @@ async fn persist_manual_publish_receipt(
 #[derive(Debug, Clone)]
 struct ManualDailyReportTarget {
     name: String,
+    chat_id: String,
     output: String,
+    prompt: String,
+    lookback_hours: i64,
+    max_messages: i64,
+    max_links: i64,
     daily_quote: String,
     wechat_bin: String,
     wechat_articles_dir: String,
@@ -302,7 +303,21 @@ fn resolve_manual_daily_report_target(
             let report = &config.schedule.daily_reports[0];
             return Ok(ManualDailyReportTarget {
                 name: report.name.clone(),
+                chat_id: report.chat_id.clone(),
                 output: report.output.clone(),
+                prompt: report
+                    .prompt
+                    .clone()
+                    .unwrap_or_else(|| config.schedule.daily_report_prompt.clone()),
+                lookback_hours: report
+                    .lookback_hours
+                    .unwrap_or(config.schedule.daily_report_lookback_hours),
+                max_messages: report
+                    .max_messages
+                    .unwrap_or(config.schedule.daily_report_max_messages),
+                max_links: report
+                    .max_links
+                    .unwrap_or(config.schedule.daily_report_max_links),
                 daily_quote: report.daily_quote.clone(),
                 wechat_bin: report.wechat_bin.clone(),
                 wechat_articles_dir: report.wechat_articles_dir.clone(),
@@ -319,7 +334,12 @@ fn resolve_manual_daily_report_target(
 
         return Ok(ManualDailyReportTarget {
             name: String::new(),
+            chat_id: config.schedule.daily_report_chat_id.clone(),
             output: "markdown".to_string(),
+            prompt: config.schedule.daily_report_prompt.clone(),
+            lookback_hours: config.schedule.daily_report_lookback_hours,
+            max_messages: config.schedule.daily_report_max_messages,
+            max_links: config.schedule.daily_report_max_links,
             daily_quote: String::new(),
             wechat_bin: String::new(),
             wechat_articles_dir: String::new(),
@@ -337,7 +357,21 @@ fn resolve_manual_daily_report_target(
 
     Ok(ManualDailyReportTarget {
         name: report.name.clone(),
+        chat_id: report.chat_id.clone(),
         output: report.output.clone(),
+        prompt: report
+            .prompt
+            .clone()
+            .unwrap_or_else(|| config.schedule.daily_report_prompt.clone()),
+        lookback_hours: report
+            .lookback_hours
+            .unwrap_or(config.schedule.daily_report_lookback_hours),
+        max_messages: report
+            .max_messages
+            .unwrap_or(config.schedule.daily_report_max_messages),
+        max_links: report
+            .max_links
+            .unwrap_or(config.schedule.daily_report_max_links),
         daily_quote: report.daily_quote.clone(),
         wechat_bin: report.wechat_bin.clone(),
         wechat_articles_dir: report.wechat_articles_dir.clone(),
@@ -358,6 +392,68 @@ fn manual_daily_report_publish_target(
         ))
         .into()),
     }
+}
+
+async fn generate_manual_daily_report_markdown(
+    config: &Config,
+    report_target: &ManualDailyReportTarget,
+    ai_client: Arc<dyn ai::AiClient>,
+    message_store: Arc<dyn MessageStore>,
+    public_news_source: Option<Arc<dyn PublicNewsSource>>,
+) -> anyhow::Result<String> {
+    let lookback_hours = report_target.lookback_hours.max(1);
+    let max_messages = report_target.max_messages.max(1);
+    let max_links = report_target.max_links.max(0);
+    let until = chrono::Utc::now();
+    let since = until - chrono::Duration::hours(lookback_hours);
+
+    let messages = if report_target.chat_id.trim().is_empty() {
+        Vec::new()
+    } else {
+        message_store
+            .text_messages(&report_target.chat_id, since, until, max_messages)
+            .await?
+    };
+    let links = if report_target.chat_id.trim().is_empty() || max_links == 0 {
+        Vec::new()
+    } else {
+        message_store
+            .recent_links(&report_target.chat_id, since, until, max_links)
+            .await?
+    };
+
+    if !messages.is_empty() {
+        let prompt =
+            build_group_report_prompt(&report_target.prompt, &messages, &links, since, until);
+        return ai_client
+            .chat(&[qunmind::ai::ChatMessage {
+                role: "user".to_string(),
+                content: prompt,
+            }])
+            .await
+            .map_err(Into::into);
+    }
+
+    let public_news_source = public_news_source.ok_or_else(|| {
+        QunMindError::Config("daily-report 需要启用至少一个 public_sources".to_string())
+    })?;
+
+    generate_manual_public_daily_report(config, report_target, ai_client, public_news_source).await
+}
+
+async fn generate_manual_public_daily_report(
+    _config: &Config,
+    report_target: &ManualDailyReportTarget,
+    ai_client: Arc<dyn ai::AiClient>,
+    public_news_source: Arc<dyn PublicNewsSource>,
+) -> anyhow::Result<String> {
+    let generator = DailyReportGenerator::new(
+        ai_client,
+        public_news_source,
+        report_target.daily_quote.clone(),
+    );
+
+    generator.generate().await.map_err(Into::into)
 }
 
 async fn run_wx_cli_command(
@@ -528,7 +624,8 @@ mod tests {
     use qunmind::channel::MsgType;
     use qunmind::channel::wx_cli::parse_wx_cli_messages_from_str;
     use qunmind::publisher::PublishReceipt;
-    use qunmind::storage::{NewMessage, StoredMessage, StoredPublishReceipt};
+    use qunmind::source::PublicNewsItem;
+    use qunmind::storage::{NewMessage, StoredLink, StoredMessage, StoredPublishReceipt};
     use tokio::sync::Mutex;
 
     fn config_from(input: &str) -> Config {
@@ -839,6 +936,125 @@ mod tests {
         );
     }
 
+    #[tokio::test]
+    async fn manual_daily_report_uses_group_messages_without_public_sources() {
+        let config = config_from(
+            r#"
+            [ai]
+            provider = "hermes"
+
+            [schedule]
+            daily_report_prompt = "请总结群聊"
+
+            [[schedule.daily_reports]]
+            chat_id = "group-1"
+            name = "技术群日报"
+            output = "chat"
+            lookback_hours = 6
+            max_messages = 10
+            max_links = 3
+            "#,
+        );
+        let ai = Arc::new(ManualReportAi::new("日报正文"));
+        let store = Arc::new(RecordingPublishReceiptStoreWithMessages {
+            messages: vec![StoredMessage {
+                message_id: "m1".to_string(),
+                channel: "wx_cli".to_string(),
+                chat_id: "group-1".to_string(),
+                from: "alice".to_string(),
+                is_group: true,
+                msg_type: MsgType::Text,
+                text: Some("今天完成了日报联调".to_string()),
+                received_at: chrono::Utc::now(),
+            }],
+            links: vec![StoredLink {
+                message_id: "m1".to_string(),
+                channel: "wx_cli".to_string(),
+                chat_id: "group-1".to_string(),
+                from: "alice".to_string(),
+                url: "https://example.com/report".to_string(),
+                normalized_url: "https://example.com/report".to_string(),
+                title: Some("日报链接".to_string()),
+                received_at: chrono::Utc::now(),
+            }],
+            receipts: Mutex::new(Vec::new()),
+        });
+
+        let report_target = must(
+            resolve_manual_daily_report_target(&config, ""),
+            "manual daily report target",
+        );
+        let markdown = must(
+            generate_manual_daily_report_markdown(&config, &report_target, ai.clone(), store, None)
+                .await,
+            "manual daily report markdown",
+        );
+
+        assert_eq!(markdown, "日报正文");
+        let requests = ai.requests.lock().await;
+        assert_eq!(requests.len(), 1);
+        assert!(requests[0][0].content.contains("请总结群聊"));
+        assert!(requests[0][0].content.contains("今天完成了日报联调"));
+        assert!(requests[0][0].content.contains("日报链接"));
+    }
+
+    #[tokio::test]
+    async fn manual_daily_report_falls_back_to_public_sources_when_group_is_empty() {
+        let config = config_from(
+            r#"
+            [ai]
+            provider = "hermes"
+
+            [[schedule.daily_reports]]
+            chat_id = "group-1"
+            name = "技术群日报"
+            output = "chat"
+            daily_quote = "stay hungry"
+            "#,
+        );
+        let ai = Arc::new(ManualReportAi::new(
+            r#"{"title_hint":"今日技术信号","intro":"今天 AI 很活跃","focus_text":"","focus_url":"","ai_items":[],"ai_signals":[],"web3_items":[],"tech_items":[],"tech_timeline":[],"reads":[],"summary":"总结"}"#,
+        ));
+        let store = Arc::new(RecordingPublishReceiptStoreWithMessages {
+            messages: Vec::new(),
+            links: Vec::new(),
+            receipts: Mutex::new(Vec::new()),
+        });
+        let source = Arc::new(ManualReportNewsSource {
+            items: vec![PublicNewsItem {
+                source: "Hacker News".to_string(),
+                title: "Rust release".to_string(),
+                url: "https://example.com/rust".to_string(),
+                summary: Some("Rust release summary".to_string()),
+                author: Some("alice".to_string()),
+                published_at: Some("2026-06-24T00:00:00+00:00".to_string()),
+                score: Some(100),
+                comments: Some(20),
+                ai_score: None,
+                category: None,
+            }],
+        });
+
+        let report_target = must(
+            resolve_manual_daily_report_target(&config, ""),
+            "manual daily report target",
+        );
+        let markdown = must(
+            generate_manual_daily_report_markdown(
+                &config,
+                &report_target,
+                ai.clone(),
+                store,
+                Some(source),
+            )
+            .await,
+            "manual public daily report markdown",
+        );
+
+        assert!(markdown.contains("今日技术信号"));
+        assert!(markdown.contains("Rust release"));
+    }
+
     #[test]
     fn resolve_manual_daily_report_target_uses_named_daily_report() {
         let config = config_from(
@@ -917,7 +1133,12 @@ mod tests {
     fn manual_daily_report_publish_target_rejects_non_wechat_output() {
         let err = match manual_daily_report_publish_target(&ManualDailyReportTarget {
             name: "技术群日报".to_string(),
+            chat_id: "group-1".to_string(),
             output: "channel".to_string(),
+            prompt: "请总结".to_string(),
+            lookback_hours: 24,
+            max_messages: 200,
+            max_links: 20,
             daily_quote: String::new(),
             wechat_bin: String::new(),
             wechat_articles_dir: String::new(),
@@ -1178,5 +1399,114 @@ mod tests {
         );
 
         must(std::fs::remove_file(path), "remove handle-once fixture");
+    }
+
+    struct RecordingPublishReceiptStoreWithMessages {
+        messages: Vec<StoredMessage>,
+        links: Vec<StoredLink>,
+        receipts: Mutex<Vec<(String, PublishReceipt)>>,
+    }
+
+    struct ManualReportAi {
+        reply: String,
+        requests: Mutex<Vec<Vec<qunmind::ai::ChatMessage>>>,
+    }
+
+    impl ManualReportAi {
+        fn new(reply: &str) -> Self {
+            Self {
+                reply: reply.to_string(),
+                requests: Mutex::new(Vec::new()),
+            }
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl ai::AiClient for ManualReportAi {
+        async fn chat(
+            &self,
+            messages: &[qunmind::ai::ChatMessage],
+        ) -> qunmind::error::Result<String> {
+            self.requests.lock().await.push(messages.to_vec());
+            Ok(self.reply.clone())
+        }
+    }
+
+    struct ManualReportNewsSource {
+        items: Vec<PublicNewsItem>,
+    }
+
+    #[async_trait::async_trait]
+    impl PublicNewsSource for ManualReportNewsSource {
+        async fn fetch_top_items(&self) -> qunmind::error::Result<Vec<PublicNewsItem>> {
+            Ok(self.items.clone())
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl MessageStore for RecordingPublishReceiptStoreWithMessages {
+        async fn save(&self, _message: NewMessage) -> qunmind::error::Result<()> {
+            Ok(())
+        }
+
+        async fn save_publish_receipt(
+            &self,
+            report_name: &str,
+            receipt: &PublishReceipt,
+        ) -> qunmind::error::Result<()> {
+            self.receipts
+                .lock()
+                .await
+                .push((report_name.to_string(), receipt.clone()));
+            Ok(())
+        }
+
+        async fn recent_publish_receipts(
+            &self,
+            report_name: &str,
+            limit: i64,
+        ) -> qunmind::error::Result<Vec<StoredPublishReceipt>> {
+            let mut receipts = self
+                .receipts
+                .lock()
+                .await
+                .iter()
+                .filter(|(name, _)| name == report_name)
+                .map(|(name, receipt)| StoredPublishReceipt {
+                    report_name: name.clone(),
+                    target: receipt.target.clone(),
+                    destination: receipt.destination.clone(),
+                    published_at: match chrono::DateTime::parse_from_rfc3339(&receipt.published_at)
+                    {
+                        Ok(time) => time.with_timezone(&chrono::Utc),
+                        Err(err) => panic!("receipt time {}: {}", receipt.published_at, err),
+                    },
+                    summary: receipt.summary.clone(),
+                    raw_output: receipt.raw_output.clone(),
+                })
+                .collect::<Vec<_>>();
+            receipts.truncate(limit.max(1) as usize);
+            Ok(receipts)
+        }
+
+        async fn text_messages(
+            &self,
+            _chat_id: &str,
+            _since: chrono::DateTime<chrono::Utc>,
+            _until: chrono::DateTime<chrono::Utc>,
+            _limit: i64,
+        ) -> qunmind::error::Result<Vec<StoredMessage>> {
+            Ok(self.messages.clone())
+        }
+
+        async fn recent_links(
+            &self,
+            _chat_id: &str,
+            _since: chrono::DateTime<chrono::Utc>,
+            _until: chrono::DateTime<chrono::Utc>,
+            _limit: i64,
+        ) -> qunmind::error::Result<Vec<StoredLink>> {
+            Ok(self.links.clone())
+        }
     }
 }
