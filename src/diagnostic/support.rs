@@ -1,6 +1,6 @@
 use crate::channel::{IncomingMessage, MsgType};
 use crate::config::{AiProvider, ChannelKind, Config, DailyReportConfig, GroupConfig};
-use crate::reporting::{ReportStatusTarget, report_status_blockers};
+use crate::reporting::{ReportStatusTarget, has_enabled_public_sources, report_status_blockers};
 use std::collections::BTreeSet;
 
 pub fn select_wx_cli_messages(
@@ -109,12 +109,9 @@ pub(super) fn wx_cli_daily_report_target_statuses(
 }
 
 pub(super) fn has_wechat_daily_report_target_without_public_sources(config: &Config) -> bool {
-    effective_daily_report_targets(config).iter().any(|target| {
-        target.output == "wechat"
-            && target
-                .dependency_blockers
-                .contains(&"wechat_daily_report_public_sources_disabled")
-    })
+    effective_daily_report_targets(config)
+        .iter()
+        .any(|target| target.output == "wechat" && !has_enabled_public_sources(config))
 }
 
 pub(super) fn has_wechat_daily_report_target_without_articles_dir(config: &Config) -> bool {

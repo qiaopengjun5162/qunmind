@@ -482,7 +482,7 @@ fn wx_cli_doctor_warns_when_wechat_daily_report_dependencies_are_incomplete() {
     ));
     assert!(array_contains(
         &report["warnings"],
-        "wechat_daily_report_public_sources_disabled"
+        "wechat_daily_report_public_sources_disabled_for_empty_group_fallback"
     ));
     assert!(!array_contains(
         &report["warnings"],
@@ -504,8 +504,7 @@ fn wx_cli_doctor_warns_when_wechat_daily_report_dependencies_are_incomplete() {
                 "config_ready": false,
                 "dependency_blockers": [
                     "wechat_daily_report_bin_not_found",
-                    "wechat_daily_report_articles_dir_empty",
-                    "wechat_daily_report_public_sources_disabled"
+                    "wechat_daily_report_articles_dir_empty"
                 ]
             }
         ])

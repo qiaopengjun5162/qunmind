@@ -65,6 +65,9 @@
 - **手工日报发布状态闭环补齐** — `qunmind daily-report --report-name <name> --publish` 成功后，现在会像 scheduler 一样尝试保存结构化发布回执。这样手工联调一旦推送成功，`report-status` 和 `publish-history` 可以立刻看到最新结果；如果回执保存失败，CLI JSON 会明确暴露 `publish_receipt_saved = false` 与 `publish_receipt_save_error`，不再把“发布成功”和“状态落库失败”混成一个模糊结果。
 - **单目标手工日报默认跟随正式配置** — 如果配置里只有一个 `schedule.daily_reports` 目标，`qunmind daily-report` 现在会直接复用这一个正式日报目标，而不需要再额外传 `--report-name`。只有在存在多个日报目标时，命令才会明确要求显式 `--report-name`，避免手工联调误退回成脱离正式配置的空白 markdown 路径。
 - **手工日报内容来源与正式目标对齐** — `qunmind daily-report` 现在不再一上来就强依赖 `public_sources`。如果目标群在回看窗口里已经有保存的群消息和链接情报，手工日报会优先按正式日报目标的 prompt、lookback、message/link limit 生成；只有群消息为空时，才回退到公共来源。这让“今天临时手工跑一版日报”和“真正定时跑出去的日报”终于使用同一套主要素材语义。
+- **定时公众号日报也对齐到群消息优先语义** — `schedule.daily_reports[].output = "wechat"` 之前还保留着“只走公共来源生成 markdown”的旧路径。现在 scheduler 会和手工 `daily-report` 一样，先尝试读取目标群的已保存消息与链接情报；只有群消息为空时，才回退到 `public_sources`。这把“手工演练”和“真正定时推公众号草稿”收敛到同一套日报素材语义。
+- **日报生成共享层再收口** — 新增 `src/reporting.rs` 中的共享群消息日报生成 helper，把“按目标 prompt/lookback/message limit/link limit 从消息库生成日报正文”的逻辑从 CLI 和 scheduler 两边抽到一处，减少之后继续调日报时的行为漂移风险。
+- **公众号日报 readiness 口径修正** — `report-status` / `wx-cli doctor` 现在不再把“未启用 `public_sources`”视为一刀切的硬 blocker。更准确的语义是：`moonpub` 二进制和 articles 目录仍是硬前提，而 `public_sources` 只是在“群消息为空时无法回退生成”的风险提示。这样状态页终于和代码的真实运行条件一致，不会再把“群消息充足、其实能正常出稿”的目标误判成 blocked。
 - **`handle-once` 安全边界补测试** — 新增针对 `diagnostic` guard 和 MCP `wxcli_handle_once` 的测试，覆盖“多消息 capture 未指定 `message_id` 必须阻断”的场景。现在这条规则不只写在说明里，而是被测试固定住了。
 - **脱敏 wx-cli fixture 入口落地** — 新增 `tests/fixtures/wx_cli/` 目录、fixture README、`sample_capture.json`、`unique_group_candidate.json`、`direct_only.json`、`multiple_group_candidates.json` 和 `tests/wx_cli_fixture_test.rs`。现在项目已经有一条可持续扩展的“匿名化真实样本”测试入口，既能验证 wx-cli 导出字段兼容和 dry-run 决策，也能覆盖“唯一群聊候选可直接推荐重放”“只有私聊样本时正式群测必须阻塞”以及“多个群聊候选并存时必须显式选择 `--message-id`”。
 - **日报就绪状态视图继续补强** — `report-status` / `report_status` 现在不只输出 `ready`、`blockers` 和 `recent_receipts`，还会给出更直白的 `status` 与 `next_steps`。这组下一步建议也进一步收紧成更贴近操作者动作的提示，例如“修好 moonpub 后重新跑 report-status”“生成 markdown 并推草稿后再复查状态”，这样临近交付时更容易直接照着执行。
@@ -109,6 +112,9 @@
 - `cargo nextest run --all-features diagnostic`：49 tests passing, 161 skipped
 - `cargo clippy --all-targets --all-features --tests --benches -- -D warnings`
 - `cargo nextest run --all-features wx_cli mcp diagnostic`：103 tests passing, 109 skipped
+- `cargo fmt --all -- --check`
+- `cargo clippy --all-targets --all-features --tests --benches -- -D warnings`
+- `cargo nextest run --all-features`：266 passed, 1 skipped
 - `cargo test --quiet persist_manual_publish_receipt --bin qunmind`
 
 ### Daily Report Timeline
@@ -116,9 +122,9 @@
 当前基于源码和本地配置核对后的更可信判断：
 
 - **可开始本地联调**：`2026-06-23`
-  前提是 `schedule.daily_reports` 的微信日报目标补齐 `wechat_articles_dir`，并至少启用一个 `public_sources`。
+  前提是 `schedule.daily_reports` 的微信日报目标补齐 `wechat_articles_dir`，且本机可调用 `moonpub`。
 - **可做第一次真实日报草稿生成测试**：`2026-06-24`
-  标准是 `qunmind daily-report` 先能本地生成 markdown，随后定时任务或手工入口能稳定调起 `moonpub push --render` 进入微信公众号草稿箱。
+  标准是 `qunmind daily-report` 或定时 target 都能按“群消息优先、空群再回退公共来源”的真实语义稳定生成 markdown，随后稳定调起 `moonpub push --render` 进入微信公众号草稿箱。
 - **可做内部灰度**：`2026-06-25` 到 `2026-06-26`
   条件是连续两天日报生成成功，且 `moonpub` 的 CDP 自动化没有因为微信后台 UI 变化而卡住关键步骤。
 - **不建议承诺正式稳定上线早于**：`2026-06-27`
@@ -129,7 +135,7 @@
 `QunMind × moonpub` 现在的实际上线前提：
 
 1. `QunMind` 里目标日报配置使用 `output = "wechat"`，并补齐 `wechat_bin` 与 `wechat_articles_dir`。
-2. `public_sources` 至少启用一个来源，否则微信日报生成器没有素材输入。
+2. 如果目标群可能出现“当天几乎没有群消息”的情况，至少启用一个 `public_sources` 作为空群回退素材来源。
 3. `moonpub-data/moonpub.toml` 可被 `moonpub --articles <dir>` 正常识别。
 4. `moonpub push --render` 本地可单独成功，把 markdown 推进微信公众号草稿箱。
 5. 微信登录态、AppID / Secret、Chrome / CDP 自动化链路保持有效。

@@ -17,11 +17,10 @@ use qunmind::diagnostic::{
 use qunmind::error::QunMindError;
 use qunmind::publisher::{PublishTarget, publish_markdown};
 use qunmind::reporting::{
-    effective_publish_history_name, effective_report_status_target, publish_receipt_json,
-    report_status_json,
+    ReportContentRequest, effective_publish_history_name, effective_report_status_target,
+    generate_group_report_from_store, publish_receipt_json, report_status_json,
 };
 use qunmind::scheduler::daily_report::DailyReportScheduler;
-use qunmind::scheduler::daily_report::build_group_report_prompt;
 use qunmind::source;
 use qunmind::source::PublicNewsSource;
 use qunmind::storage::MessageStore;
@@ -401,44 +400,34 @@ async fn generate_manual_daily_report_markdown(
     message_store: Arc<dyn MessageStore>,
     public_news_source: Option<Arc<dyn PublicNewsSource>>,
 ) -> anyhow::Result<String> {
-    let lookback_hours = report_target.lookback_hours.max(1);
-    let max_messages = report_target.max_messages.max(1);
-    let max_links = report_target.max_links.max(0);
-    let until = chrono::Utc::now();
-    let since = until - chrono::Duration::hours(lookback_hours);
-
-    let messages = if report_target.chat_id.trim().is_empty() {
-        Vec::new()
-    } else {
-        message_store
-            .text_messages(&report_target.chat_id, since, until, max_messages)
-            .await?
-    };
-    let links = if report_target.chat_id.trim().is_empty() || max_links == 0 {
-        Vec::new()
-    } else {
-        message_store
-            .recent_links(&report_target.chat_id, since, until, max_links)
-            .await?
-    };
-
-    if !messages.is_empty() {
-        let prompt =
-            build_group_report_prompt(&report_target.prompt, &messages, &links, since, until);
-        return ai_client
-            .chat(&[qunmind::ai::ChatMessage {
-                role: "user".to_string(),
-                content: prompt,
-            }])
-            .await
-            .map_err(Into::into);
+    let ai_client_for_fallback = Arc::clone(&ai_client);
+    if let Some(markdown) = generate_group_report_from_store(
+        ai_client,
+        message_store,
+        &ReportContentRequest {
+            chat_id: report_target.chat_id.clone(),
+            prompt: report_target.prompt.clone(),
+            lookback_hours: report_target.lookback_hours,
+            max_messages: report_target.max_messages,
+            max_links: report_target.max_links,
+        },
+    )
+    .await?
+    {
+        return Ok(markdown);
     }
 
     let public_news_source = public_news_source.ok_or_else(|| {
         QunMindError::Config("daily-report 需要启用至少一个 public_sources".to_string())
     })?;
 
-    generate_manual_public_daily_report(config, report_target, ai_client, public_news_source).await
+    generate_manual_public_daily_report(
+        config,
+        report_target,
+        ai_client_for_fallback,
+        public_news_source,
+    )
+    .await
 }
 
 async fn generate_manual_public_daily_report(

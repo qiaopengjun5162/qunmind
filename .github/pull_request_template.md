@@ -26,3 +26,4 @@
 ## Notes
 
 - 
+- If this PR changes daily-report readiness or diagnostics semantics, note whether each new condition is a hard blocker or only an empty-group fallback warning.

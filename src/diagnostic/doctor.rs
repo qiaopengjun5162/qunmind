@@ -144,7 +144,7 @@ pub(super) fn wx_cli_doctor_warnings(
         warnings.push("wechat_daily_report_articles_dir_not_dir");
     }
     if has_wechat_daily_report_target_without_public_sources(config) {
-        warnings.push("wechat_daily_report_public_sources_disabled");
+        warnings.push("wechat_daily_report_public_sources_disabled_for_empty_group_fallback");
     }
 
     if let Some(messages) = messages {

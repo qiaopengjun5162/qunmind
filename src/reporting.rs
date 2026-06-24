@@ -1,7 +1,10 @@
+use crate::ai::{AiClient, ChatMessage};
 use crate::config::Config;
 use crate::error::QunMindError;
-use crate::storage::StoredPublishReceipt;
+use crate::scheduler::daily_report::build_group_report_prompt;
+use crate::storage::{MessageStore, StoredLink, StoredMessage, StoredPublishReceipt};
 use std::path::Path;
+use std::sync::Arc;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ReportStatusTarget {
@@ -65,7 +68,7 @@ pub fn effective_report_status_target(
     })
 }
 
-pub fn report_status_blockers(config: &Config, target: &ReportStatusTarget) -> Vec<&'static str> {
+pub fn report_status_blockers(_config: &Config, target: &ReportStatusTarget) -> Vec<&'static str> {
     if target.output != "wechat" {
         return Vec::new();
     }
@@ -80,9 +83,6 @@ pub fn report_status_blockers(config: &Config, target: &ReportStatusTarget) -> V
         blockers.push("wechat_daily_report_articles_dir_empty");
     } else if !Path::new(&target.wechat_articles_dir).is_dir() {
         blockers.push("wechat_daily_report_articles_dir_not_dir");
-    }
-    if !has_enabled_public_sources(config) {
-        blockers.push("wechat_daily_report_public_sources_disabled");
     }
     blockers
 }
@@ -132,7 +132,77 @@ pub fn report_status_json(
     })
 }
 
-fn has_enabled_public_sources(config: &Config) -> bool {
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReportContentRequest {
+    pub chat_id: String,
+    pub prompt: String,
+    pub lookback_hours: i64,
+    pub max_messages: i64,
+    pub max_links: i64,
+}
+
+pub async fn generate_group_report_from_store(
+    ai_client: Arc<dyn AiClient>,
+    message_store: Arc<dyn MessageStore>,
+    request: &ReportContentRequest,
+) -> anyhow::Result<Option<String>> {
+    let lookback_hours = request.lookback_hours.max(1);
+    let max_messages = request.max_messages.max(1);
+    let max_links = request.max_links.max(0);
+    let until = chrono::Utc::now();
+    let since = until - chrono::Duration::hours(lookback_hours);
+
+    let messages =
+        load_report_messages(message_store.as_ref(), request, since, until, max_messages).await?;
+    let links = load_report_links(message_store.as_ref(), request, since, until, max_links).await?;
+
+    if !messages.is_empty() {
+        let prompt = build_group_report_prompt(&request.prompt, &messages, &links, since, until);
+        let markdown = ai_client
+            .chat(&[ChatMessage {
+                role: "user".to_string(),
+                content: prompt,
+            }])
+            .await?;
+        return Ok(Some(markdown));
+    }
+
+    Ok(None)
+}
+
+async fn load_report_messages(
+    message_store: &dyn MessageStore,
+    request: &ReportContentRequest,
+    since: chrono::DateTime<chrono::Utc>,
+    until: chrono::DateTime<chrono::Utc>,
+    max_messages: i64,
+) -> anyhow::Result<Vec<StoredMessage>> {
+    if request.chat_id.trim().is_empty() {
+        return Ok(Vec::new());
+    }
+
+    Ok(message_store
+        .text_messages(&request.chat_id, since, until, max_messages)
+        .await?)
+}
+
+async fn load_report_links(
+    message_store: &dyn MessageStore,
+    request: &ReportContentRequest,
+    since: chrono::DateTime<chrono::Utc>,
+    until: chrono::DateTime<chrono::Utc>,
+    max_links: i64,
+) -> anyhow::Result<Vec<StoredLink>> {
+    if request.chat_id.trim().is_empty() || max_links == 0 {
+        return Ok(Vec::new());
+    }
+
+    Ok(message_store
+        .recent_links(&request.chat_id, since, until, max_links)
+        .await?)
+}
+
+pub fn has_enabled_public_sources(config: &Config) -> bool {
     let sources = &config.public_sources;
     sources.hacker_news_enabled
         || sources.coinmarketcap_enabled
@@ -174,9 +244,6 @@ fn report_status_next_steps(status: &str, blockers: &[&str]) -> Vec<&'static str
             || blockers.contains(&"wechat_daily_report_articles_dir_not_dir")
         {
             next_steps.push("configure_wechat_articles_dir_then_rerun_report_status");
-        }
-        if blockers.contains(&"wechat_daily_report_public_sources_disabled") {
-            next_steps.push("enable_at_least_one_public_source_then_rerun_report_status");
         }
         if next_steps.is_empty() {
             next_steps.push("fix_report_status_blockers_then_rerun_report_status");
@@ -282,7 +349,6 @@ mod tests {
         let blockers = report_status_blockers(&config, &target);
         assert!(blockers.contains(&"wechat_daily_report_bin_empty"));
         assert!(blockers.contains(&"wechat_daily_report_articles_dir_empty"));
-        assert!(blockers.contains(&"wechat_daily_report_public_sources_disabled"));
     }
 
     #[test]
@@ -308,7 +374,7 @@ mod tests {
     }
 
     #[test]
-    fn report_status_blockers_accept_wechat_rss_as_enabled_source_with_real_paths() {
+    fn report_status_blockers_accept_real_paths_without_public_sources() {
         let dir =
             std::env::temp_dir().join(format!("qunmind-reporting-articles-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
@@ -316,9 +382,6 @@ mod tests {
 
         let config = config_from(&format!(
             r#"
-            [public_sources]
-            wechat_rss_enabled = true
-
             [[schedule.daily_reports]]
             chat_id = "group-1"
             name = "技术群日报"
@@ -361,8 +424,7 @@ mod tests {
             report["next_steps"],
             serde_json::json!([
                 "install_or_fix_moonpub_bin_then_rerun_report_status",
-                "configure_wechat_articles_dir_then_rerun_report_status",
-                "enable_at_least_one_public_source_then_rerun_report_status"
+                "configure_wechat_articles_dir_then_rerun_report_status"
             ])
         );
     }

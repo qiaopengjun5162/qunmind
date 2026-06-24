@@ -8,6 +8,7 @@ use crate::config::ScheduleConfig;
 use crate::daily_report::DailyReportGenerator;
 use crate::error::Result;
 use crate::publisher::{PublishReceipt, PublishTarget, publish_markdown};
+use crate::reporting::{ReportContentRequest, generate_group_report_from_store};
 use crate::source::{PublicNewsItem, PublicNewsSource};
 use crate::storage::{MessageStore, StoredLink, StoredMessage};
 
@@ -139,19 +140,40 @@ impl DailyReportScheduler {
             return;
         }
 
-        let Some(source) = &self.public_news_source else {
-            error!("微信日报需要启用 public_sources");
-            return;
-        };
-
-        let generator = DailyReportGenerator::new(
+        let markdown = match generate_group_report_from_store(
             Arc::clone(&self.ai),
-            Arc::clone(source),
-            target.daily_quote.clone(),
-        );
+            Arc::clone(&self.message_store),
+            &ReportContentRequest {
+                chat_id: target.chat_id.clone(),
+                prompt: target.prompt.clone(),
+                lookback_hours: target.lookback_hours,
+                max_messages: target.max_messages,
+                max_links: target.max_links,
+            },
+        )
+        .await
+        {
+            Ok(Some(markdown)) => markdown,
+            Ok(None) => {
+                let Some(source) = &self.public_news_source else {
+                    error!("微信日报需要启用 public_sources");
+                    return;
+                };
 
-        let markdown = match generator.generate().await {
-            Ok(md) => md,
+                let generator = DailyReportGenerator::new(
+                    Arc::clone(&self.ai),
+                    Arc::clone(source),
+                    target.daily_quote.clone(),
+                );
+
+                match generator.generate().await {
+                    Ok(markdown) => markdown,
+                    Err(e) => {
+                        error!("生成微信日报失败: {}", e);
+                        return;
+                    }
+                }
+            }
             Err(e) => {
                 error!("生成微信日报失败: {}", e);
                 return;
@@ -1141,6 +1163,67 @@ mod tests {
         assert!(requests[0][0].content.contains("今天完成了 PG 存储"));
         assert!(requests[0][0].content.contains("链接情报"));
         assert!(requests[0][0].content.contains("https://example.com/rust"));
+    }
+
+    #[tokio::test]
+    async fn wechat_report_uses_group_messages_without_public_sources() {
+        let articles_dir =
+            std::env::temp_dir().join(format!("qunmind-wechat-report-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&articles_dir);
+        must(
+            std::fs::create_dir_all(&articles_dir),
+            "create articles dir",
+        );
+
+        let channel = Arc::new(RecordingChannel::default());
+        let ai = Arc::new(RecordingAi::new("# 技术群日报\n- 已同步群消息"));
+        let store = Arc::new(RecordingStore {
+            messages: vec![StoredMessage {
+                message_id: "m1".to_string(),
+                channel: "wx_cli".to_string(),
+                chat_id: "group-2".to_string(),
+                from: "alice".to_string(),
+                is_group: true,
+                msg_type: MsgType::Text,
+                text: Some("今天把日报链路对齐了".to_string()),
+                received_at: chrono::Utc::now(),
+            }],
+            links: vec![],
+            ..Default::default()
+        });
+        let scheduler = DailyReportScheduler::new(
+            channel,
+            ai.clone(),
+            store.clone(),
+            ScheduleConfig {
+                daily_reports: vec![crate::config::DailyReportConfig {
+                    chat_id: "group-2".to_string(),
+                    name: "技术群日报".to_string(),
+                    enabled: true,
+                    cron: None,
+                    prompt: Some("请总结技术群".to_string()),
+                    lookback_hours: Some(6),
+                    max_messages: Some(20),
+                    max_links: Some(0),
+                    daily_quote: String::new(),
+                    output: "wechat".to_string(),
+                    wechat_bin: "/nonexistent/bin/moonpub".to_string(),
+                    wechat_articles_dir: articles_dir.display().to_string(),
+                }],
+                ..Default::default()
+            },
+        );
+
+        scheduler.send_report().await;
+
+        let requests = ai.requests.lock().await;
+        assert_eq!(requests.len(), 1);
+        assert!(requests[0][0].content.contains("请总结技术群"));
+        assert!(requests[0][0].content.contains("今天把日报链路对齐了"));
+        assert_eq!(
+            *store.text_queries.lock().await,
+            vec![("group-2".to_string(), 20)]
+        );
     }
 
     #[tokio::test]

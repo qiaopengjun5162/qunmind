@@ -204,6 +204,8 @@ To reduce operator friction near delivery time, `qunmind daily-report` now auto-
 
 Manual report runs now also stay aligned with the configured report target's primary content source. If the target group already has stored messages and link intelligence within the lookback window, `qunmind daily-report` uses that group context first and only falls back to `public_sources` when the group is empty.
 
+Scheduled WeChat public-account report targets now follow the same rule. `output = "wechat"` no longer means "always generate from public sources first": when the target group already has stored messages, the scheduler builds the report from that group context and only falls back to `public_sources` when the group is empty.
+
 ## Multi-Platform Publishing Boundary
 
 QunMind should keep report generation and publish orchestration, but not become

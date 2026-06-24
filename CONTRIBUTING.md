@@ -40,6 +40,7 @@ QUNMIND_TEST_DATABASE_URL="postgres://postgres:postgres@localhost:5432/qunmind_t
 - If the change includes generated images, diagrams, or other visual operations, append a record to `docs/visual-operations.md`.
 - Add or update tests for behavior changes.
 - Keep CLI / MCP safety semantics aligned when changing replay, diagnostics, or report-status behavior; avoid documenting a stricter workflow than the code actually enforces.
+- When changing daily-report readiness semantics, keep hard blockers (for example `moonpub` binary or articles dir) separate from fallback-only warnings (for example missing `public_sources` when a group may be empty).
 - Run `just clippy` and `just test` before opening a PR.
 - For Docker, Compose, or release workflow changes, make sure the Docker image build passes locally or in CI.
 - Fill out the pull request template with behavior changes, verification, and remaining risks.

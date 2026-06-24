@@ -197,6 +197,8 @@ QunMind 会在保存文本消息时抽取 `http://` / `https://` 链接，写入
 
 手工日报现在也会优先复用正式日报目标的素材来源：如果目标群在回看窗口内已经有保存的群消息和链接情报，就直接按该目标的 prompt 和限制生成；只有群消息为空时，才回退到 `public_sources`。这样临时手工跑一版和定时正式跑出来的结果，不会再因为素材入口不同而偏离太多。
 
+现在连定时 `output = "wechat"` 的公众号日报也对齐到了同一条规则：如果目标群已经有保存的群消息，scheduler 会先按群消息和链接情报生成 markdown；只有群消息为空时，才回退到 `public_sources`。也就是说，“手工演练一版”和“真正定时推草稿”已经不再维护两套不同的素材语义。
+
 当前这层 `wechat_rss` 也补了几种常见 feed 字段兼容：Atom 的 `<author><name>`、RSS 的 `dc:creator`，以及 `pubDate` / `updated` / `published` / `dc:date` 时间字段都会尽量归一成统一的 `author` 和 UTC `published_at`，减少不同上游服务接入后摘要 prompt 字段风格漂移。
 
 ## 多平台发布边界
