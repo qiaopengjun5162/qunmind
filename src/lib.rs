@@ -14,4 +14,5 @@ pub mod research;
 pub mod scheduler;
 pub mod source;
 pub mod storage;
+pub mod wx_cli_commands;
 pub mod wx_cli_runtime;
