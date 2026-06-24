@@ -574,7 +574,10 @@ mod tests {
 
         assert_eq!(report["ready"], true);
         assert_eq!(report["status"], "recently_published");
-        assert_eq!(report["recent_receipts"][0]["warnings"], serde_json::json!([]));
+        assert_eq!(
+            report["recent_receipts"][0]["warnings"],
+            serde_json::json!([])
+        );
         assert_eq!(
             report["next_steps"],
             serde_json::json!(["continue_monitoring_recent_publish_receipts_and_draft_flow"])
@@ -612,9 +615,8 @@ mod tests {
             destination: "/tmp/articles".to_string(),
             published_at: Utc::now(),
             summary: "moonpub draft push completed with warnings".to_string(),
-            raw_output:
-                "pushed\n  ⚠ automation: login timeout: QR code not scanned within 120s\n"
-                    .to_string(),
+            raw_output: "pushed\n  ⚠ automation: login timeout: QR code not scanned within 120s\n"
+                .to_string(),
         }];
 
         let report = report_status_json(&config, "微信公众号日报", &target, receipts);
