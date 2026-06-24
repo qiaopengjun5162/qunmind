@@ -66,7 +66,7 @@
 
 下一步马上要做的事：
 
-1. 继续做 wx-cli 命令编排层模块化。
+1. 继续把 `src/mcp/tools.rs` 的命令层重复往纯 helper 收口。
 2. 往新的 `tests/fixtures/wx_cli/` 里补更多匿名化真实样本。
 3. 让 README / PROGRESS 的阶段描述持续可复用。
 
@@ -143,7 +143,7 @@ cargo run -- wx-cli send --chat-id "room@chatroom" --text "QunMind 诊断消息"
 
 `doctor`、`test-plan`、`capture`、`poll`、`dry-run` 和 `send --dry-run` 只读取配置，不会初始化 PostgreSQL、AI 客户端或机器人主循环。`doctor` 用于真实群测前检查 wx-cli 就绪度，包括发送参数占位符、AI 配置、@ 触发安全性，以及可选捕获消息里的群聊和 message_id 信号。捕获摘要会同时列出 `reply_candidate_message_ids`、`group_reply_candidate_message_ids` 和 `formal_test_readiness`；只有一个安全群聊候选时会直接给出推荐重放 `message_id`，没有群聊回复候选或群聊回复候选不止一个时，会要求正式重放前显式指定 `--message-id`。捕获摘要还会列出已配置的群级覆盖和实际生效的日报目标群，并在配置群或启用的日报目标没有出现在捕获消息里时给 warning。`test-plan` 会输出完整正式群测命令顺序，并在生成命令里保留当前 `--config` 路径，复用同一套 readiness blockers，并标明哪些步骤只是安全预览、哪些步骤会真的发微信；加 `--shell` 时会把同一份计划渲染成 shell 脚本，非发送检查可直接执行，真实发微信步骤默认注释，必须人工确认后再取消注释。带 `--input <json-file>` 时，它还会检查捕获消息，在只有一个群聊回复候选时自动填入 message_id，并输出 `selected_message` 预览；如果没有显式配置测试 chat id，也会从选中的捕获消息推断 chat_id；同时会跳过新的 capture 步骤，避免覆盖已选中 message_id 所在的捕获文件；如果候选、测试 chat_id、唯一 message_id、群聊消息或选中消息的回复触发条件仍不明确，会把计划标为未就绪并要求显式修正，避免真实发送步骤带占位符、私聊样本或空跑。没有捕获输入时，真实重放前也需要显式传入 `--message-id`。`capture` 会执行一次 `wx_cli.poll_args`，把归一化后的可复放消息写入 JSON 文件，并直接输出 `formal_test_readiness`、`recommended_commands` 和下一步正式重放建议。`doctor`、`test-plan`、`poll`、`dry-run` 或 `handle-once` 加 `--input <json-file>` 时，会解析已捕获的 wx-cli JSON 输出文件，不会再次调用 wx-cli。`dry-run` 会按 `bot.mention_names` 输出哪些消息会触发回复，但不会保存、调用 AI 或发送。`send --dry-run` 会渲染最终 `wx_cli.send_args` 命令但不向微信发送，第一次真实诊断发送前先跑它。`handle-once --no-send` 仍会写入 PostgreSQL 并调用已配置的 AI，但会把回复捕获到 JSON 输出里，不通过 wx-cli 发到微信。普通 `handle-once` 会写入 PostgreSQL，执行群聊 @ 过滤，在命中时调用已配置的 AI，并通过 `wx_cli.send_args` 回复。捕获文件里有多条消息时，`handle-once` 现在也必须显式给出 `--message-id`，不会再按 `--limit` 默认顺序处理前几条消息；失败报告里还会直接附带 `reply_candidate_message_ids` 和 `group_reply_candidate_message_ids`，方便立刻选下一步的消息 ID；即使已经显式选中消息，如果它其实是私聊样本，或者按当前 mention 规则根本不会触发回复，也会在初始化 PostgreSQL / AI 前直接返回结构化 `ok = false` JSON，而不是等到更后面才失败。第一次真实群测建议保持 `--limit 1`，避免误刷屏。
 
-内部实现上，CLI 和 MCP 现在已经共用 `src/wx_cli_runtime.rs` 这层 wx-cli 运行时 helper，统一消息加载、dry-run 报告和 handle-once 结构化输出，命令层会更薄，也更方便继续模块化。
+内部实现上，CLI 和 MCP 现在已经共用 `src/wx_cli_runtime.rs` 这层 wx-cli 运行时 helper，统一消息加载、dry-run 报告和 handle-once 结构化输出；同时 `main.rs` 里的 wx-cli 子命令分发也已经收口到独立的 `src/wx_cli_commands.rs`，主入口文件会继续朝“只保留顶层路由和依赖初始化”的方向收缩。
 
 ## 公共信息日报
 

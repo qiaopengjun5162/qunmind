@@ -32,6 +32,8 @@
 
 `src/wx_cli_runtime.rs` 维护 CLI / MCP 共用的 wx-cli 运行时适配 helper，例如“按输入来源读取消息”“dry-run 结构化 JSON 组装”“handle-once 管线报告渲染”。这里可以编排已有 `channel::wx_cli` 与 `diagnostic` 能力，但不要把新的诊断业务规则直接堆回 `main.rs` 或 `src/mcp/tools.rs`。
 
+`src/wx_cli_commands.rs` 维护 CLI 侧 wx-cli 子命令分发与 stdout JSON 渲染。凡是“只属于 CLI、不属于 MCP、也不是纯诊断规则”的 wx-cli 命令编排，优先继续收口到这里，避免 `main.rs` 再次长回去。
+
 `tests/fixtures/wx_cli/` 用于存放脱敏后的离线 wx-cli capture 样本。后续补真实联调证据时，优先把匿名化样本放这里，并通过独立 `tests/*_test.rs` 消费这些 fixture，不要把越来越长的“近真实 JSON”继续内联到单元测试字符串里。
 
 `src/mcp/mod.rs` 维护 MCP JSON-RPC 2.0 server，`src/mcp/tools.rs` 维护 MCP tool 的 inputSchema 定义和 diagnostic / reporting 纯函数适配。新增 MCP tool 时优先在 `tools.rs` 补纯函数测试，不要往 `mod.rs` 塞业务逻辑。

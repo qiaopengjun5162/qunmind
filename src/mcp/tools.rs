@@ -273,14 +273,14 @@ fn tool_doctor(config: &Config, args: &serde_json::Value) -> anyhow::Result<Stri
         .get("limit")
         .and_then(|v| v.as_u64())
         .map_or(10, |v| v as usize);
-    let messages = wx_cli_runtime::maybe_load_messages(
+    let report = wx_cli_runtime::doctor_report_json(
         config,
         args.get("input")
             .and_then(|v| v.as_str())
             .map(PathBuf::from)
             .as_deref(),
+        limit,
     )?;
-    let report = diagnostic::wx_cli_doctor_report(config, messages.as_deref(), limit);
     Ok(serde_json::to_string_pretty(&report)?)
 }
 
@@ -321,23 +321,18 @@ fn tool_test_plan(
     let shell = args.get("shell").and_then(|v| v.as_bool()).unwrap_or(false);
 
     let input = input.map(PathBuf::from);
-    let messages = wx_cli_runtime::maybe_load_messages(config, input.as_deref())?;
-
-    let plan = diagnostic::wx_cli_formal_test_plan(
+    wx_cli_runtime::render_test_plan_output(
         config,
         config_path,
-        &capture_file,
-        message_id,
-        chat_id,
-        text,
-        messages.as_deref(),
-    );
-
-    if shell {
-        Ok(diagnostic::wx_cli_formal_test_plan_shell_script(&plan))
-    } else {
-        Ok(serde_json::to_string_pretty(&plan)?)
-    }
+        wx_cli_runtime::TestPlanRenderRequest {
+            capture_file: &capture_file,
+            input: input.as_deref(),
+            message_id,
+            chat_id,
+            text,
+            shell,
+        },
+    )
 }
 
 fn tool_dry_run(config: &Config, args: &serde_json::Value) -> anyhow::Result<String> {
@@ -365,14 +360,9 @@ fn tool_send(config: &Config, args: &serde_json::Value) -> anyhow::Result<String
     let chat_id = required_string(args, "chat_id")?;
     let text = required_string(args, "text")?;
 
-    let channel = WxCliChannel::new(&config.wx_cli);
-    let command = channel.rendered_send_command(&chat_id, &text)?;
-    Ok(serde_json::to_string_pretty(&serde_json::json!({
-        "ok": true,
-        "dry_run": true,
-        "chat_id": chat_id,
-        "command": command.command
-    }))?)
+    Ok(serde_json::to_string_pretty(
+        &wx_cli_runtime::send_dry_run_json(config, &chat_id, &text)?,
+    )?)
 }
 
 async fn tool_handle_once(config: &Config, args: &serde_json::Value) -> anyhow::Result<String> {
