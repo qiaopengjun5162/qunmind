@@ -214,9 +214,11 @@ Recommended order:
 Notes:
 - `just db-create` only creates the default local PostgreSQL database when it is missing; tables are still created by QunMind at runtime
 - `just report-publish` is a real external publish action and may send stored report material to the configured AI / publisher chain
+- `report-status` now also checks the `moonpub` publish env required by real draft pushes; missing `WECHAT_APPID` or `WECHAT_SECRET` is treated as a blocker before the first external publish attempt
 
 Semantics to keep in mind:
 - missing `wechat_bin` / `wechat_articles_dir` is a hard blocker
+- missing `WECHAT_APPID` / `WECHAT_SECRET` is also a hard blocker for `output = "wechat"` draft publish targets
 - `wechat_daily_report_public_sources_disabled_for_empty_group_fallback` is only a warning that an empty group would have no RSS/public-source fallback material
 
 For manual report rehearsals, `qunmind daily-report` can now target a configured report by name. Use `--report-name <name>` to reuse that target's `daily_quote` and related report settings, and add `--publish` when you want the same manual run to continue through the configured publisher boundary such as `output = "wechat"`.

@@ -449,6 +449,8 @@ fn wx_cli_doctor_warns_when_enabled_report_target_is_not_seen_in_capture() {
 
 #[test]
 fn wx_cli_doctor_warns_when_wechat_daily_report_dependencies_are_incomplete() {
+    let _appid_guard = EnvVarGuard::set("WECHAT_APPID", "wx-test");
+    let _secret_guard = EnvVarGuard::remove("WECHAT_SECRET");
     let config = config_from(
         r#"
         [channel]
@@ -492,6 +494,10 @@ fn wx_cli_doctor_warns_when_wechat_daily_report_dependencies_are_incomplete() {
         &report["warnings"],
         "wechat_daily_report_bin_not_found"
     ));
+    assert!(array_contains(
+        &report["warnings"],
+        "wechat_daily_report_secret_missing"
+    ));
     assert_eq!(
         report["capture"]["daily_report_targets"],
         serde_json::json!([
@@ -504,7 +510,8 @@ fn wx_cli_doctor_warns_when_wechat_daily_report_dependencies_are_incomplete() {
                 "config_ready": false,
                 "dependency_blockers": [
                     "wechat_daily_report_bin_not_found",
-                    "wechat_daily_report_articles_dir_empty"
+                    "wechat_daily_report_articles_dir_empty",
+                    "wechat_daily_report_secret_missing"
                 ]
             }
         ])
@@ -513,6 +520,8 @@ fn wx_cli_doctor_warns_when_wechat_daily_report_dependencies_are_incomplete() {
 
 #[test]
 fn wx_cli_doctor_keeps_wechat_rss_report_ready_without_public_sources() {
+    let _appid_guard = EnvVarGuard::set("WECHAT_APPID", "wx-test");
+    let _secret_guard = EnvVarGuard::set("WECHAT_SECRET", "secret-test");
     let dir = std::env::temp_dir().join(format!("qunmind-wechat-rss-ready-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
@@ -566,6 +575,42 @@ fn wx_cli_doctor_keeps_wechat_rss_report_ready_without_public_sources() {
     );
 
     std::fs::remove_dir_all(&dir).unwrap();
+}
+
+struct EnvVarGuard {
+    key: &'static str,
+    previous: Option<String>,
+}
+
+impl EnvVarGuard {
+    fn set(key: &'static str, value: &str) -> Self {
+        let previous = std::env::var(key).ok();
+        unsafe {
+            std::env::set_var(key, value);
+        }
+        Self { key, previous }
+    }
+
+    fn remove(key: &'static str) -> Self {
+        let previous = std::env::var(key).ok();
+        unsafe {
+            std::env::remove_var(key);
+        }
+        Self { key, previous }
+    }
+}
+
+impl Drop for EnvVarGuard {
+    fn drop(&mut self) {
+        match &self.previous {
+            Some(value) => unsafe {
+                std::env::set_var(self.key, value);
+            },
+            None => unsafe {
+                std::env::remove_var(self.key);
+            },
+        }
+    }
 }
 
 #[test]

@@ -143,6 +143,34 @@ pub(super) fn wx_cli_doctor_warnings(
     if has_wechat_daily_report_target_with_invalid_articles_dir(config) {
         warnings.push("wechat_daily_report_articles_dir_not_dir");
     }
+    if wx_cli_daily_report_target_statuses(config, &[])
+        .iter()
+        .any(|target| {
+            target["dependency_blockers"]
+                .as_array()
+                .is_some_and(|blockers| {
+                    blockers.iter().any(|blocker| {
+                        blocker.as_str() == Some("wechat_daily_report_appid_missing")
+                    })
+                })
+        })
+    {
+        warnings.push("wechat_daily_report_appid_missing");
+    }
+    if wx_cli_daily_report_target_statuses(config, &[])
+        .iter()
+        .any(|target| {
+            target["dependency_blockers"]
+                .as_array()
+                .is_some_and(|blockers| {
+                    blockers.iter().any(|blocker| {
+                        blocker.as_str() == Some("wechat_daily_report_secret_missing")
+                    })
+                })
+        })
+    {
+        warnings.push("wechat_daily_report_secret_missing");
+    }
     if has_wechat_daily_report_target_without_public_sources(config) {
         warnings.push("wechat_daily_report_public_sources_disabled_for_empty_group_fallback");
     }

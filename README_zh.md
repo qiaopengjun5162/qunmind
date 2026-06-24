@@ -218,6 +218,7 @@ just report-history report="微信公众号日报"
 
 这里的语义要记清：
 - `wechat_bin` / `wechat_articles_dir` 缺失是硬 blocker
+- `WECHAT_APPID` / `WECHAT_SECRET` 缺失也是 `output = "wechat"` 真实推草稿前的硬 blocker
 - `wechat_daily_report_public_sources_disabled_for_empty_group_fallback` 只是 warning，表示“如果目标群当天为空，将没有 RSS / 公共来源回退素材”
 - `just db-create` 只负责在默认本地 PostgreSQL 缺库时补建 `qunmind` 数据库，表结构仍由 QunMind 启动时自动初始化
 - `just report-publish` 会触发真实外部发布链路，也可能把日报素材发送到当前配置的 AI / publisher

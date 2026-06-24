@@ -84,6 +84,18 @@ pub fn report_status_blockers(_config: &Config, target: &ReportStatusTarget) -> 
     } else if !Path::new(&target.wechat_articles_dir).is_dir() {
         blockers.push("wechat_daily_report_articles_dir_not_dir");
     }
+    if std::env::var("WECHAT_APPID")
+        .ok()
+        .is_none_or(|value| value.trim().is_empty())
+    {
+        blockers.push("wechat_daily_report_appid_missing");
+    }
+    if std::env::var("WECHAT_SECRET")
+        .ok()
+        .is_none_or(|value| value.trim().is_empty())
+    {
+        blockers.push("wechat_daily_report_secret_missing");
+    }
     blockers
 }
 
@@ -245,6 +257,11 @@ fn report_status_next_steps(status: &str, blockers: &[&str]) -> Vec<&'static str
         {
             next_steps.push("configure_wechat_articles_dir_then_rerun_report_status");
         }
+        if blockers.contains(&"wechat_daily_report_appid_missing")
+            || blockers.contains(&"wechat_daily_report_secret_missing")
+        {
+            next_steps.push("export_wechat_publish_env_then_rerun_report_status");
+        }
         if next_steps.is_empty() {
             next_steps.push("fix_report_status_blockers_then_rerun_report_status");
         }
@@ -331,6 +348,8 @@ mod tests {
 
     #[test]
     fn report_status_blockers_detect_wechat_prerequisites() {
+        let _appid_guard = EnvVarGuard::remove("WECHAT_APPID");
+        let _secret_guard = EnvVarGuard::remove("WECHAT_SECRET");
         let config = config_from(
             r#"
             [[schedule.daily_reports]]
@@ -349,10 +368,14 @@ mod tests {
         let blockers = report_status_blockers(&config, &target);
         assert!(blockers.contains(&"wechat_daily_report_bin_empty"));
         assert!(blockers.contains(&"wechat_daily_report_articles_dir_empty"));
+        assert!(blockers.contains(&"wechat_daily_report_appid_missing"));
+        assert!(blockers.contains(&"wechat_daily_report_secret_missing"));
     }
 
     #[test]
     fn report_status_blockers_detect_missing_runtime_dependencies() {
+        let _appid_guard = EnvVarGuard::set("WECHAT_APPID", "wx-test");
+        let _secret_guard = EnvVarGuard::remove("WECHAT_SECRET");
         let config = config_from(
             r#"
             [public_sources]
@@ -371,10 +394,13 @@ mod tests {
         let blockers = report_status_blockers(&config, &target);
         assert!(blockers.contains(&"wechat_daily_report_bin_not_found"));
         assert!(blockers.contains(&"wechat_daily_report_articles_dir_not_dir"));
+        assert!(blockers.contains(&"wechat_daily_report_secret_missing"));
     }
 
     #[test]
     fn report_status_blockers_accept_real_paths_without_public_sources() {
+        let _appid_guard = EnvVarGuard::set("WECHAT_APPID", "wx-test");
+        let _secret_guard = EnvVarGuard::set("WECHAT_SECRET", "secret-test");
         let dir =
             std::env::temp_dir().join(format!("qunmind-reporting-articles-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
@@ -401,6 +427,8 @@ mod tests {
 
     #[test]
     fn report_status_json_marks_blocked_reports_with_actionable_next_steps() {
+        let _appid_guard = EnvVarGuard::remove("WECHAT_APPID");
+        let _secret_guard = EnvVarGuard::remove("WECHAT_SECRET");
         let config = config_from(
             r#"
             [[schedule.daily_reports]]
@@ -424,13 +452,16 @@ mod tests {
             report["next_steps"],
             serde_json::json!([
                 "install_or_fix_moonpub_bin_then_rerun_report_status",
-                "configure_wechat_articles_dir_then_rerun_report_status"
+                "configure_wechat_articles_dir_then_rerun_report_status",
+                "export_wechat_publish_env_then_rerun_report_status"
             ])
         );
     }
 
     #[test]
     fn report_status_json_keeps_wechat_target_ready_without_public_sources() {
+        let _appid_guard = EnvVarGuard::set("WECHAT_APPID", "wx-test");
+        let _secret_guard = EnvVarGuard::set("WECHAT_SECRET", "secret-test");
         let dir = std::env::temp_dir().join(format!(
             "qunmind-reporting-rss-ready-{}",
             std::process::id()
@@ -461,6 +492,8 @@ mod tests {
 
     #[test]
     fn report_status_json_marks_recently_published_when_receipts_exist() {
+        let _appid_guard = EnvVarGuard::set("WECHAT_APPID", "wx-test");
+        let _secret_guard = EnvVarGuard::set("WECHAT_SECRET", "secret-test");
         let dir = std::env::temp_dir().join(format!(
             "qunmind-reporting-published-{}",
             std::process::id()
@@ -502,5 +535,41 @@ mod tests {
         );
 
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    struct EnvVarGuard {
+        key: &'static str,
+        previous: Option<String>,
+    }
+
+    impl EnvVarGuard {
+        fn set(key: &'static str, value: &str) -> Self {
+            let previous = std::env::var(key).ok();
+            unsafe {
+                std::env::set_var(key, value);
+            }
+            Self { key, previous }
+        }
+
+        fn remove(key: &'static str) -> Self {
+            let previous = std::env::var(key).ok();
+            unsafe {
+                std::env::remove_var(key);
+            }
+            Self { key, previous }
+        }
+    }
+
+    impl Drop for EnvVarGuard {
+        fn drop(&mut self) {
+            match &self.previous {
+                Some(value) => unsafe {
+                    std::env::set_var(self.key, value);
+                },
+                None => unsafe {
+                    std::env::remove_var(self.key);
+                },
+            }
+        }
     }
 }

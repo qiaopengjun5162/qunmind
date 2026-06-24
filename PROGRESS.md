@@ -66,14 +66,17 @@
 ### Done
 
 - **公众号日报 Justfile 标准入口补齐** — `Justfile` 现在新增了 `db-create`、`report-status`、`report-markdown`、`report-history` 和 `report-publish`。这让“先补数据库、再看 readiness、再生成 markdown、最后决定是否真实推草稿”的联调路径第一次有了统一入口，不再要求操作者手动拼一长串 `cargo run` 命令。
-- **真实本机 readiness 结果落地** — 已在本机 PostgreSQL 可用的前提下补建默认 `qunmind` 数据库，并重新执行公众号日报状态检查。当前 `report-status --report-name "微信公众号日报"` 的真实结果是 `status = "ready_for_first_publish"`、`ready = true`、`blockers = []`，说明代码侧和配置侧已经进入“可做第一次真实试发”的阶段。
+- **真实本机 readiness 结果落地** — 已在本机 PostgreSQL 可用的前提下补建默认 `qunmind` 数据库，并重新执行公众号日报状态检查。第一次检查一度显示 `ready_for_first_publish`，但在真实试发后确认 `moonpub` 还依赖运行时环境变量 `WECHAT_APPID` / `WECHAT_SECRET`。现在 `report-status` / `doctor` 已同步把这两项缺失前置暴露为 blocker，避免“状态页显示 ready，真实推草稿时才失败”的错觉。
 - **发布历史初始状态确认** — `publish-history --report-name "微信公众号日报"` 当前返回空列表，说明还没有成功试发回执。这一点很重要：项目不是“日报功能不存在”，而是“日报 readiness 已通过，但还缺第一次真实 publish 记录”。
+- **第一次真实试发已打到 publisher 边界** — 用户明确批准后，已真实执行 `daily-report --publish`。结果不是 markdown 生成失败，而是 `moonpub` 返回 `missing env var: WECHAT_SECRET`；同时 `/tmp/wechat-report.md` 已成功生成，说明“消息/RSS -> 日报正文”这段链路已经跑通，当前剩余阻塞在微信草稿发布凭证环境。
 - **公众号日报文档入口统一到 Justfile** — `README.md`、`README_zh.md` 和 `AGENTS.md` 现在都改成同一条标准路径：`just db-create -> just report-status -> just report-markdown -> just report-publish -> just report-history`。这把之前分散在聊天、README 和命令行里的知识收口成可复制的操作流程。
 
 ### Verified
 
-- `cargo run -- report-status --report-name "微信公众号日报"`：在补建本机 `qunmind` 数据库后返回 `ready_for_first_publish`
+- `cargo run -- report-status --report-name "微信公众号日报"`：在补建本机 `qunmind` 数据库后先返回 `ready_for_first_publish`，补完 blocker 逻辑后改为正确暴露 `wechat_daily_report_appid_missing` / `wechat_daily_report_secret_missing`
 - `cargo run -- publish-history --report-name "微信公众号日报"`：返回 `count = 0`
+- `cargo run -- --config config.toml daily-report --report-name "微信公众号日报" --output /tmp/wechat-report.md --publish`：真实试发命中 `moonpub` blocker `missing env var: WECHAT_SECRET`，但 markdown 文件已成功生成
+- `just report-status`：当前正确返回 `status = "blocked"`，`blockers = ["wechat_daily_report_appid_missing", "wechat_daily_report_secret_missing"]`
 - PR #41 CI：`test = pass`，`docker = pass`
 
 ## 2026-06-23
