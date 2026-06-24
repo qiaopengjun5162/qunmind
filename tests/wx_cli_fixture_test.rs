@@ -1,6 +1,6 @@
 use qunmind::channel::wx_cli::load_wx_cli_messages_from_file;
 use qunmind::config::Config;
-use qunmind::diagnostic::wx_cli_dry_run_report;
+use qunmind::diagnostic::{wx_cli_doctor_report, wx_cli_dry_run_report, wx_cli_formal_test_plan};
 
 fn fixture_path(name: &str) -> std::path::PathBuf {
     std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -72,4 +72,89 @@ fn sanitized_wx_cli_fixture_drives_dry_run_decisions() {
         report["items"][1]["reason"],
         serde_json::json!("mention_not_matched")
     );
+}
+
+#[test]
+fn unique_group_fixture_produces_recommended_replay_message() {
+    let path = fixture_path("unique_group_candidate.json");
+    let config = config_from(
+        r#"
+        [channel]
+        kind = "wx_cli"
+
+        [ai]
+        api_key = "token"
+
+        [wx_cli]
+        bin = "wx"
+        poll_args = ["poll", "--json"]
+        send_args = ["send", "--chat", "{chat_id}", "--text", "{text}"]
+        group_chat_id = "room-beta@chatroom"
+
+        [bot]
+        mention_names = ["@QunMind"]
+        "#,
+    );
+    let messages = match load_wx_cli_messages_from_file(&path, "") {
+        Ok(messages) => messages,
+        Err(err) => panic!("fixture load: {err}"),
+    };
+
+    let report = wx_cli_doctor_report(&config, Some(&messages), 10);
+
+    assert_eq!(
+        report["capture"]["formal_test_readiness"]["recommended_message_id"],
+        serde_json::json!("group-unique-1")
+    );
+    assert_eq!(
+        report["capture"]["group_reply_candidate_message_ids"],
+        serde_json::json!(["group-unique-1"])
+    );
+}
+
+#[test]
+fn direct_only_fixture_blocks_group_replay_plan() {
+    let path = fixture_path("direct_only.json");
+    let config = config_from(
+        r#"
+        [channel]
+        kind = "wx_cli"
+
+        [ai]
+        api_key = "token"
+
+        [wx_cli]
+        bin = "wx"
+        poll_args = ["poll", "--json"]
+        send_args = ["send", "--chat", "{chat_id}", "--text", "{text}"]
+
+        [bot]
+        mention_names = ["@QunMind"]
+        "#,
+    );
+    let messages = match load_wx_cli_messages_from_file(&path, "") {
+        Ok(messages) => messages,
+        Err(err) => panic!("fixture load: {err}"),
+    };
+
+    let plan = wx_cli_formal_test_plan(
+        &config,
+        std::path::Path::new("fixture-config.toml"),
+        std::path::Path::new("tests/fixtures/wx_cli/direct_only.json"),
+        None,
+        None,
+        "QunMind diagnostic message",
+        Some(&messages),
+    );
+
+    assert_eq!(plan["ok"], false);
+    assert_eq!(
+        plan["group_reply_candidate_message_ids"],
+        serde_json::json!([])
+    );
+    let blockers = plan["blockers"].as_array().cloned().unwrap_or_default();
+    assert!(blockers.contains(&serde_json::json!("capture_requires_explicit_message_id")));
+    let warnings = plan["warnings"].as_array().cloned().unwrap_or_default();
+    assert!(warnings.contains(&serde_json::json!("capture_has_no_group_messages")));
+    assert!(warnings.contains(&serde_json::json!("capture_has_no_group_reply_candidates")));
 }
