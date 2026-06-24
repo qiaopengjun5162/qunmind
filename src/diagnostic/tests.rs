@@ -937,12 +937,25 @@ fn wx_cli_handle_once_message_id_not_unique_report_is_structured() {
 
 #[test]
 fn wx_cli_handle_once_message_id_required_report_is_structured() {
-    let report = wx_cli_handle_once_message_id_required_report(2, true);
+    let report = wx_cli_handle_once_message_id_required_report(
+        2,
+        &["m-1".to_string(), "m-2".to_string()],
+        &["m-1".to_string()],
+        true,
+    );
 
     assert_eq!(report["ok"], false);
     assert_eq!(report["error"], "message_id_required_for_multiple_messages");
     assert_eq!(report["total_polled"], 2);
     assert_eq!(report["requested_message_id"], serde_json::Value::Null);
+    assert_eq!(
+        report["reply_candidate_message_ids"],
+        serde_json::json!(["m-1", "m-2"])
+    );
+    assert_eq!(
+        report["group_reply_candidate_message_ids"],
+        serde_json::json!(["m-1"])
+    );
     assert_eq!(report["processed"], 0);
     assert_eq!(report["no_send"], true);
     assert_eq!(report["suppressed_replies"], serde_json::json!([]));
@@ -1028,25 +1041,13 @@ fn wx_cli_handle_once_message_id_guard_rejects_missing_id() {
 }
 
 #[test]
-fn wx_cli_handle_once_message_id_guard_rejects_ambiguous_capture_without_explicit_id() {
+fn wx_cli_handle_once_message_id_guard_skips_ambiguous_capture_without_explicit_id() {
     let messages = vec![test_message("m-1"), test_message("m-2")];
 
-    let report = match wx_cli_handle_once_message_id_guard_report(
-        &messages,
-        messages.len(),
-        None,
-        true,
-        true,
-    ) {
-        Some(report) => report,
-        None => panic!("ambiguous captured replay should require explicit message_id"),
-    };
+    let report =
+        wx_cli_handle_once_message_id_guard_report(&messages, messages.len(), None, true, true);
 
-    assert_eq!(report["ok"], false);
-    assert_eq!(report["error"], "message_id_required_for_multiple_messages");
-    assert_eq!(report["total_polled"], 2);
-    assert_eq!(report["processed"], 0);
-    assert_eq!(report["requested_message_id"], serde_json::Value::Null);
+    assert!(report.is_none());
 }
 
 #[test]

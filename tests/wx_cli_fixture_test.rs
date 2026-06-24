@@ -285,3 +285,44 @@ async fn sample_fixture_blocks_handle_once_when_selected_message_would_not_reply
     assert_eq!(report["processed"], 0);
     assert_eq!(suppressed, Vec::<serde_json::Value>::new());
 }
+
+#[tokio::test]
+async fn multiple_group_fixture_handle_once_reports_candidate_ids_when_message_id_is_missing() {
+    let path = fixture_path("multiple_group_candidates.json");
+    let config = config_from(
+        r#"
+        [channel]
+        kind = "wx_cli"
+
+        [ai]
+        api_key = "token"
+
+        [wx_cli]
+        bin = "wx"
+        poll_args = ["poll", "--json"]
+        send_args = ["send", "--chat", "{chat_id}", "--text", "{text}"]
+
+        [bot]
+        mention_names = ["@QunMind"]
+        "#,
+    );
+    let messages = match load_wx_cli_messages_from_file(&path, "") {
+        Ok(messages) => messages,
+        Err(err) => panic!("fixture load: {err}"),
+    };
+
+    let (report, suppressed) =
+        wx_cli_handle_once_pipeline(&config, messages, None, 1, true, true).await;
+
+    assert_eq!(report["ok"], false);
+    assert_eq!(report["error"], "message_id_required_for_multiple_messages");
+    assert_eq!(
+        report["reply_candidate_message_ids"],
+        serde_json::json!(["group-multi-1", "group-multi-2"])
+    );
+    assert_eq!(
+        report["group_reply_candidate_message_ids"],
+        serde_json::json!(["group-multi-1", "group-multi-2"])
+    );
+    assert_eq!(suppressed, Vec::<serde_json::Value>::new());
+}

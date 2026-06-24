@@ -8,7 +8,9 @@ use super::dry_run::{
     wx_cli_handle_once_selected_message_would_not_reply_report,
 };
 use super::support::{
-    effective_bot_config, select_wx_cli_messages, wx_cli_dry_run_decision, wx_cli_message_ids,
+    effective_bot_config, select_wx_cli_messages, wx_cli_dry_run_decision,
+    wx_cli_group_reply_candidate_message_ids, wx_cli_message_ids,
+    wx_cli_reply_candidate_message_ids,
 };
 
 /// Run the full handle-once pipeline: PG persistence, mention filter, AI reply, and wx-cli send.
@@ -24,6 +26,21 @@ pub async fn wx_cli_handle_once_pipeline(
     require_explicit_message_id: bool,
 ) -> (serde_json::Value, Vec<serde_json::Value>) {
     let total_polled = messages.len();
+
+    if require_explicit_message_id && message_id.is_none() && messages.len() > 1 {
+        let reply_candidate_message_ids = wx_cli_reply_candidate_message_ids(config, &messages);
+        let group_reply_candidate_message_ids =
+            wx_cli_group_reply_candidate_message_ids(config, &messages);
+        return (
+            super::dry_run::wx_cli_handle_once_message_id_required_report(
+                total_polled,
+                &reply_candidate_message_ids,
+                &group_reply_candidate_message_ids,
+                no_send,
+            ),
+            Vec::new(),
+        );
+    }
 
     if let Some(report) = wx_cli_handle_once_message_id_guard_report(
         &messages,
