@@ -512,6 +512,63 @@ fn wx_cli_doctor_warns_when_wechat_daily_report_dependencies_are_incomplete() {
 }
 
 #[test]
+fn wx_cli_doctor_keeps_wechat_rss_report_ready_without_public_sources() {
+    let dir = std::env::temp_dir().join(format!("qunmind-wechat-rss-ready-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+
+    let config = config_from(&format!(
+        r#"
+        [channel]
+        kind = "wx_cli"
+
+        [ai]
+        api_key = "token"
+
+        [wx_cli]
+        bin = "wx"
+        poll_args = ["poll", "--json"]
+        send_args = ["send", "--chat", "{{chat_id}}", "--text", "{{text}}"]
+
+        [bot]
+        mention_names = ["@bot"]
+
+        [[schedule.daily_reports]]
+        chat_id = "room@chatroom"
+        name = "微信公众号日报"
+        output = "wechat"
+        wechat_bin = "rustc"
+        wechat_articles_dir = "{}"
+        "#,
+        dir.display()
+    ));
+    let messages = vec![test_message("m-1")];
+
+    let report = wx_cli_doctor_report(&config, Some(&messages), 10);
+
+    assert!(array_contains(
+        &report["warnings"],
+        "wechat_daily_report_public_sources_disabled_for_empty_group_fallback"
+    ));
+    assert_eq!(
+        report["capture"]["daily_report_targets"],
+        serde_json::json!([
+            {
+                "chat_id": "room@chatroom",
+                "name": "微信公众号日报",
+                "source": "schedule.daily_reports",
+                "output": "wechat",
+                "seen_in_capture": true,
+                "config_ready": true,
+                "dependency_blockers": []
+            }
+        ])
+    );
+
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
 fn wx_cli_doctor_guides_uncaptured_runs_toward_no_send_replay() {
     let config = config_from(
         r#"

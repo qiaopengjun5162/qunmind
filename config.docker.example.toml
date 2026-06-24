@@ -103,7 +103,7 @@ topic_keywords = [
   "zero knowledge",
   "zero-knowledge",
 ]
-wechat_rss_enabled = false
+wechat_rss_enabled = true
 wechat_rss_max_items = 10
 wechat_rss_timeout_secs = 10
-wechat_rss_urls = ["http://host.docker.internal:8080/rss.xml"]
+wechat_rss_urls = ["http://host.docker.internal:8080/rss.xml"] # Docker 下可对接本机 RSS 上游

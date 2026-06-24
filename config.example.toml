@@ -52,7 +52,7 @@ chat_id = "group-chat-id-2"
 enabled = false
 name = "投研群日报"
 
-# 微信公众号日报 (需要 moonpub 已配置，使用 public_sources 作为素材)
+# 微信公众号 RSS 日报 (需要 moonpub 已配置；目标群为空时可回退到 wechat_rss/public_sources)
 # [[schedule.daily_reports]]
 # chat_id = ""
 # name = "微信公众号日报"
@@ -60,7 +60,7 @@ name = "投研群日报"
 # cron = "0 0 8 * * *"
 # output = "wechat"
 # wechat_bin = "moonpub"
-# wechat_articles_dir = "/data/moonpub"   # moonpub 的 articles 根目录，且 [public_sources] 至少启用一个来源
+# wechat_articles_dir = "/data/moonpub"   # moonpub 的 articles 根目录
 # daily_quote = ""   # 可选: 日报底部每日一句
 
 [storage]
@@ -129,12 +129,12 @@ topic_keywords = [
   "zero knowledge",
   "zero-knowledge",
 ]
-wechat_rss_enabled = false
+wechat_rss_enabled = true
 wechat_rss_max_items = 10
 wechat_rss_timeout_secs = 10
 wechat_rss_urls = [
   "http://127.0.0.1:8080/rss.xml",
-] # 可对接 wechat-download-api 一类上游 RSS 输出
+] # 可对接 wechat-download-api / Horizon 一类上游 RSS 输出；适合公众号日报空群回退或手工日报联调
 
 [[groups]]
 chat_id = "group-chat-id-1"

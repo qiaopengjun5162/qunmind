@@ -201,6 +201,24 @@ QunMind 会在保存文本消息时抽取 `http://` / `https://` 链接，写入
 
 当前这层 `wechat_rss` 也补了几种常见 feed 字段兼容：Atom 的 `<author><name>`、RSS 的 `dc:creator`，以及 `pubDate` / `updated` / `published` / `dc:date` 时间字段都会尽量归一成统一的 `author` 和 UTC `published_at`，减少不同上游服务接入后摘要 prompt 字段风格漂移。
 
+如果你现在已经有公众号 RSS / Atom 上游，最短联调路径可以直接按下面跑：
+
+```bash
+cargo run -- report-status --report-name "微信公众号日报"
+cargo run -- daily-report --report-name "微信公众号日报" --output /tmp/wechat-report.md
+cargo run -- daily-report --report-name "微信公众号日报" --publish
+cargo run -- publish-history --report-name "微信公众号日报"
+```
+
+推荐顺序是：
+- 先确认 `report-status` 显示 `ready_for_first_publish`，并区分好硬 blocker 与 warning
+- 再生成一版本地 markdown，确认 RSS 上游内容已经进入日报素材
+- 最后再加 `--publish` 推到 `moonpub` 的公众号草稿箱
+
+这里的语义要记清：
+- `wechat_bin` / `wechat_articles_dir` 缺失是硬 blocker
+- `wechat_daily_report_public_sources_disabled_for_empty_group_fallback` 只是 warning，表示“如果目标群当天为空，将没有 RSS / 公共来源回退素材”
+
 ## 多平台发布边界
 
 `QunMind` 后续可以支持“同一份日报分发到多个平台”，但更合适的拆分不是把所有平台发布逻辑都塞进主项目。

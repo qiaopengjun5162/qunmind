@@ -68,6 +68,8 @@
 - **定时公众号日报也对齐到群消息优先语义** — `schedule.daily_reports[].output = "wechat"` 之前还保留着“只走公共来源生成 markdown”的旧路径。现在 scheduler 会和手工 `daily-report` 一样，先尝试读取目标群的已保存消息与链接情报；只有群消息为空时，才回退到 `public_sources`。这把“手工演练”和“真正定时推公众号草稿”收敛到同一套日报素材语义。
 - **日报生成共享层再收口** — 新增 `src/reporting.rs` 中的共享群消息日报生成 helper，把“按目标 prompt/lookback/message limit/link limit 从消息库生成日报正文”的逻辑从 CLI 和 scheduler 两边抽到一处，减少之后继续调日报时的行为漂移风险。
 - **公众号日报 readiness 口径修正** — `report-status` / `wx-cli doctor` 现在不再把“未启用 `public_sources`”视为一刀切的硬 blocker。更准确的语义是：`moonpub` 二进制和 articles 目录仍是硬前提，而 `public_sources` 只是在“群消息为空时无法回退生成”的风险提示。这样状态页终于和代码的真实运行条件一致，不会再把“群消息充足、其实能正常出稿”的目标误判成 blocked。
+- **公众号 RSS 日报联调模板补齐** — `config.example.toml` 与 `config.docker.example.toml` 现在直接给出 RSS-backed 微信公众号日报示例，默认展示 `wechat_rss_enabled = true` 和示例 `wechat_rss_urls`，更贴近“拿到 RSS 上游后立刻联调公众号日报”的真实使用场景。
+- **公众号 RSS 最短联调路径补档** — README / README_zh / AGENTS 已补上 `report-status -> daily-report --output -> daily-report --publish -> publish-history` 这条最短命令序列，并明确区分硬 blocker 与空群回退 warning。现在当用户只关心“今天能不能把公众号日报草稿推出来”时，可以直接照着跑，而不是再从零拼命令。
 - **`handle-once` 安全边界补测试** — 新增针对 `diagnostic` guard 和 MCP `wxcli_handle_once` 的测试，覆盖“多消息 capture 未指定 `message_id` 必须阻断”的场景。现在这条规则不只写在说明里，而是被测试固定住了。
 - **脱敏 wx-cli fixture 入口落地** — 新增 `tests/fixtures/wx_cli/` 目录、fixture README、`sample_capture.json`、`unique_group_candidate.json`、`direct_only.json`、`multiple_group_candidates.json` 和 `tests/wx_cli_fixture_test.rs`。现在项目已经有一条可持续扩展的“匿名化真实样本”测试入口，既能验证 wx-cli 导出字段兼容和 dry-run 决策，也能覆盖“唯一群聊候选可直接推荐重放”“只有私聊样本时正式群测必须阻塞”以及“多个群聊候选并存时必须显式选择 `--message-id`”。
 - **日报就绪状态视图继续补强** — `report-status` / `report_status` 现在不只输出 `ready`、`blockers` 和 `recent_receipts`，还会给出更直白的 `status` 与 `next_steps`。这组下一步建议也进一步收紧成更贴近操作者动作的提示，例如“修好 moonpub 后重新跑 report-status”“生成 markdown 并推草稿后再复查状态”，这样临近交付时更容易直接照着执行。
@@ -115,6 +117,7 @@
 - `cargo fmt --all -- --check`
 - `cargo clippy --all-targets --all-features --tests --benches -- -D warnings`
 - `cargo nextest run --all-features`：266 passed, 1 skipped
+- `cargo nextest run --all-features`：268 passed, 1 skipped
 - `cargo test --quiet persist_manual_publish_receipt --bin qunmind`
 
 ### Daily Report Timeline

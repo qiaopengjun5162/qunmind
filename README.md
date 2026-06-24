@@ -196,6 +196,24 @@ For WeChat public-account article material, QunMind now prefers a lighter integr
 
 The current `wechat_rss` reader also normalizes a few common feed variants so mixed upstream services stay usable: Atom `<author><name>`, RSS `dc:creator`, and `pubDate` / `updated` / `published` / `dc:date` timestamps are mapped into the same `author` and UTC `published_at` fields before they enter the daily-report prompt.
 
+If you already have a WeChat public-account RSS / Atom upstream, the shortest rehearsal flow is:
+
+```bash
+cargo run -- report-status --report-name "微信公众号日报"
+cargo run -- daily-report --report-name "微信公众号日报" --output /tmp/wechat-report.md
+cargo run -- daily-report --report-name "微信公众号日报" --publish
+cargo run -- publish-history --report-name "微信公众号日报"
+```
+
+Recommended order:
+- confirm `report-status` shows `ready_for_first_publish`
+- generate local markdown first and verify the RSS-backed article material appears in the report
+- then add `--publish` to push the draft through `moonpub`
+
+Semantics to keep in mind:
+- missing `wechat_bin` / `wechat_articles_dir` is a hard blocker
+- `wechat_daily_report_public_sources_disabled_for_empty_group_fallback` is only a warning that an empty group would have no RSS/public-source fallback material
+
 For manual report rehearsals, `qunmind daily-report` can now target a configured report by name. Use `--report-name <name>` to reuse that target's `daily_quote` and related report settings, and add `--publish` when you want the same manual run to continue through the configured publisher boundary such as `output = "wechat"`.
 
 That manual publish path now also attempts to persist the structured publish receipt immediately. A successful manual draft push can therefore show up right away in `report-status` and `publish-history`. If the external publish succeeds but receipt persistence fails, the CLI JSON now exposes that split explicitly through `publish_receipt_saved = false` and `publish_receipt_save_error`, instead of collapsing both outcomes into one vague result.

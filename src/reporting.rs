@@ -430,6 +430,36 @@ mod tests {
     }
 
     #[test]
+    fn report_status_json_keeps_wechat_target_ready_without_public_sources() {
+        let dir = std::env::temp_dir().join(format!(
+            "qunmind-reporting-rss-ready-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+
+        let config = config_from(&format!(
+            r#"
+            [[schedule.daily_reports]]
+            chat_id = "group-1"
+            name = "微信公众号日报"
+            output = "wechat"
+            wechat_bin = "rustc"
+            wechat_articles_dir = "{}"
+            "#,
+            dir.display()
+        ));
+        let target = effective_report_status_target(&config, "微信公众号日报").unwrap();
+
+        let report = report_status_json(&config, "微信公众号日报", &target, Vec::new());
+
+        assert_eq!(report["ready"], true);
+        assert_eq!(report["status"], "ready_for_first_publish");
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
     fn report_status_json_marks_recently_published_when_receipts_exist() {
         let dir = std::env::temp_dir().join(format!(
             "qunmind-reporting-published-{}",
