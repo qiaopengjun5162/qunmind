@@ -31,6 +31,12 @@ use std::sync::Arc;
 use tracing::{error, info};
 use tracing_subscriber::EnvFilter;
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ManualPublishPersistence {
+    saved: bool,
+    save_error: Option<String>,
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let env_filter = match EnvFilter::try_from_default_env() {
@@ -166,6 +172,17 @@ async fn run_diagnostic_command(
             } else {
                 None
             };
+            let publish_persistence = match publish_receipt.as_ref() {
+                Some(receipt) => Some(
+                    persist_manual_publish_receipt(
+                        build_message_store(config).await,
+                        &report_target.name,
+                        receipt,
+                    )
+                    .await,
+                ),
+                None => None,
+            };
             println!(
                 "{}",
                 serde_json::to_string_pretty(&serde_json::json!({
@@ -173,6 +190,8 @@ async fn run_diagnostic_command(
                     "report_name": report_target.name,
                     "output_path": output.display().to_string(),
                     "published": publish_receipt.is_some(),
+                    "publish_receipt_saved": publish_persistence.as_ref().is_some_and(|result| result.saved),
+                    "publish_receipt_save_error": publish_persistence.and_then(|result| result.save_error),
                     "publish_receipt": publish_receipt.map(|receipt| serde_json::json!({
                         "target": receipt.target,
                         "destination": receipt.destination,
@@ -221,6 +240,46 @@ async fn run_diagnostic_command(
                 ))?
             );
             Ok(())
+        }
+    }
+}
+
+async fn persist_manual_publish_receipt(
+    store_result: anyhow::Result<Arc<dyn MessageStore>>,
+    report_name: &str,
+    receipt: &qunmind::publisher::PublishReceipt,
+) -> ManualPublishPersistence {
+    if report_name.trim().is_empty() {
+        return ManualPublishPersistence {
+            saved: false,
+            save_error: Some(
+                "manual publish receipt was not saved because report_name is empty".to_string(),
+            ),
+        };
+    }
+
+    let store = match store_result {
+        Ok(store) => store,
+        Err(err) => {
+            error!(report_name = %report_name, error = %err, "手动日报发布成功，但初始化发布回执存储失败");
+            return ManualPublishPersistence {
+                saved: false,
+                save_error: Some(err.to_string()),
+            };
+        }
+    };
+
+    match store.save_publish_receipt(report_name, receipt).await {
+        Ok(()) => ManualPublishPersistence {
+            saved: true,
+            save_error: None,
+        },
+        Err(err) => {
+            error!(report_name = %report_name, error = %err, "手动日报发布成功，但保存发布回执失败");
+            ManualPublishPersistence {
+                saved: false,
+                save_error: Some(err.to_string()),
+            }
         }
     }
 }
@@ -449,6 +508,9 @@ mod tests {
     use qunmind::channel::IncomingMessage;
     use qunmind::channel::MsgType;
     use qunmind::channel::wx_cli::parse_wx_cli_messages_from_str;
+    use qunmind::publisher::PublishReceipt;
+    use qunmind::storage::{NewMessage, StoredMessage, StoredPublishReceipt};
+    use tokio::sync::Mutex;
 
     fn config_from(input: &str) -> Config {
         must(toml::from_str(input), "config")
@@ -493,6 +555,105 @@ mod tests {
             "write duplicate capture fixture",
         );
         path
+    }
+
+    #[derive(Default)]
+    struct RecordingPublishReceiptStore {
+        receipts: Mutex<Vec<(String, PublishReceipt)>>,
+    }
+
+    #[async_trait::async_trait]
+    impl MessageStore for RecordingPublishReceiptStore {
+        async fn save(&self, _message: NewMessage) -> qunmind::error::Result<()> {
+            Ok(())
+        }
+
+        async fn save_publish_receipt(
+            &self,
+            report_name: &str,
+            receipt: &PublishReceipt,
+        ) -> qunmind::error::Result<()> {
+            self.receipts
+                .lock()
+                .await
+                .push((report_name.to_string(), receipt.clone()));
+            Ok(())
+        }
+
+        async fn recent_publish_receipts(
+            &self,
+            report_name: &str,
+            limit: i64,
+        ) -> qunmind::error::Result<Vec<StoredPublishReceipt>> {
+            let mut receipts = self
+                .receipts
+                .lock()
+                .await
+                .iter()
+                .filter(|(name, _)| name == report_name)
+                .map(|(name, receipt)| StoredPublishReceipt {
+                    report_name: name.clone(),
+                    target: receipt.target.clone(),
+                    destination: receipt.destination.clone(),
+                    published_at: match chrono::DateTime::parse_from_rfc3339(&receipt.published_at)
+                    {
+                        Ok(time) => time.with_timezone(&chrono::Utc),
+                        Err(err) => panic!("receipt time {}: {}", receipt.published_at, err),
+                    },
+                    summary: receipt.summary.clone(),
+                    raw_output: receipt.raw_output.clone(),
+                })
+                .collect::<Vec<_>>();
+            receipts.truncate(limit.max(1) as usize);
+            Ok(receipts)
+        }
+
+        async fn text_messages(
+            &self,
+            _chat_id: &str,
+            _since: chrono::DateTime<chrono::Utc>,
+            _until: chrono::DateTime<chrono::Utc>,
+            _limit: i64,
+        ) -> qunmind::error::Result<Vec<StoredMessage>> {
+            Ok(Vec::new())
+        }
+    }
+
+    struct FailingPublishReceiptStore;
+
+    #[async_trait::async_trait]
+    impl MessageStore for FailingPublishReceiptStore {
+        async fn save(&self, _message: NewMessage) -> qunmind::error::Result<()> {
+            Ok(())
+        }
+
+        async fn save_publish_receipt(
+            &self,
+            _report_name: &str,
+            _receipt: &PublishReceipt,
+        ) -> qunmind::error::Result<()> {
+            Err(QunMindError::Storage("receipt store down".to_string()))
+        }
+
+        async fn text_messages(
+            &self,
+            _chat_id: &str,
+            _since: chrono::DateTime<chrono::Utc>,
+            _until: chrono::DateTime<chrono::Utc>,
+            _limit: i64,
+        ) -> qunmind::error::Result<Vec<StoredMessage>> {
+            Ok(Vec::new())
+        }
+    }
+
+    fn sample_publish_receipt() -> PublishReceipt {
+        PublishReceipt {
+            target: "wechat_draft".to_string(),
+            destination: "/tmp/articles".to_string(),
+            published_at: "2026-06-24T10:00:00+00:00".to_string(),
+            summary: "moonpub draft push completed".to_string(),
+            raw_output: "ok".to_string(),
+        }
     }
 
     #[test]
@@ -619,6 +780,44 @@ mod tests {
         };
 
         assert!(err.to_string().contains("dune_api_key"));
+    }
+
+    #[tokio::test]
+    async fn persist_manual_publish_receipt_saves_receipt_for_report_target() {
+        let store = Arc::new(RecordingPublishReceiptStore::default()) as Arc<dyn MessageStore>;
+        let receipt = sample_publish_receipt();
+
+        let persistence =
+            persist_manual_publish_receipt(Ok(store.clone()), "技术群日报", &receipt).await;
+
+        assert!(persistence.saved);
+        assert!(persistence.save_error.is_none());
+
+        let receipts = store
+            .recent_publish_receipts("技术群日报", 10)
+            .await
+            .expect("recent receipts");
+        assert_eq!(receipts.len(), 1);
+        assert_eq!(receipts[0].report_name, "技术群日报");
+        assert_eq!(receipts[0].target, "wechat_draft");
+    }
+
+    #[tokio::test]
+    async fn persist_manual_publish_receipt_surfaces_store_failure_without_throwing() {
+        let receipt = sample_publish_receipt();
+
+        let persistence = persist_manual_publish_receipt(
+            Ok(Arc::new(FailingPublishReceiptStore) as Arc<dyn MessageStore>),
+            "技术群日报",
+            &receipt,
+        )
+        .await;
+
+        assert!(!persistence.saved);
+        assert_eq!(
+            persistence.save_error,
+            Some("存储错误: receipt store down".to_string())
+        );
     }
 
     #[test]

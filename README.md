@@ -198,6 +198,8 @@ The current `wechat_rss` reader also normalizes a few common feed variants so mi
 
 For manual report rehearsals, `qunmind daily-report` can now target a configured report by name. Use `--report-name <name>` to reuse that target's `daily_quote` and related report settings, and add `--publish` when you want the same manual run to continue through the configured publisher boundary such as `output = "wechat"`.
 
+That manual publish path now also attempts to persist the structured publish receipt immediately. A successful manual draft push can therefore show up right away in `report-status` and `publish-history`. If the external publish succeeds but receipt persistence fails, the CLI JSON now exposes that split explicitly through `publish_receipt_saved = false` and `publish_receipt_save_error`, instead of collapsing both outcomes into one vague result.
+
 ## Multi-Platform Publishing Boundary
 
 QunMind should keep report generation and publish orchestration, but not become

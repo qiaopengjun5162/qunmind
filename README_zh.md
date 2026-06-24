@@ -191,6 +191,8 @@ QunMind 会在保存文本消息时抽取 `http://` / `https://` 链接，写入
 
 如果要手工联调日报，不再只能“随便生成一份 markdown”。`qunmind daily-report` 现在支持 `--report-name <name>` 复用已配置日报目标的 `daily_quote` 和相关目标配置；需要继续验证发布链路时，再加 `--publish`，就能沿着该目标的 publisher 边界继续往下跑，比如 `output = "wechat"` 的公众号草稿链路。
 
+这条手工发布链路现在也会尝试保存结构化发布回执，所以一次成功的手工推草稿会立刻反映到 `report-status` 和 `publish-history`。如果外部发布成功但回执保存失败，CLI JSON 会明确给出 `publish_receipt_saved = false` 和 `publish_receipt_save_error`，方便区分“草稿没推成”和“草稿推成了但内部状态没记住”。
+
 当前这层 `wechat_rss` 也补了几种常见 feed 字段兼容：Atom 的 `<author><name>`、RSS 的 `dc:creator`，以及 `pubDate` / `updated` / `published` / `dc:date` 时间字段都会尽量归一成统一的 `author` 和 UTC `published_at`，减少不同上游服务接入后摘要 prompt 字段风格漂移。
 
 ## 多平台发布边界
