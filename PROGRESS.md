@@ -37,7 +37,7 @@
    继续拆薄 `main.rs` 和 `src/mcp/tools.rs`，减少 wx-cli 命令适配重复。
 
 2. **真实 wx-cli 样本联调**  
-   用真实 capture fixture 验证 poll / dry-run / handle-once / send 的实际行为，而不是只停留在合成样本。
+   用脱敏后的 capture fixture 验证 poll / dry-run / handle-once / send 的实际行为，而不是只停留在合成样本。
 
 3. **`QunMind × moonpub` 联调固化**  
    把微信公众号日报依赖前置检查、联调清单和上线前提写实，避免“代码能调起 moonpub”被误判为“日报已经可上线”。
@@ -50,13 +50,14 @@
 我们下一步建议直接做：
 
 1. 把 `main.rs` 的 wx-cli 子命令分发再拆一层。
-2. 用真实 capture fixture 补 wx-cli 链路验证。
-3. 为真实 capture fixture 预留目录和测试入口。
+2. 扩充 `tests/fixtures/wx_cli/` 里的匿名化样本。
+3. 把 fixture 覆盖继续接到 handle-once / test-plan。
 
 ## 2026-06-23
 
 ### Done
 
+- **脱敏 wx-cli fixture 入口落地** — 新增 `tests/fixtures/wx_cli/` 目录、fixture README、`sample_capture.json` 和 `tests/wx_cli_fixture_test.rs`。现在项目已经有一条可持续扩展的“匿名化真实样本”测试入口，用来验证 wx-cli 导出字段兼容和 dry-run 决策，不用每次都靠内联合成 JSON。
 - **日报就绪状态视图落地** — 新增 `report-status` 顶层命令，直接输出某个日报目标的 `ready`、`blockers` 和 `recent_receipts`。这比把 `doctor`、`publish-history` 和配置手工拼起来更适合临近交付时快速判断“明天能不能用”。
 - **日报就绪状态接入 MCP** — 新增独立 `report_status` MCP tool，让 Agent / 外部系统也能直接读取 `ready`、`blockers` 和最近发布回执，而不用把这类运营状态查询塞进 wx-cli 诊断工具。
 - **日报状态判定去重** — 新增 `src/reporting.rs`，把 `report_name` 选择、日报目标解析、blocker 判定和发布回执 JSON 渲染从 `main.rs` / `src/mcp/tools.rs` 提成共享 helper，避免 CLI 与 MCP 维护两套“明天能不能用”的判断逻辑。

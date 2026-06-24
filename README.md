@@ -67,7 +67,7 @@ Final goal:
 Next small goals:
 
 1. Keep shrinking `main.rs` and `src/mcp/tools.rs` by removing command-layer duplication.
-2. Add real wx-cli capture fixtures to validate poll / dry-run / handle-once / send against real samples.
+2. Expand the sanitized wx-cli fixture set so poll / dry-run / handle-once / send are exercised against more realistic samples.
 3. Surface `moonpub` and `public_sources` prerequisites before a WeChat daily-report target is treated as ready.
 4. Verify multi-group persona, context, and `schedule.daily_reports` combinations in practice.
 5. Keep README / PROGRESS / AGENTS aligned so project status is reusable for internal and external communication.
@@ -75,7 +75,7 @@ Next small goals:
 Immediate next step:
 
 1. Continue modularizing the wx-cli command orchestration layer.
-2. Create a fixture/testing entry for real captures.
+2. Expand the new `tests/fixtures/wx_cli/` entry with more anonymized real samples.
 3. Keep the stage summary in docs continuously up to date.
 
 ## Daily Report Integration Status

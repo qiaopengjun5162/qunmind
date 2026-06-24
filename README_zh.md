@@ -59,7 +59,7 @@
 接下来几个小目标：
 
 1. 继续拆薄 `main.rs` 和 `src/mcp/tools.rs`，减少命令层重复。
-2. 补真实 wx-cli capture fixture，验证 poll / dry-run / handle-once / send。
+2. 扩充已建立的脱敏 wx-cli fixture，继续验证 poll / dry-run / handle-once / send。
 3. 把微信公众号日报的 `moonpub` / `public_sources` 依赖前置暴露，减少“定时任务跑到一半才发现缺配置”。
 4. 实测多群 persona、群级 context 和 `schedule.daily_reports` 组合行为。
 5. 持续同步 README / PROGRESS / AGENTS，让项目进度对内对外都清楚。
@@ -67,7 +67,7 @@
 下一步马上要做的事：
 
 1. 继续做 wx-cli 命令编排层模块化。
-2. 为真实 capture fixture 建立目录和测试入口。
+2. 往新的 `tests/fixtures/wx_cli/` 里补更多匿名化真实样本。
 3. 让 README / PROGRESS 的阶段描述持续可复用。
 
 ## 日报联调状态
