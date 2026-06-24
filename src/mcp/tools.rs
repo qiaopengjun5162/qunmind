@@ -1,8 +1,6 @@
 use std::path::PathBuf;
 
-use crate::channel::wx_cli::{
-    WxCliChannel, load_wx_cli_messages_from_file, write_wx_cli_capture_file,
-};
+use crate::channel::wx_cli::{WxCliChannel, write_wx_cli_capture_file};
 use crate::config::Config;
 use crate::diagnostic;
 use crate::reporting::{
@@ -11,6 +9,7 @@ use crate::reporting::{
 };
 use crate::storage::MessageStore;
 use crate::storage::postgres::PostgresMessageStore;
+use crate::wx_cli_runtime;
 
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct Tool {
@@ -282,7 +281,13 @@ fn tool_doctor(config: &Config, args: &serde_json::Value) -> anyhow::Result<Stri
         .get("limit")
         .and_then(|v| v.as_u64())
         .map_or(10, |v| v as usize);
-    let messages = load_messages_or_none(config, args)?;
+    let messages = wx_cli_runtime::maybe_load_messages(
+        config,
+        args.get("input")
+            .and_then(|v| v.as_str())
+            .map(PathBuf::from)
+            .as_deref(),
+    )?;
     let report = diagnostic::wx_cli_doctor_report(config, messages.as_deref(), limit);
     Ok(serde_json::to_string_pretty(&report)?)
 }
@@ -324,13 +329,7 @@ fn tool_test_plan(
     let shell = args.get("shell").and_then(|v| v.as_bool()).unwrap_or(false);
 
     let input = input.map(PathBuf::from);
-    let messages = match input.as_ref() {
-        Some(input) => Some(load_wx_cli_messages_from_file(
-            input,
-            &config.wx_cli.group_chat_id,
-        )?),
-        None => None,
-    };
+    let messages = wx_cli_runtime::maybe_load_messages(config, input.as_deref())?;
 
     let plan = diagnostic::wx_cli_formal_test_plan(
         config,
@@ -355,31 +354,18 @@ fn tool_dry_run(config: &Config, args: &serde_json::Value) -> anyhow::Result<Str
         .and_then(|v| v.as_u64())
         .map_or(10, |v| v as usize);
     let message_id = args.get("message_id").and_then(|v| v.as_str());
-    let messages =
-        load_wx_cli_messages_from_file(&required_input_path(args)?, &config.wx_cli.group_chat_id)?;
-
-    let total_polled = messages.len();
-    if let Some(report) =
-        diagnostic::wx_cli_dry_run_message_id_guard_report(&messages, total_polled, message_id)
-    {
-        return Ok(serde_json::to_string_pretty(&report)?);
-    }
-
-    let selected = diagnostic::select_wx_cli_messages(messages, message_id, limit);
-    let report = diagnostic::wx_cli_dry_run_report(config, total_polled, &selected);
+    let input = required_input_path(args)?;
+    let messages = wx_cli_runtime::load_messages_from_file(config, input.as_path())?;
+    let report = wx_cli_runtime::dry_run_json(config, messages, message_id, limit);
     Ok(serde_json::to_string_pretty(&report)?)
 }
 
 async fn tool_poll(config: &Config, args: &serde_json::Value) -> anyhow::Result<String> {
-    let messages = if let Some(input) = args.get("input").and_then(|v| v.as_str()) {
-        load_wx_cli_messages_from_file(&PathBuf::from(input), &config.wx_cli.group_chat_id)?
-    } else {
-        let channel = WxCliChannel::new(&config.wx_cli);
-        channel
-            .poll_once()
-            .await
-            .map_err(|e| anyhow::anyhow!("wx-cli poll failed: {e}"))?
-    };
+    let input = args
+        .get("input")
+        .and_then(|v| v.as_str())
+        .map(PathBuf::from);
+    let messages = wx_cli_runtime::load_messages(config, input.as_deref()).await?;
     Ok(serde_json::to_string_pretty(&messages)?)
 }
 
@@ -403,13 +389,10 @@ async fn tool_handle_once(config: &Config, args: &serde_json::Value) -> anyhow::
         .get("limit")
         .and_then(|v| v.as_u64())
         .map_or(1, |v| v as usize);
-    let messages =
-        load_wx_cli_messages_from_file(&required_input_path(args)?, &config.wx_cli.group_chat_id)?;
-
-    // MCP tools never send real WeChat messages.
-    let (report, _suppressed) =
-        diagnostic::wx_cli_handle_once_pipeline(config, messages, message_id, limit, true, true)
-            .await;
+    let input = required_input_path(args)?;
+    let messages = wx_cli_runtime::load_messages(config, Some(input.as_path())).await?;
+    let report =
+        wx_cli_runtime::handle_once_json(config, messages, message_id, limit, true, true).await;
     Ok(serde_json::to_string_pretty(&report)?)
 }
 
@@ -428,19 +411,6 @@ fn required_string(args: &serde_json::Value, key: &str) -> anyhow::Result<String
 fn required_input_path(args: &serde_json::Value) -> anyhow::Result<PathBuf> {
     let input = required_string(args, "input")?;
     Ok(PathBuf::from(input))
-}
-
-fn load_messages_or_none(
-    config: &Config,
-    args: &serde_json::Value,
-) -> anyhow::Result<Option<Vec<crate::channel::IncomingMessage>>> {
-    match args.get("input").and_then(|v| v.as_str()) {
-        Some(input) => Ok(Some(load_wx_cli_messages_from_file(
-            &PathBuf::from(input),
-            &config.wx_cli.group_chat_id,
-        )?)),
-        None => Ok(None),
-    }
 }
 
 #[cfg(test)]

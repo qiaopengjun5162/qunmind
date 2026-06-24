@@ -5,17 +5,13 @@ use qunmind::ai::hermes::HermesClient;
 use qunmind::ai::openai::OpenAiClient;
 use qunmind::bot::handler::BotHandler;
 use qunmind::channel::Channel;
-use qunmind::channel::IncomingMessage;
 use qunmind::channel::wecom::WeComChannel;
-use qunmind::channel::wx_cli::{
-    WxCliChannel, load_wx_cli_messages_from_file, write_wx_cli_capture_file,
-};
+use qunmind::channel::wx_cli::{WxCliChannel, write_wx_cli_capture_file};
 use qunmind::cli::{Args, CliCommand, WxCliCommand};
 use qunmind::config::{AiProvider, ChannelKind, Config};
 use qunmind::daily_report::DailyReportGenerator;
 use qunmind::diagnostic::{
-    select_wx_cli_messages, wx_cli_capture_report, wx_cli_doctor_report,
-    wx_cli_dry_run_message_id_guard_report, wx_cli_dry_run_report, wx_cli_formal_test_plan,
+    wx_cli_capture_report, wx_cli_doctor_report, wx_cli_formal_test_plan,
     wx_cli_formal_test_plan_shell_script,
 };
 use qunmind::error::QunMindError;
@@ -28,6 +24,7 @@ use qunmind::source;
 use qunmind::source::PublicNewsSource;
 use qunmind::storage::MessageStore;
 use qunmind::storage::postgres::PostgresMessageStore;
+use qunmind::wx_cli_runtime;
 use std::path::Path;
 use std::sync::Arc;
 use tracing::{error, info};
@@ -212,10 +209,7 @@ async fn run_wx_cli_command(
 ) -> anyhow::Result<()> {
     match command {
         WxCliCommand::Doctor { input, limit } => {
-            let messages = match input.as_ref() {
-                Some(input) => Some(load_wx_cli_messages(config, Some(input)).await?),
-                None => None,
-            };
+            let messages = wx_cli_runtime::maybe_load_messages(config, input.as_deref())?;
             println!(
                 "{}",
                 serde_json::to_string_pretty(&wx_cli_doctor_report(
@@ -226,7 +220,7 @@ async fn run_wx_cli_command(
             );
         }
         WxCliCommand::Capture { output } => {
-            let messages = load_wx_cli_messages(config, None).await?;
+            let messages = wx_cli_runtime::load_messages(config, None).await?;
             write_wx_cli_capture_file(&output, &messages)?;
             println!(
                 "{}",
@@ -246,10 +240,7 @@ async fn run_wx_cli_command(
             text,
             shell,
         } => {
-            let messages = match input.as_ref() {
-                Some(input) => Some(load_wx_cli_messages(config, Some(input)).await?),
-                None => None,
-            };
+            let messages = wx_cli_runtime::maybe_load_messages(config, input.as_deref())?;
             let capture_file = match input.as_ref() {
                 Some(input) => input,
                 None => &capture_file,
@@ -270,7 +261,7 @@ async fn run_wx_cli_command(
             }
         }
         WxCliCommand::Poll { input } => {
-            let messages = load_wx_cli_messages(config, input.as_ref()).await?;
+            let messages = wx_cli_runtime::load_messages(config, input.as_deref()).await?;
             println!("{}", serde_json::to_string_pretty(&messages)?);
         }
         WxCliCommand::DryRun {
@@ -278,25 +269,10 @@ async fn run_wx_cli_command(
             message_id,
             limit,
         } => {
-            let messages = load_wx_cli_messages(config, input.as_ref()).await?;
-            let total_polled = messages.len();
-            if let Some(report) = wx_cli_dry_run_message_id_guard_report(
-                &messages,
-                total_polled,
-                message_id.as_deref(),
-            ) {
-                println!("{}", serde_json::to_string_pretty(&report)?);
-                return Ok(());
-            }
-            let messages = select_wx_cli_messages(messages, message_id.as_deref(), limit);
-            println!(
-                "{}",
-                serde_json::to_string_pretty(&wx_cli_dry_run_report(
-                    config,
-                    total_polled,
-                    &messages
-                ))?
-            );
+            let messages = wx_cli_runtime::load_messages(config, input.as_deref()).await?;
+            let report =
+                wx_cli_runtime::dry_run_json(config, messages, message_id.as_deref(), limit);
+            println!("{}", serde_json::to_string_pretty(&report)?);
         }
         WxCliCommand::HandleOnce {
             input,
@@ -305,20 +281,15 @@ async fn run_wx_cli_command(
             no_send,
         } => {
             // handle-once exercises the real reply pipeline, so the default limit stays low to avoid chat spam.
-            let wx_channel = Arc::new(WxCliChannel::new(&config.wx_cli));
-            let messages = if input.is_some() {
-                load_wx_cli_messages(config, input.as_ref()).await?
-            } else {
-                wx_channel.poll_once().await?
-            };
-
-            let (report, _suppressed_replies) = qunmind::diagnostic::wx_cli_handle_once_pipeline(
+            let require_explicit_message_id = input.is_some();
+            let messages = wx_cli_runtime::load_messages(config, input.as_deref()).await?;
+            let report = wx_cli_runtime::handle_once_json(
                 config,
                 messages,
                 message_id.as_deref(),
                 limit,
                 no_send,
-                input.is_some(),
+                require_explicit_message_id,
             )
             .await;
             println!("{}", serde_json::to_string_pretty(&report)?);
@@ -392,21 +363,10 @@ async fn run_wx_cli_command(
     Ok(())
 }
 
-async fn load_wx_cli_messages(
-    config: &Config,
-    input: Option<&std::path::PathBuf>,
-) -> anyhow::Result<Vec<IncomingMessage>> {
-    if let Some(input) = input {
-        return load_wx_cli_messages_from_file(input, &config.wx_cli.group_chat_id);
-    }
-
-    let channel = WxCliChannel::new(&config.wx_cli);
-    Ok(channel.poll_once().await?)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use qunmind::channel::IncomingMessage;
     use qunmind::channel::MsgType;
     use qunmind::channel::wx_cli::parse_wx_cli_messages_from_str;
 
@@ -601,7 +561,10 @@ mod tests {
         must(write_result, "write fixture");
         let config = config_from("");
 
-        let messages = must(load_wx_cli_messages(&config, Some(&path)).await, "messages");
+        let messages = must(
+            wx_cli_runtime::load_messages(&config, Some(path.as_path())).await,
+            "messages",
+        );
 
         must(std::fs::remove_file(path), "remove fixture");
         assert_eq!(messages.len(), 1);
