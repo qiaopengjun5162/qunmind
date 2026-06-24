@@ -211,6 +211,11 @@ Recommended order:
 - generate local markdown first and verify the RSS-backed article material appears in the report
 - only then run `report-publish` to push the draft through `moonpub`
 
+This path has now been verified with one real draft push:
+- `report-status` can advance to `recently_published`
+- `publish-history` now returns the first successful receipt
+- even when `moonpub` reports `automation: login timeout: QR code not scanned within 120s`, that warning did not block this draft from reaching the WeChat draft box
+
 Notes:
 - `just db-create` only creates the default local PostgreSQL database when it is missing; tables are still created by QunMind at runtime
 - `just report-publish` is a real external publish action and may send stored report material to the configured AI / publisher chain

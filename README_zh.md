@@ -216,6 +216,11 @@ just report-history report="微信公众号日报"
 - 再生成一版本地 markdown，确认 RSS 上游内容已经进入日报素材
 - 最后再执行 `report-publish` 推到 `moonpub` 的公众号草稿箱
 
+当前这条链路已经完成过一次真实试发验证：
+- `report-status` 可到 `recently_published`
+- `publish-history` 已能查到首条成功回执
+- `moonpub` 原始输出里即使带 `automation: login timeout: QR code not scanned within 120s`，本次也没有阻止草稿成功推入公众号草稿箱
+
 这里的语义要记清：
 - `wechat_bin` / `wechat_articles_dir` 缺失是硬 blocker
 - `WECHAT_APPID` / `WECHAT_SECRET` 缺失也是 `output = "wechat"` 真实推草稿前的硬 blocker
