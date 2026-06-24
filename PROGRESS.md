@@ -53,6 +53,29 @@
 2. 扩充 `tests/fixtures/wx_cli/` 里的匿名化样本。
 3. 把 fixture 覆盖继续接到 handle-once / test-plan。
 
+如果目标切到“明天能不能把公众号日报草稿推出来”，当前最短操作路径已经收口成：
+
+1. `just db-create`
+2. `just report-status report="微信公众号日报"`
+3. `just report-markdown report="微信公众号日报" output="/tmp/wechat-report.md"`
+4. 用户明确批准后，再执行 `just report-publish report="微信公众号日报" output="/tmp/wechat-report.md"`
+5. `just report-history report="微信公众号日报"`
+
+## 2026-06-24
+
+### Done
+
+- **公众号日报 Justfile 标准入口补齐** — `Justfile` 现在新增了 `db-create`、`report-status`、`report-markdown`、`report-history` 和 `report-publish`。这让“先补数据库、再看 readiness、再生成 markdown、最后决定是否真实推草稿”的联调路径第一次有了统一入口，不再要求操作者手动拼一长串 `cargo run` 命令。
+- **真实本机 readiness 结果落地** — 已在本机 PostgreSQL 可用的前提下补建默认 `qunmind` 数据库，并重新执行公众号日报状态检查。当前 `report-status --report-name "微信公众号日报"` 的真实结果是 `status = "ready_for_first_publish"`、`ready = true`、`blockers = []`，说明代码侧和配置侧已经进入“可做第一次真实试发”的阶段。
+- **发布历史初始状态确认** — `publish-history --report-name "微信公众号日报"` 当前返回空列表，说明还没有成功试发回执。这一点很重要：项目不是“日报功能不存在”，而是“日报 readiness 已通过，但还缺第一次真实 publish 记录”。
+- **公众号日报文档入口统一到 Justfile** — `README.md`、`README_zh.md` 和 `AGENTS.md` 现在都改成同一条标准路径：`just db-create -> just report-status -> just report-markdown -> just report-publish -> just report-history`。这把之前分散在聊天、README 和命令行里的知识收口成可复制的操作流程。
+
+### Verified
+
+- `cargo run -- report-status --report-name "微信公众号日报"`：在补建本机 `qunmind` 数据库后返回 `ready_for_first_publish`
+- `cargo run -- publish-history --report-name "微信公众号日报"`：返回 `count = 0`
+- PR #41 CI：`test = pass`，`docker = pass`
+
 ## 2026-06-23
 
 ### Done
@@ -70,6 +93,8 @@
 - **公众号日报 readiness 口径修正** — `report-status` / `wx-cli doctor` 现在不再把“未启用 `public_sources`”视为一刀切的硬 blocker。更准确的语义是：`moonpub` 二进制和 articles 目录仍是硬前提，而 `public_sources` 只是在“群消息为空时无法回退生成”的风险提示。这样状态页终于和代码的真实运行条件一致，不会再把“群消息充足、其实能正常出稿”的目标误判成 blocked。
 - **公众号 RSS 日报联调模板补齐** — `config.example.toml` 与 `config.docker.example.toml` 现在直接给出 RSS-backed 微信公众号日报示例，默认展示 `wechat_rss_enabled = true` 和示例 `wechat_rss_urls`，更贴近“拿到 RSS 上游后立刻联调公众号日报”的真实使用场景。
 - **公众号 RSS 最短联调路径补档** — README / README_zh / AGENTS 已补上 `report-status -> daily-report --output -> daily-report --publish -> publish-history` 这条最短命令序列，并明确区分硬 blocker 与空群回退 warning。现在当用户只关心“今天能不能把公众号日报草稿推出来”时，可以直接照着跑，而不是再从零拼命令。
+- **日报联调 Justfile 入口补齐** — `Justfile` 现在新增 `db-create`、`report-status`、`report-markdown`、`report-publish` 和 `report-history`，把“补本地业务库 -> 看 readiness -> 只生成 markdown -> 真实推送 -> 查回执”收口成一套标准入口，减少临近交付时继续手敲长串 `cargo run` 命令。
+- **真实本机 readiness 已验证** — 通过本机 PostgreSQL 实测，默认 `qunmind` 数据库原先缺失，补建后 `report-status --report-name "微信公众号日报"` 已返回 `ready_for_first_publish`、`blockers = []`、`recent_receipts = []`。当前真正还没完成的是第一次手工试发，而不是日报目标定义或 readiness 判定逻辑。
 - **`handle-once` 安全边界补测试** — 新增针对 `diagnostic` guard 和 MCP `wxcli_handle_once` 的测试，覆盖“多消息 capture 未指定 `message_id` 必须阻断”的场景。现在这条规则不只写在说明里，而是被测试固定住了。
 - **脱敏 wx-cli fixture 入口落地** — 新增 `tests/fixtures/wx_cli/` 目录、fixture README、`sample_capture.json`、`unique_group_candidate.json`、`direct_only.json`、`multiple_group_candidates.json` 和 `tests/wx_cli_fixture_test.rs`。现在项目已经有一条可持续扩展的“匿名化真实样本”测试入口，既能验证 wx-cli 导出字段兼容和 dry-run 决策，也能覆盖“唯一群聊候选可直接推荐重放”“只有私聊样本时正式群测必须阻塞”以及“多个群聊候选并存时必须显式选择 `--message-id`”。
 - **日报就绪状态视图继续补强** — `report-status` / `report_status` 现在不只输出 `ready`、`blockers` 和 `recent_receipts`，还会给出更直白的 `status` 与 `next_steps`。这组下一步建议也进一步收紧成更贴近操作者动作的提示，例如“修好 moonpub 后重新跑 report-status”“生成 markdown 并推草稿后再复查状态”，这样临近交付时更容易直接照着执行。

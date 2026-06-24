@@ -204,20 +204,23 @@ QunMind 会在保存文本消息时抽取 `http://` / `https://` 链接，写入
 如果你现在已经有公众号 RSS / Atom 上游，最短联调路径可以直接按下面跑：
 
 ```bash
-cargo run -- report-status --report-name "微信公众号日报"
-cargo run -- daily-report --report-name "微信公众号日报" --output /tmp/wechat-report.md
-cargo run -- daily-report --report-name "微信公众号日报" --publish
-cargo run -- publish-history --report-name "微信公众号日报"
+just db-create
+just report-status report="微信公众号日报"
+just report-markdown report="微信公众号日报" output="/tmp/wechat-report.md"
+just report-publish report="微信公众号日报" output="/tmp/wechat-report.md"
+just report-history report="微信公众号日报"
 ```
 
 推荐顺序是：
 - 先确认 `report-status` 显示 `ready_for_first_publish`，并区分好硬 blocker 与 warning
 - 再生成一版本地 markdown，确认 RSS 上游内容已经进入日报素材
-- 最后再加 `--publish` 推到 `moonpub` 的公众号草稿箱
+- 最后再执行 `report-publish` 推到 `moonpub` 的公众号草稿箱
 
 这里的语义要记清：
 - `wechat_bin` / `wechat_articles_dir` 缺失是硬 blocker
 - `wechat_daily_report_public_sources_disabled_for_empty_group_fallback` 只是 warning，表示“如果目标群当天为空，将没有 RSS / 公共来源回退素材”
+- `just db-create` 只负责在默认本地 PostgreSQL 缺库时补建 `qunmind` 数据库，表结构仍由 QunMind 启动时自动初始化
+- `just report-publish` 会触发真实外部发布链路，也可能把日报素材发送到当前配置的 AI / publisher
 
 ## 多平台发布边界
 

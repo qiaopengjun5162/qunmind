@@ -82,6 +82,8 @@
 
 `storage.database_url` 默认是 `postgres://postgres:postgres@localhost:5432/qunmind`。本地运行前需要先创建 PostgreSQL 数据库；QunMind 启动时会自动创建当前需要的表和索引。
 
+如果只是补齐默认本地日报试发环境，优先使用 `just db-create` 创建缺失的 `qunmind` 数据库，再跑 `just report-status` / `just report-markdown`；不要把这条入口泛化成修改任意生产数据库的通用脚本。
+
 部署工程化已包含 `Dockerfile`、`docker-compose.yml`、`config.docker.example.toml` 和 `DEPLOYMENT.md`。Compose 默认启动 QunMind + PostgreSQL，并把本地 `config.toml` 只读挂载到 `/app/config.toml`；不要把 `config.toml` 复制进镜像或提交到仓库。Docker/Compose 更适合企业微信内部群、日报和 PG 持久化；普通微信 wx-cli 通道通常依赖宿主机 WeChat session 和宿主 CLI/daemon，容器化前必须先确认 socket、HTTP endpoint 或二进制挂载方案，不要默认认为容器能访问本机微信数据。
 
 重要边界：企业微信智能机器人只能按企业微信内部群通道使用，不要假定它可以进入企业微信外部群/客户群。外部群和普通微信群需要单独评估客户群 API、会话内容存档、客户端采集、托管微信号或其他非智能机器人入口。
@@ -93,6 +95,11 @@
 - `just clippy`：运行 clippy，警告视为错误
 - `just test`：使用 `cargo nextest run --all-features`
 - `just check-all`：完整检查
+- `just db-create`：在默认本地 PostgreSQL 缺库时补建 `qunmind`
+- `just report-status report="微信公众号日报"`：查看公众号日报 readiness
+- `just report-markdown report="微信公众号日报" output="/tmp/wechat-report.md"`：只生成本地日报 markdown，不触发发布
+- `just report-publish report="微信公众号日报" output="/tmp/wechat-report.md"`：沿正式 publisher 边界真实推送日报
+- `just report-history report="微信公众号日报"`：查看最近发布回执
 - `just run`：运行本地服务
 - `just docker-build`：构建本地 Docker 镜像 `qunmind:local`
 - `just compose-config`：检查 Docker Compose 最终配置
@@ -138,6 +145,7 @@
 ## 本地约束
 
 - `config.toml` 包含本地凭据，默认不要读取、修改或提交；需要示例配置时使用 `config.example.toml`。
+- `just report-publish` 会触发真实外部发布链路，也可能向当前配置的 AI / publisher 发送本地素材；未获明确同意时，优先停在 `just report-status` / `just report-markdown`。
 - `config.toml` 已被 `.gitignore` 忽略，初始化或格式化时不要把它纳入批量 TOML 格式化命令；`just fmt` / `just fmt-check` 只覆盖 `config.example.toml` 和 `config.docker.example.toml`。
 - Docker 部署示例使用 `config.docker.example.toml`；真实部署仍复制成本地 `config.toml` 后挂载，不能把真实凭据写入 `docker-compose.yml`、Dockerfile、CI workflow 或 GHCR image layer。
 - `tests/` 已初始化，新增对外行为测试时放在这里，命名使用 `*_test.rs`。

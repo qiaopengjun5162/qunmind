@@ -80,6 +80,30 @@ mcp config='config.toml':
     cargo run -- --config {{config}} mcp
 
 # ============================================================
+# 日报联调
+# ============================================================
+
+# 创建本地 PostgreSQL 业务库（若已存在则跳过）
+db-create db='qunmind':
+    psql "postgres://postgres:postgres@localhost:5432/postgres" -tAc "SELECT 1 FROM pg_database WHERE datname = '{{db}}'" | grep -q 1 || psql "postgres://postgres:postgres@localhost:5432/postgres" -c "CREATE DATABASE {{db}} OWNER postgres;"
+
+# 查看日报 readiness
+report-status report='微信公众号日报' config='config.toml' limit='5':
+    cargo run -- --config {{config}} report-status --report-name "{{report}}" --limit {{limit}}
+
+# 生成本地日报 markdown（不发布）
+report-markdown report='微信公众号日报' output='/tmp/wechat-report.md' config='config.toml':
+    cargo run -- --config {{config}} daily-report --report-name "{{report}}" --output {{output}}
+
+# 查看日报发布历史
+report-history report='微信公众号日报' config='config.toml' limit='5':
+    cargo run -- --config {{config}} publish-history --report-name "{{report}}" --limit {{limit}}
+
+# 推送日报到已配置 publisher（会触发真实外部发布）
+report-publish report='微信公众号日报' output='/tmp/wechat-report.md' config='config.toml':
+    cargo run -- --config {{config}} daily-report --report-name "{{report}}" --output {{output}} --publish
+
+# ============================================================
 # wx-cli 诊断
 # ============================================================
 

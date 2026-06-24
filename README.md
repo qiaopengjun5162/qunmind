@@ -199,16 +199,21 @@ The current `wechat_rss` reader also normalizes a few common feed variants so mi
 If you already have a WeChat public-account RSS / Atom upstream, the shortest rehearsal flow is:
 
 ```bash
-cargo run -- report-status --report-name "微信公众号日报"
-cargo run -- daily-report --report-name "微信公众号日报" --output /tmp/wechat-report.md
-cargo run -- daily-report --report-name "微信公众号日报" --publish
-cargo run -- publish-history --report-name "微信公众号日报"
+just db-create
+just report-status report="微信公众号日报"
+just report-markdown report="微信公众号日报" output="/tmp/wechat-report.md"
+just report-publish report="微信公众号日报" output="/tmp/wechat-report.md"
+just report-history report="微信公众号日报"
 ```
 
 Recommended order:
 - confirm `report-status` shows `ready_for_first_publish`
 - generate local markdown first and verify the RSS-backed article material appears in the report
-- then add `--publish` to push the draft through `moonpub`
+- only then run `report-publish` to push the draft through `moonpub`
+
+Notes:
+- `just db-create` only creates the default local PostgreSQL database when it is missing; tables are still created by QunMind at runtime
+- `just report-publish` is a real external publish action and may send stored report material to the configured AI / publisher chain
 
 Semantics to keep in mind:
 - missing `wechat_bin` / `wechat_articles_dir` is a hard blocker
