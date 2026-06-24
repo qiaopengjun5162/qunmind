@@ -196,6 +196,8 @@ For WeChat public-account article material, QunMind now prefers a lighter integr
 
 The current `wechat_rss` reader also normalizes a few common feed variants so mixed upstream services stay usable: Atom `<author><name>`, RSS `dc:creator`, and `pubDate` / `updated` / `published` / `dc:date` timestamps are mapped into the same `author` and UTC `published_at` fields before they enter the daily-report prompt.
 
+For manual report rehearsals, `qunmind daily-report` can now target a configured report by name. Use `--report-name <name>` to reuse that target's `daily_quote` and related report settings, and add `--publish` when you want the same manual run to continue through the configured publisher boundary such as `output = "wechat"`.
+
 ## Multi-Platform Publishing Boundary
 
 QunMind should keep report generation and publish orchestration, but not become

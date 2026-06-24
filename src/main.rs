@@ -15,6 +15,7 @@ use qunmind::diagnostic::{
     wx_cli_formal_test_plan_shell_script,
 };
 use qunmind::error::QunMindError;
+use qunmind::publisher::{PublishTarget, publish_markdown};
 use qunmind::reporting::{
     effective_publish_history_name, effective_report_status_target, publish_receipt_json,
     report_status_json,
@@ -138,18 +139,49 @@ async fn run_diagnostic_command(
             qunmind::mcp::run(config_path.to_path_buf()).await?;
             Ok(())
         }
-        CliCommand::DailyReport { output, hours: _ } => {
+        CliCommand::DailyReport {
+            output,
+            report_name,
+            hours: _,
+            publish,
+        } => {
             let ai_client = build_ai_client(config)?;
             let public_news_source = build_public_news_source(config)?.ok_or_else(|| {
                 QunMindError::Config("daily-report 需要启用至少一个 public_sources".to_string())
             })?;
+            let report_target = resolve_manual_daily_report_target(config, &report_name)?;
 
-            let generator = DailyReportGenerator::new(ai_client, public_news_source, String::new());
+            let generator = DailyReportGenerator::new(
+                ai_client,
+                public_news_source,
+                report_target.daily_quote.clone(),
+            );
 
             let markdown = generator.generate().await?;
             std::fs::write(&output, &markdown)
                 .with_context(|| format!("写入日报文件失败: {}", output.display()))?;
-            println!("日报已写入 {}", output.display());
+            let publish_receipt = if publish {
+                let target = manual_daily_report_publish_target(&report_target)?;
+                Some(publish_markdown(&markdown, &target)?)
+            } else {
+                None
+            };
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&serde_json::json!({
+                    "ok": true,
+                    "report_name": report_target.name,
+                    "output_path": output.display().to_string(),
+                    "published": publish_receipt.is_some(),
+                    "publish_receipt": publish_receipt.map(|receipt| serde_json::json!({
+                        "target": receipt.target,
+                        "destination": receipt.destination,
+                        "published_at": receipt.published_at,
+                        "summary": receipt.summary,
+                        "raw_output": receipt.raw_output,
+                    })),
+                }))?
+            );
             Ok(())
         }
         CliCommand::PublishHistory { report_name, limit } => {
@@ -190,6 +222,63 @@ async fn run_diagnostic_command(
             );
             Ok(())
         }
+    }
+}
+
+#[derive(Debug, Clone)]
+struct ManualDailyReportTarget {
+    name: String,
+    output: String,
+    daily_quote: String,
+    wechat_bin: String,
+    wechat_articles_dir: String,
+}
+
+fn resolve_manual_daily_report_target(
+    config: &Config,
+    report_name: &str,
+) -> anyhow::Result<ManualDailyReportTarget> {
+    if report_name.trim().is_empty() {
+        return Ok(ManualDailyReportTarget {
+            name: String::new(),
+            output: "markdown".to_string(),
+            daily_quote: String::new(),
+            wechat_bin: String::new(),
+            wechat_articles_dir: String::new(),
+        });
+    }
+
+    let report = config
+        .schedule
+        .daily_reports
+        .iter()
+        .find(|report| report.name == report_name || report.chat_id == report_name)
+        .ok_or_else(|| {
+            QunMindError::Config(format!("daily-report 找不到日报目标: {}", report_name))
+        })?;
+
+    Ok(ManualDailyReportTarget {
+        name: report.name.clone(),
+        output: report.output.clone(),
+        daily_quote: report.daily_quote.clone(),
+        wechat_bin: report.wechat_bin.clone(),
+        wechat_articles_dir: report.wechat_articles_dir.clone(),
+    })
+}
+
+fn manual_daily_report_publish_target(
+    report_target: &ManualDailyReportTarget,
+) -> anyhow::Result<PublishTarget> {
+    match report_target.output.as_str() {
+        "wechat" => Ok(PublishTarget::WechatDraft {
+            bin: report_target.wechat_bin.clone(),
+            articles_dir: report_target.wechat_articles_dir.clone(),
+        }),
+        other => Err(QunMindError::Config(format!(
+            "daily-report --publish 暂不支持 output = {}",
+            other
+        ))
+        .into()),
     }
 }
 
@@ -530,6 +619,48 @@ mod tests {
         };
 
         assert!(err.to_string().contains("dune_api_key"));
+    }
+
+    #[test]
+    fn resolve_manual_daily_report_target_uses_named_daily_report() {
+        let config = config_from(
+            r#"
+            [[schedule.daily_reports]]
+            chat_id = "group-1"
+            name = "技术群日报"
+            output = "wechat"
+            daily_quote = "stay hungry"
+            wechat_bin = "moonpub"
+            wechat_articles_dir = "/tmp/articles"
+            "#,
+        );
+
+        let target = must(
+            resolve_manual_daily_report_target(&config, "技术群日报"),
+            "manual daily report target",
+        );
+
+        assert_eq!(target.name, "技术群日报");
+        assert_eq!(target.output, "wechat");
+        assert_eq!(target.daily_quote, "stay hungry");
+        assert_eq!(target.wechat_bin, "moonpub");
+        assert_eq!(target.wechat_articles_dir, "/tmp/articles");
+    }
+
+    #[test]
+    fn manual_daily_report_publish_target_rejects_non_wechat_output() {
+        let err = match manual_daily_report_publish_target(&ManualDailyReportTarget {
+            name: "技术群日报".to_string(),
+            output: "channel".to_string(),
+            daily_quote: String::new(),
+            wechat_bin: String::new(),
+            wechat_articles_dir: String::new(),
+        }) {
+            Ok(_) => panic!("non-wechat output should fail"),
+            Err(err) => err,
+        };
+
+        assert!(err.to_string().contains("暂不支持"));
     }
 
     #[tokio::test]

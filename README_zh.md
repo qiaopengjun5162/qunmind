@@ -189,6 +189,8 @@ QunMind 会在保存文本消息时抽取 `http://` / `https://` 链接，写入
 
 当前已经先落了一版更轻的接入方向：`[public_sources] wechat_rss_*`。它允许 QunMind 直接消费公众号文章 RSS / Atom 上游输出，适合对接 `wechat-download-api` 一类独立服务，但仍然保持主机器人进程不承载扫码登录、代理池和反风控复杂度。
 
+如果要手工联调日报，不再只能“随便生成一份 markdown”。`qunmind daily-report` 现在支持 `--report-name <name>` 复用已配置日报目标的 `daily_quote` 和相关目标配置；需要继续验证发布链路时，再加 `--publish`，就能沿着该目标的 publisher 边界继续往下跑，比如 `output = "wechat"` 的公众号草稿链路。
+
 当前这层 `wechat_rss` 也补了几种常见 feed 字段兼容：Atom 的 `<author><name>`、RSS 的 `dc:creator`，以及 `pubDate` / `updated` / `published` / `dc:date` 时间字段都会尽量归一成统一的 `author` 和 UTC `published_at`，减少不同上游服务接入后摘要 prompt 字段风格漂移。
 
 ## 多平台发布边界
