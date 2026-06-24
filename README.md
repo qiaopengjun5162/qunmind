@@ -215,6 +215,7 @@ This path has now been verified with one real draft push:
 - `report-status` can advance to `recently_published`
 - `publish-history` now returns the first successful receipt
 - even when `moonpub` reports `automation: login timeout: QR code not scanned within 120s`, that warning did not block this draft from reaching the WeChat draft box
+- these post-publish automation hints are now surfaced as structured `warnings` in receipt JSON instead of living only inside `raw_output`
 
 Notes:
 - `just db-create` only creates the default local PostgreSQL database when it is missing; tables are still created by QunMind at runtime

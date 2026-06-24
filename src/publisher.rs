@@ -20,6 +20,7 @@ pub struct PublishReceipt {
     pub published_at: String,
     pub summary: String,
     pub raw_output: String,
+    pub warnings: Vec<String>,
 }
 
 impl PublishTarget {
@@ -38,10 +39,14 @@ impl PublishTarget {
 
 impl PublishReceipt {
     pub fn compact_summary(&self) -> String {
-        format!(
+        let mut summary = format!(
             "{} -> {} at {} ({})",
             self.target, self.destination, self.published_at, self.summary
-        )
+        );
+        if !self.warnings.is_empty() {
+            summary.push_str(&format!(" warnings={}", self.warnings.join("; ")));
+        }
+        summary
     }
 }
 
@@ -113,15 +118,30 @@ fn publish_to_wechat_draft(
 
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
     info!(stdout = %stdout, "moonpub 发布成功");
+    let warnings = extract_publish_warnings(&stdout);
 
     let published_at = chrono::Utc::now().to_rfc3339();
     Ok(PublishReceipt {
         target: "wechat_draft".to_string(),
         destination: articles_dir.to_string(),
         published_at,
-        summary: "moonpub draft push completed".to_string(),
+        summary: if warnings.is_empty() {
+            "moonpub draft push completed".to_string()
+        } else {
+            "moonpub draft push completed with warnings".to_string()
+        },
         raw_output: stdout,
+        warnings,
     })
+}
+
+fn extract_publish_warnings(raw_output: &str) -> Vec<String> {
+    raw_output
+        .lines()
+        .map(str::trim)
+        .filter(|line| line.starts_with("⚠ "))
+        .map(|line| line.trim_start_matches("⚠ ").trim().to_string())
+        .collect()
 }
 
 #[cfg(test)]
@@ -173,6 +193,7 @@ mod tests {
             published_at: "2026-06-23T12:00:00+00:00".to_string(),
             summary: "moonpub draft push completed".to_string(),
             raw_output: "ok".to_string(),
+            warnings: Vec::new(),
         };
 
         let summary = receipt.compact_summary();
@@ -180,5 +201,32 @@ mod tests {
         assert!(summary.contains("/tmp/articles"));
         assert!(summary.contains("2026-06-23T12:00:00+00:00"));
         assert!(summary.contains("moonpub draft push completed"));
+    }
+
+    #[test]
+    fn extract_publish_warnings_reads_automation_lines() {
+        let warnings = extract_publish_warnings(
+            "pushed\n  media_id: xxx\n  ⚠ automation: login timeout: QR code not scanned within 120s\n",
+        );
+
+        assert_eq!(
+            warnings,
+            vec!["automation: login timeout: QR code not scanned within 120s"]
+        );
+    }
+
+    #[test]
+    fn receipt_compact_summary_includes_warnings_when_present() {
+        let receipt = PublishReceipt {
+            target: "wechat_draft".to_string(),
+            destination: "/tmp/articles".to_string(),
+            published_at: "2026-06-23T12:00:00+00:00".to_string(),
+            summary: "moonpub draft push completed with warnings".to_string(),
+            raw_output: "ok".to_string(),
+            warnings: vec!["automation: login timeout".to_string()],
+        };
+
+        let summary = receipt.compact_summary();
+        assert!(summary.contains("warnings=automation: login timeout"));
     }
 }

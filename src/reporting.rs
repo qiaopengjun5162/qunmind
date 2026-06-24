@@ -115,6 +115,7 @@ pub fn report_status_blockers(_config: &Config, target: &ReportStatusTarget) -> 
 }
 
 pub fn publish_receipt_json(receipt: StoredPublishReceipt) -> serde_json::Value {
+    let warnings = publish_receipt_warnings(&receipt.raw_output);
     serde_json::json!({
         "report_name": receipt.report_name,
         "target": receipt.target,
@@ -122,7 +123,17 @@ pub fn publish_receipt_json(receipt: StoredPublishReceipt) -> serde_json::Value 
         "published_at": receipt.published_at.to_rfc3339(),
         "summary": receipt.summary,
         "raw_output": receipt.raw_output,
+        "warnings": warnings,
     })
+}
+
+pub fn publish_receipt_warnings(raw_output: &str) -> Vec<String> {
+    raw_output
+        .lines()
+        .map(str::trim)
+        .filter(|line| line.starts_with("⚠ "))
+        .map(|line| line.trim_start_matches("⚠ ").trim().to_string())
+        .collect()
 }
 
 pub fn report_status_json(
@@ -551,6 +562,7 @@ mod tests {
 
         assert_eq!(report["ready"], true);
         assert_eq!(report["status"], "recently_published");
+        assert_eq!(report["recent_receipts"][0]["warnings"], serde_json::json!([]));
         assert_eq!(
             report["next_steps"],
             serde_json::json!(["continue_monitoring_recent_publish_receipts_and_draft_flow"])
@@ -580,6 +592,24 @@ mod tests {
             }
             Self { key, previous }
         }
+    }
+
+    #[test]
+    fn publish_receipt_json_extracts_warning_lines_from_raw_output() {
+        let json = publish_receipt_json(StoredPublishReceipt {
+            report_name: "微信公众号日报".to_string(),
+            target: "wechat_draft".to_string(),
+            destination: "/tmp/articles".to_string(),
+            published_at: Utc::now(),
+            summary: "moonpub draft push completed with warnings".to_string(),
+            raw_output: "pushed\n  ⚠ automation: login timeout: QR code not scanned within 120s\n"
+                .to_string(),
+        });
+
+        assert_eq!(
+            json["warnings"],
+            serde_json::json!(["automation: login timeout: QR code not scanned within 120s"])
+        );
     }
 
     impl Drop for EnvVarGuard {

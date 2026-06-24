@@ -193,6 +193,7 @@ async fn run_diagnostic_command(
                         "published_at": receipt.published_at,
                         "summary": receipt.summary,
                         "raw_output": receipt.raw_output,
+                        "warnings": receipt.warnings,
                     })),
                 }))?
             );
@@ -758,6 +759,7 @@ mod tests {
             published_at: "2026-06-24T10:00:00+00:00".to_string(),
             summary: "moonpub draft push completed".to_string(),
             raw_output: "ok".to_string(),
+            warnings: Vec::new(),
         }
     }
 

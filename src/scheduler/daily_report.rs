@@ -943,6 +943,7 @@ mod tests {
             published_at: "2026-06-23T12:00:00+00:00".to_string(),
             summary: "moonpub draft push completed".to_string(),
             raw_output: "ok".to_string(),
+            warnings: Vec::new(),
         });
 
         assert!(summary.contains("wechat_draft"));
@@ -1235,6 +1236,7 @@ mod tests {
             published_at: "2026-06-23T12:00:00+00:00".to_string(),
             summary: "moonpub draft push completed".to_string(),
             raw_output: "ok".to_string(),
+            warnings: Vec::new(),
         };
 
         must(
@@ -1261,6 +1263,7 @@ mod tests {
                         published_at: "2026-06-23T12:00:00+00:00".to_string(),
                         summary: "first".to_string(),
                         raw_output: "ok-a".to_string(),
+                        warnings: Vec::new(),
                     },
                 )
                 .await,
@@ -1276,6 +1279,7 @@ mod tests {
                         published_at: "2026-06-23T13:00:00+00:00".to_string(),
                         summary: "second".to_string(),
                         raw_output: "ok-b".to_string(),
+                        warnings: Vec::new(),
                     },
                 )
                 .await,
@@ -1291,6 +1295,7 @@ mod tests {
                         published_at: "2026-06-23T14:00:00+00:00".to_string(),
                         summary: "third".to_string(),
                         raw_output: "ok-c".to_string(),
+                        warnings: Vec::new(),
                     },
                 )
                 .await,
