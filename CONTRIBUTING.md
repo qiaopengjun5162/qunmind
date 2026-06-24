@@ -33,28 +33,34 @@ QUNMIND_TEST_DATABASE_URL="postgres://postgres:postgres@localhost:5432/qunmind_t
 
 ## Pull Requests
 
-- Create a `codex/<short-topic>` branch for each focused change.
+- Create a `codex-<short-topic>` branch for each focused change.
 - Keep changes small enough to review in one pull request.
 - Update `README.md`, `README_zh.md`, `PROGRESS.md`, and `AGENTS.md` when architecture or workflow changes.
+- Update related docs in the same branch whenever project state, roadmap, commands, or constraints changed.
+- If the change includes generated images, diagrams, or other visual operations, append a record to `docs/visual-operations.md`.
 - Add or update tests for behavior changes.
+- Keep CLI / MCP safety semantics aligned when changing replay, diagnostics, or report-status behavior; avoid documenting a stricter workflow than the code actually enforces.
+- When changing daily-report readiness semantics, keep hard blockers (for example `moonpub` binary or articles dir) separate from fallback-only warnings (for example missing `public_sources` when a group may be empty).
+- When changing the WeChat public-account RSS report flow, keep the operator-facing rehearsal path (`just db-create` -> `just report-status` -> `just report-markdown` -> `just report-publish` -> `just report-history`) consistent across examples and docs.
 - Run `just clippy` and `just test` before opening a PR.
 - For Docker, Compose, or release workflow changes, make sure the Docker image build passes locally or in CI.
 - Fill out the pull request template with behavior changes, verification, and remaining risks.
 - Use Conventional Commits, for example `feat: add message store`.
-- Prefer opening a pull request from your own branch instead of pushing directly to `master`.
+- Prefer opening a pull request from your own branch instead of pushing directly to `main`.
+- Treat the work as unfinished until the branch is pushed and the PR is open, unless the user explicitly asks to stop earlier.
 
 ## Self-PR Workflow
 
 This repository intentionally supports a self-review workflow:
 
 ```bash
-git switch -c codex/your-change
+git switch -c codex-your-change
 just clippy
 just test
 git add .
 git commit -m "feat: describe your change"
-git push origin codex/your-change
-gh pr create --base master --head codex/your-change
+git push origin codex-your-change
+gh pr create --base main --head codex-your-change
 ```
 
 After CI passes, review the diff on GitHub, merge the PR, and delete the branch.

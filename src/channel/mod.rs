@@ -10,7 +10,7 @@ use std::sync::Arc;
 use crate::error::Result;
 
 /// Normalized inbound message from any channel.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct IncomingMessage {
     /// Channel-specific message identifier.
     pub message_id: String,

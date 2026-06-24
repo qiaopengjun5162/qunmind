@@ -7,13 +7,23 @@ pub(super) fn build_json_prompt(items: &[PublicNewsItem]) -> String {
             .score
             .map(|s| format!("{s} points"))
             .unwrap_or_else(|| "—".to_string());
+        let summary = item
+            .summary
+            .as_deref()
+            .map(|value| value.replace('\n', " "))
+            .unwrap_or_else(|| "—".to_string());
+        let author = item.author.as_deref().unwrap_or("—");
+        let published_at = item.published_at.as_deref().unwrap_or("—");
         news_list.push_str(&format!(
-            "\n[{}] 来源:{} | 热度:{}\n标题: {}\nURL: {}\n",
+            "\n[{}] 来源:{} | 热度:{} | 作者:{} | 时间:{}\n标题: {}\nURL: {}\n摘要: {}\n",
             i + 1,
             item.source,
             score_display,
+            author,
+            published_at,
             item.title.replace('\n', " "),
             item.url,
+            summary,
         ));
     }
 

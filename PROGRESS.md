@@ -1,5 +1,189 @@
 # Progress
 
+## Snapshot
+
+### Final Goal
+
+把 `QunMind` 做成一个**可真实运行的微信群 AI 群智中枢**：
+
+- 能稳定接入企业微信内部群与普通微信 / 外部群入口。
+- 能保存群消息、抽取链接、读取短期上下文，并按群配置决定是否回复。
+- 能通过可诊断、可重放、可验证的链路完成“收消息 -> 过滤 -> AI -> 回复”。
+- 能基于群消息与公共来源生成日报，并支持多群、不同 persona、不同日报目标。
+- 能以 Rust 为核心，保持清晰模块边界、稳定测试覆盖和可持续演进的工程结构。
+
+### Current Phase
+
+当前处于：**MVP 骨架完成，正在从“功能存在”走向“真实可验证、可对外介绍”**
+
+粗粒度进度条：
+
+- 产品主链路：`[########--] ~80%`
+- wx-cli 诊断与重放：`[#########-] ~85%`
+- 日报生成与发布：`[#######---] ~75%`
+- 真实微信联调验证：`[###-------] ~30%`
+- 生产可用度：`[###-------] ~35%`
+
+这里的百分比是工程判断，不是精确度量。含义是：
+
+- **代码骨架和模块边界已经基本成型**
+- **真实环境验证、生产稳定性和长期运维能力仍明显不足**
+
+### Small Goals
+
+接下来几个小目标，按优先级排序：
+
+1. **命令层继续收口**  
+   继续拆薄 `main.rs` 和 `src/mcp/tools.rs`，减少 wx-cli 命令适配重复。
+
+2. **真实 wx-cli 样本联调**  
+   用脱敏后的 capture fixture 验证 poll / dry-run / handle-once / send 的实际行为，而不是只停留在合成样本；继续把“必须唯一选中一条消息才能离线重放”的安全约束固化进去。
+
+3. **`QunMind × moonpub` 联调固化**  
+   把微信公众号日报依赖前置检查、联调清单和上线前提写实，避免“代码能调起 moonpub”被误判为“日报已经可上线”。
+
+4. **对外描述统一**  
+   README / README_zh / PROGRESS 持续保持同一口径，让“当前做到哪、下一步做什么”始终可直接引用。
+
+### Next Action
+
+我们下一步建议直接做：
+
+1. 把 `main.rs` 的 wx-cli 子命令分发再拆一层。
+2. 扩充 `tests/fixtures/wx_cli/` 里的匿名化样本。
+3. 把 fixture 覆盖继续接到 handle-once / test-plan。
+
+如果目标切到“明天能不能把公众号日报草稿推出来”，当前最短操作路径已经收口成：
+
+1. `just db-create`
+2. `just report-status report="微信公众号日报"`
+3. `just report-markdown report="微信公众号日报" output="/tmp/wechat-report.md"`
+4. 用户明确批准后，再执行 `just report-publish report="微信公众号日报" output="/tmp/wechat-report.md"`
+5. `just report-history report="微信公众号日报"`
+
+## 2026-06-24
+
+### Done
+
+- **公众号日报 Justfile 标准入口补齐** — `Justfile` 现在新增了 `db-create`、`report-status`、`report-markdown`、`report-history` 和 `report-publish`。这让“先补数据库、再看 readiness、再生成 markdown、最后决定是否真实推草稿”的联调路径第一次有了统一入口，不再要求操作者手动拼一长串 `cargo run` 命令。
+- **真实本机 readiness 结果落地** — 已在本机 PostgreSQL 可用的前提下补建默认 `qunmind` 数据库，并重新执行公众号日报状态检查。第一次检查一度显示 `ready_for_first_publish`，但在真实试发后确认 `moonpub` 还依赖运行时环境变量 `WECHAT_APPID` / `WECHAT_SECRET`。现在 `report-status` / `doctor` 已同步把这两项缺失前置暴露为 blocker，避免“状态页显示 ready，真实推草稿时才失败”的错觉。
+- **发布历史初始状态确认** — `publish-history --report-name "微信公众号日报"` 当前返回空列表，说明还没有成功试发回执。这一点很重要：项目不是“日报功能不存在”，而是“日报 readiness 已通过，但还缺第一次真实 publish 记录”。
+- **第一次真实试发已打到 publisher 边界** — 用户明确批准后，已真实执行 `daily-report --publish`。结果不是 markdown 生成失败，而是 `moonpub` 返回 `missing env var: WECHAT_SECRET`；同时 `/tmp/wechat-report.md` 已成功生成，说明“消息/RSS -> 日报正文”这段链路已经跑通，当前剩余阻塞在微信草稿发布凭证环境。
+- **公众号日报文档入口统一到 Justfile** — `README.md`、`README_zh.md` 和 `AGENTS.md` 现在都改成同一条标准路径：`just db-create -> just report-status -> just report-markdown -> just report-publish -> just report-history`。这把之前分散在聊天、README 和命令行里的知识收口成可复制的操作流程。
+- **发布凭据缺口显式化** — `report-status` 和 `wx-cli doctor` 现在除了 blocker code，还会直接输出 `missing_publish_env`。这一步是为了把“缺公众号发布环境变量”从经验判断变成状态 JSON 的显式字段，操作者不用再从 `wechat_daily_report_*` blocker 反推到底缺了哪项环境变量。
+- **首轮真实公众号草稿试发成功** — 在补齐 `WECHAT_APPID` / `WECHAT_SECRET` 并放行当前公网 IP 后，`daily-report --publish` 已真实推送成功，`publish-history` 已出现第一条回执，`report-status` 也从 `ready_for_first_publish` 切换到 `recently_published`。当前 `moonpub` 返回的附加提示是 `automation: login timeout: QR code not scanned within 120s`，但这次并未阻止草稿成功入库，说明真正的“推草稿”主路径已经跑通。
+- **发布 warning 结构化** — `PublishReceipt`、`report-status`、`publish-history` 和手工 `daily-report --publish` 的 JSON 现在会显式输出 `warnings`。像这次 `moonpub` 的 `automation: login timeout` 不再只藏在 `raw_output` 里，后续判断“这次是完全干净成功”还是“成功但仍需人工盯一下自动化”会更直接。
+- **发布 warning 升级为状态信号** — `report-status` 现在不再把“最近成功但有自动化 warning”的情况和普通 `recently_published` 混在一起。只要最近成功回执里仍有结构化 `warnings`，状态就会直接升级成 `recently_published_with_warnings`，并给出“人工复核草稿 + 继续监控回执”的下一步动作。
+
+### Verified
+
+- `cargo run -- report-status --report-name "微信公众号日报"`：在补建本机 `qunmind` 数据库后先返回 `ready_for_first_publish`，补完 blocker 逻辑后改为正确暴露 `wechat_daily_report_appid_missing` / `wechat_daily_report_secret_missing`
+- `cargo run -- publish-history --report-name "微信公众号日报"`：返回 `count = 0`
+- `cargo run -- --config config.toml daily-report --report-name "微信公众号日报" --output /tmp/wechat-report.md --publish`：真实试发命中 `moonpub` blocker `missing env var: WECHAT_SECRET`，但 markdown 文件已成功生成
+- `just report-status`：当前正确返回 `status = "blocked"`，`blockers = ["wechat_daily_report_appid_missing", "wechat_daily_report_secret_missing"]`
+- `cargo nextest run --all-features reporting::tests::report_status_json_marks_blocked_reports_with_actionable_next_steps`
+- `cargo nextest run --all-features diagnostic::tests::wx_cli_doctor_warns_when_wechat_daily_report_dependencies_are_incomplete`
+- `cargo nextest run --all-features diagnostic::tests::wx_cli_doctor_keeps_wechat_rss_report_ready_without_public_sources`
+- `WECHAT_APPID=... WECHAT_SECRET=... cargo run -- --config config.toml daily-report --report-name "微信公众号日报" --output /tmp/wechat-report.md --publish`：返回 `published = true`，`publish_receipt_saved = true`
+- `WECHAT_APPID=... WECHAT_SECRET=... cargo run -- --config config.toml publish-history --report-name "微信公众号日报" --limit 5`：返回 `count = 1`
+- `WECHAT_APPID=... WECHAT_SECRET=... cargo run -- --config config.toml report-status --report-name "微信公众号日报" --limit 5`：返回 `status = "recently_published"`，`recent_receipts_count = 1`
+- `cargo nextest run --all-features publisher::tests::extract_publish_warnings_reads_automation_lines`
+- `cargo nextest run --all-features reporting::tests::publish_receipt_json_extracts_warning_lines_from_raw_output`
+- `cargo nextest run --all-features reporting::tests::report_status_json_marks_recently_published_with_warnings_when_receipt_has_warning`
+- PR #41 CI：`test = pass`，`docker = pass`
+
+## 2026-06-23
+
+### Done
+
+- **离线 `handle-once` 重放默认收紧** — `handle-once --input <json-file>` 和 MCP `wxcli_handle_once` 现在在 capture 含多条消息、但未显式指定 `message_id` 时，会先返回结构化 `message_id_required_for_multiple_messages`，而不是继续往 PostgreSQL / AI 依赖走。这让“离线复放一条消息”与命令语义重新一致，也避免明天真实联调时误把前几条消息顺序处理掉。
+- **`handle-once` 选中消息安全边界继续对齐** — 离线重放现在不只要求显式 `message_id`；如果选中的是私聊消息，或虽然是群消息但并不会按当前 mention 规则触发回复，也会在依赖初始化前直接返回 `selected_message_not_group` / `selected_message_would_not_reply`。这样 `handle-once` 与 `test-plan` 的安全前提进一步对齐，不会再让“计划里明明不安全”的样本跑到 PG / AI 层才失败。
+- **`handle-once` 阻断报告更可操作** — `message_id_required_for_multiple_messages` 现在会直接带上 `reply_candidate_message_ids` 和 `group_reply_candidate_message_ids`。这样就算操作者没有先跑 `doctor`，也能从一次失败 JSON 里直接拿到下一步该选的候选消息 ID。
+- **wx-cli runtime 共享层落地第一版** — 新增 `src/wx_cli_runtime.rs`，把 CLI / MCP 共同依赖的 wx-cli 运行时拼装收口到一处：包括按输入来源读取消息、dry-run JSON 组装和 handle-once 管线报告渲染。`main.rs` 与 `src/mcp/tools.rs` 现在不再各自维护一套几乎相同的 capture / input / report 适配逻辑，模块边界更清晰，也更容易继续拆薄命令层。
+- **手工日报联调入口补齐第一版** — `qunmind daily-report` 现在支持 `--report-name` 复用已配置日报目标的 `daily_quote` 与发布配置，并可选 `--publish` 继续按该目标的 publisher 边界执行。这样“先手工生成 markdown，再决定是否继续推公众号草稿”终于成了一条可以直接操作的联调入口，而不只是依赖 cron 触发。
+- **手工日报发布状态闭环补齐** — `qunmind daily-report --report-name <name> --publish` 成功后，现在会像 scheduler 一样尝试保存结构化发布回执。这样手工联调一旦推送成功，`report-status` 和 `publish-history` 可以立刻看到最新结果；如果回执保存失败，CLI JSON 会明确暴露 `publish_receipt_saved = false` 与 `publish_receipt_save_error`，不再把“发布成功”和“状态落库失败”混成一个模糊结果。
+- **单目标手工日报默认跟随正式配置** — 如果配置里只有一个 `schedule.daily_reports` 目标，`qunmind daily-report` 现在会直接复用这一个正式日报目标，而不需要再额外传 `--report-name`。只有在存在多个日报目标时，命令才会明确要求显式 `--report-name`，避免手工联调误退回成脱离正式配置的空白 markdown 路径。
+- **手工日报内容来源与正式目标对齐** — `qunmind daily-report` 现在不再一上来就强依赖 `public_sources`。如果目标群在回看窗口里已经有保存的群消息和链接情报，手工日报会优先按正式日报目标的 prompt、lookback、message/link limit 生成；只有群消息为空时，才回退到公共来源。这让“今天临时手工跑一版日报”和“真正定时跑出去的日报”终于使用同一套主要素材语义。
+- **定时公众号日报也对齐到群消息优先语义** — `schedule.daily_reports[].output = "wechat"` 之前还保留着“只走公共来源生成 markdown”的旧路径。现在 scheduler 会和手工 `daily-report` 一样，先尝试读取目标群的已保存消息与链接情报；只有群消息为空时，才回退到 `public_sources`。这把“手工演练”和“真正定时推公众号草稿”收敛到同一套日报素材语义。
+- **日报生成共享层再收口** — 新增 `src/reporting.rs` 中的共享群消息日报生成 helper，把“按目标 prompt/lookback/message limit/link limit 从消息库生成日报正文”的逻辑从 CLI 和 scheduler 两边抽到一处，减少之后继续调日报时的行为漂移风险。
+- **公众号日报 readiness 口径修正** — `report-status` / `wx-cli doctor` 现在不再把“未启用 `public_sources`”视为一刀切的硬 blocker。更准确的语义是：`moonpub` 二进制和 articles 目录仍是硬前提，而 `public_sources` 只是在“群消息为空时无法回退生成”的风险提示。这样状态页终于和代码的真实运行条件一致，不会再把“群消息充足、其实能正常出稿”的目标误判成 blocked。
+- **公众号 RSS 日报联调模板补齐** — `config.example.toml` 与 `config.docker.example.toml` 现在直接给出 RSS-backed 微信公众号日报示例，默认展示 `wechat_rss_enabled = true` 和示例 `wechat_rss_urls`，更贴近“拿到 RSS 上游后立刻联调公众号日报”的真实使用场景。
+- **公众号 RSS 最短联调路径补档** — README / README_zh / AGENTS 已补上 `report-status -> daily-report --output -> daily-report --publish -> publish-history` 这条最短命令序列，并明确区分硬 blocker 与空群回退 warning。现在当用户只关心“今天能不能把公众号日报草稿推出来”时，可以直接照着跑，而不是再从零拼命令。
+- **日报联调 Justfile 入口补齐** — `Justfile` 现在新增 `db-create`、`report-status`、`report-markdown`、`report-publish` 和 `report-history`，把“补本地业务库 -> 看 readiness -> 只生成 markdown -> 真实推送 -> 查回执”收口成一套标准入口，减少临近交付时继续手敲长串 `cargo run` 命令。
+- **真实本机 readiness 已验证** — 通过本机 PostgreSQL 实测，默认 `qunmind` 数据库原先缺失，补建后 `report-status --report-name "微信公众号日报"` 已返回 `ready_for_first_publish`、`blockers = []`、`recent_receipts = []`。当前真正还没完成的是第一次手工试发，而不是日报目标定义或 readiness 判定逻辑。
+- **`handle-once` 安全边界补测试** — 新增针对 `diagnostic` guard 和 MCP `wxcli_handle_once` 的测试，覆盖“多消息 capture 未指定 `message_id` 必须阻断”的场景。现在这条规则不只写在说明里，而是被测试固定住了。
+- **脱敏 wx-cli fixture 入口落地** — 新增 `tests/fixtures/wx_cli/` 目录、fixture README、`sample_capture.json`、`unique_group_candidate.json`、`direct_only.json`、`multiple_group_candidates.json` 和 `tests/wx_cli_fixture_test.rs`。现在项目已经有一条可持续扩展的“匿名化真实样本”测试入口，既能验证 wx-cli 导出字段兼容和 dry-run 决策，也能覆盖“唯一群聊候选可直接推荐重放”“只有私聊样本时正式群测必须阻塞”以及“多个群聊候选并存时必须显式选择 `--message-id`”。
+- **日报就绪状态视图继续补强** — `report-status` / `report_status` 现在不只输出 `ready`、`blockers` 和 `recent_receipts`，还会给出更直白的 `status` 与 `next_steps`。这组下一步建议也进一步收紧成更贴近操作者动作的提示，例如“修好 moonpub 后重新跑 report-status”“生成 markdown 并推草稿后再复查状态”，这样临近交付时更容易直接照着执行。
+- **日报就绪状态接入 MCP** — 新增独立 `report_status` MCP tool，让 Agent / 外部系统也能直接读取 `ready`、`blockers` 和最近发布回执，而不用把这类运营状态查询塞进 wx-cli 诊断工具。
+- **日报状态判定去重** — 新增 `src/reporting.rs`，把 `report_name` 选择、日报目标解析、blocker 判定和发布回执 JSON 渲染从 `main.rs` / `src/mcp/tools.rs` 提成共享 helper，避免 CLI 与 MCP 维护两套“明天能不能用”的判断逻辑。
+- **日报运行时依赖检查补齐** — 微信公众号日报的 readiness 现在不只检查字段是否为空，还会额外判断 `wechat_bin` 在本机是否可找到、`wechat_articles_dir` 是否真的是目录；`report-status` 和 `wx-cli doctor` 已复用同一套 blocker 逻辑。
+- **发布历史接入 MCP** — `publish_history` 已作为独立 MCP tool 暴露，沿用与 CLI 相同的 `report_name` 选择规则和结构化 JSON 输出。这样发布状态查询已经同时具备 CLI 与 Agent / 外部工具可调用两条入口，而且不会污染原有 wx-cli 诊断语义。
+- **发布历史 CLI 入口落地** — 新增 `publish-history` 顶层命令，用结构化 JSON 输出最近发布回执。当前策略是：单目标 legacy 日报配置可直接回退到 `daily_report_chat_id`，多目标 `schedule.daily_reports` 配置必须显式传 `--report-name`，避免误查到错误日报目标。
+- **最近发布历史可查询** — `MessageStore` 新增 `recent_publish_receipts` 默认接口，PostgreSQL 可按 `report_name` 读取最近发布回执。现在这条链路已经不只是“写进去”，而是具备了最小的“能查最近几次发布状态”能力，为后续 CLI / MCP / dashboard 暴露状态历史打基础。
+- **发布回执开始落库** — `MessageStore` 新增 `save_publish_receipt` 默认接口，PostgreSQL 增加 `publish_receipts` 表；微信日报成功发布后，`scheduler` 会先尝试保存结构化回执，再记录成功日志。如果回执保存失败，当前策略是“不掩盖外部发布已成功这个事实，但明确打出保存失败日志”，为后续状态历史、失败重试和多平台对账先打下最小基础。
+- **发布回执结构化** — `src/publisher.rs` 现在返回更完整的 `PublishReceipt`，包含 `target`、`destination`、`published_at`、`summary` 和 `raw_output`；`scheduler` 成功发布微信草稿时也会输出结构化摘要，而不再只有一条笼统的成功日志。这为后续发布状态持久化、多平台对账和失败重试预留了稳定边界。
+- **多模态路线图补档** — 新增 `docs/multimodal-roadmap.md`，把 JoyAI-VL-Interaction 这类实时视频-语言交互系统定位成“未来多模态 PoC 参考”，明确当前策略是“先单独做视频/直播/视觉事件 PoC，再把结构化摘要结果回接 `QunMind`”，而不是把重型多模态运行时直接塞进微信群主链路。
+- **学习目录扩到多模态 Agent** — `src/research/learning.rs` 新增 `MultimodalAgents` 分类，并把 `JoyAI-VL-Interaction` 纳入学习与参考资源，后续做直播监控、视频摘要、视觉事件日报时可以直接复用，不用重新整理上下文。
+- **多平台发布边界落地第一版** — 新增 `src/publisher.rs`，把原先 `scheduler` 里直接依赖的微信草稿发布能力收口成统一 `publish_markdown(..., PublishTarget)` 边界。当前已实现 `PublishTarget::WechatDraft` 并继续走本地 `moonpub`，但调度层不再直接绑定“微信专用发布函数”，为后续独立发布子系统或更多平台 target 预留了稳定接口。
+- **多平台日报架构定稿** — 新增 `docs/multi-platform-publishing.md`，明确 `QunMind` 负责“生成 / 调度 / readiness / 发布结果可见性”，独立发布层负责“平台鉴权 / 素材渲染 / 上传 / 审核轮询 / 重试”。这让后续接公众号、抖音甚至单独 publisher hub 时，主项目边界不会被平台细节冲散。
+- **公众号 RSS 字段兼容性增强** — `wechat_rss` 现在额外兼容 Atom `<author><name>...</name></author>`、RSS `dc:creator` 和 `dc:date`，并会把 RFC3339 / RFC2822 发布时间统一归一到 UTC RFC3339 字符串，减少不同 RSS/Atom 上游接进来后作者名和发布时间字段风格不一致的问题。
+- **能力层参考补档** — 把 `Panniantong/Agent-Reach` 纳入项目参考，定位为“能力层 / connector 路由 / doctor / skill 安装”思路参考，而不是 QunMind 主链路实现模板，继续明确“微信群 AI 中枢”和“外部投研采集能力”之间的边界。
+- **CI/CD 红灯定位并修复** — PR #41 在 2026-06-23 18:33（Asia/Shanghai）这轮 GitHub Actions 里失败点不是业务测试，而是 `fmt-check`；本地复现后确认是 `config.example.toml` 与 `config.docker.example.toml` 未按 `taplo fmt --option reorder_keys=true` 排序，同时 `.github/workflows/build.yml` 仍保留 `master` push 触发分支。现已把示例 TOML 重新格式化，并把 CI push 分支收口到 `main`，避免分支策略和流水线配置继续漂移。
+- **公众号文章上游参考补档** — 把 `tmwgsicp/wechat-download-api` 记入项目参考，明确它更适合做公众号文章/RSS 公共素材入口，而不是微信群消息主通道，避免后续把公众号抓取能力和群消息主链路混在一起。
+- **公众号能力吸收原则明确** — 已把 `wechat-download-api` 的使用原则收口为“吸收能力，不照搬实现”：值得参考的是文章列表、正文、RSS 和 markdown 导出边界；不值得直接内嵌的是扫码登录、代理池、反风控和服务端运维复杂度。
+- **公众号 RSS 入口落地第一版** — 新增 `wechat_rss` 公共素材源方向，允许 QunMind 通过 `[public_sources] wechat_rss_*` 直接消费 RSS / Atom 上游输出，把公众号文章能力先接成日报素材入口，而不是把整套公众号抓取服务嵌进主进程。
+- **公众号 RSS 素材增强** — `PublicNewsItem` 现在支持 `summary`、`author` 和 `published_at`，`wechat_rss` 会优先解析 RSS / Atom 里的摘要、作者和发布时间，并把这些字段带进日报 prompt，让公众号素材不再只剩标题和链接。
+- **公众号摘要清洗补齐** — `wechat_rss` 现在会清洗 RSS description 里的 HTML 标签、合并冗余空白，并对过长摘要做截断，避免公众号素材一进日报就带脏 HTML 或超长文本。
+- **投研工具路线图固化** — 在 `src/research/tools.rs` 基础上补了 `foundation_path()`、`onchain_analyst_path()`、`project_due_diligence_path()` 和 `automation_priority_path()` 四条使用路径，并新增 `docs/research-tools.md`，把“有哪些工具”提升成“先学什么、怎么尽调、哪些适合自动化”。
+- **微信公众号日报 readiness 补齐** — `wx-cli doctor` / capture 摘要现在会把 `schedule.daily_reports` 中 `output = "wechat"` 的目标额外标记 `output`、`config_ready` 和 `dependency_blockers`，能在正式联调前直接看出 `wechat_articles_dir` 为空、`public_sources` 未启用等上线前置条件缺口。
+- **`moonpub` 依赖现状核对** — 已确认 `QunMind` 当前通过 `src/wechat_publisher.rs` 调用 `moonpub --articles <dir> push <temp_markdown> --render`；本地上游项目 `moonpub` 处于 Beta / early adopter 阶段，本地 `moonpub-data/moonpub.toml` 已存在 `theme = "geek"`、`collection = "书"`、`account_type = "personal"`、`auto_publish = false` 配置，说明“草稿生成链路可对接”比“自动上线发布”更成熟。
+- **`diagnostic` 模块化** — 把 2993 行 `src/diagnostic.rs` 按职责拆成 `dry_run`、`doctor`、`formal_test`、`pipeline`、`support` 5 个子模块，保留原有对外函数接口，`main.rs` / `mcp` 无需行为改写。
+- **诊断测试迁移** — 原有 49 个 `diagnostic` 纯函数/JSON 输出测试迁移到 `src/diagnostic/tests.rs`，继续覆盖 doctor、capture、formal test plan、dry-run、message_id guard 和 shell script 渲染。
+- **分支命名约束补档** — 项目级 `AGENTS.md` 记录当前仓库因历史 `codex-*` 平铺分支导致 `codex/<topic>` ref 冲突，后续默认改用 `codex-<topic>`。
+- **wx-cli capture I/O 去重** — 把 capture JSON 读写 helper 收到 `src/channel/wx_cli.rs`，CLI 与 MCP 复用同一套文件读写路径，继续压薄 `main.rs` / `src/mcp/tools.rs` 的命令层重复。
+- **MCP config path 对齐** — `qunmind mcp` 里的 capture / test-plan 现在复用真实 config path，不再在输出里硬编码占位 `config.toml`。
+- **流程文档化** — 新增 `docs/development-workflow.md`、`docs/visual-operations.md` 和 `skills/qunmind-dev-routine/SKILL.md`，把“文档同步、视觉操作留痕、Commit + Push + PR”固化成项目默认流程。
+
+### Verified
+
+- `cargo fmt --all`
+- `cargo nextest run --all-features source::wechat_rss config::tests`
+- `cargo nextest run --all-features source::wechat_rss daily_report:: scheduler:: config::tests`
+- `cargo nextest run --all-features source::wechat_rss`
+- `cargo clippy --all-targets --all-features --tests --benches -- -D warnings`
+- `cargo nextest run --all-features diagnostic`
+- `cargo nextest run --all-features diagnostic`：49 tests passing, 161 skipped
+- `cargo clippy --all-targets --all-features --tests --benches -- -D warnings`
+- `cargo nextest run --all-features wx_cli mcp diagnostic`：103 tests passing, 109 skipped
+- `cargo fmt --all -- --check`
+- `cargo clippy --all-targets --all-features --tests --benches -- -D warnings`
+- `cargo nextest run --all-features`：266 passed, 1 skipped
+- `cargo nextest run --all-features`：268 passed, 1 skipped
+- `cargo test --quiet persist_manual_publish_receipt --bin qunmind`
+
+### Daily Report Timeline
+
+当前基于源码和本地配置核对后的更可信判断：
+
+- **可开始本地联调**：`2026-06-23`
+  前提是 `schedule.daily_reports` 的微信日报目标补齐 `wechat_articles_dir`，且本机可调用 `moonpub`。
+- **可做第一次真实日报草稿生成测试**：`2026-06-24`
+  标准是 `qunmind daily-report` 或定时 target 都能按“群消息优先、空群再回退公共来源”的真实语义稳定生成 markdown，随后稳定调起 `moonpub push --render` 进入微信公众号草稿箱。
+- **可做内部灰度**：`2026-06-25` 到 `2026-06-26`
+  条件是连续两天日报生成成功，且 `moonpub` 的 CDP 自动化没有因为微信后台 UI 变化而卡住关键步骤。
+- **不建议承诺正式稳定上线早于**：`2026-06-27`
+  因为当前最大不确定性不是 QunMind 文本生成，而是普通微信真实群消息样本、moonpub 草稿配置自动化和微信后台稳定性。
+
+### Integration Checklist
+
+`QunMind × moonpub` 现在的实际上线前提：
+
+1. `QunMind` 里目标日报配置使用 `output = "wechat"`，并补齐 `wechat_bin` 与 `wechat_articles_dir`。
+2. 如果目标群可能出现“当天几乎没有群消息”的情况，至少启用一个 `public_sources` 作为空群回退素材来源。
+3. `moonpub-data/moonpub.toml` 可被 `moonpub --articles <dir>` 正常识别。
+4. `moonpub push --render` 本地可单独成功，把 markdown 推进微信公众号草稿箱。
+5. 微信登录态、AppID / Secret、Chrome / CDP 自动化链路保持有效。
+
 ## 2026-06-22
 
 ### Done
@@ -58,13 +242,13 @@ qunmind (常驻进程)
 
 - 内容源扩展：更多 AI/Web3 垂直源
 - 每日一句自动配置
-- `diagnostic.rs` (2993 行) 模块化
+- `main.rs` / `mcp/tools.rs` 的 wx-cli 命令层继续去重，减少 capture / input-file 适配重复
 
 ## 2026-06-17
 
 ### Done
 
-- **日报生成器 (`src/daily_report.rs`)** — 两段式 pipeline 简化为单段 AI 生成 + 源数据排序。采集多源新闻，按 HN 分数/GitHub stars 排序，DeepSeek 生成正文，代码自动补齐 YAML frontmatter 和标题。
+- **日报生成器 (`src/daily_report/`)** — 两段式 pipeline 简化为单段 AI 生成 + 源数据排序。采集多源新闻，按 HN 分数/GitHub stars 排序，DeepSeek 生成正文，代码自动补齐 YAML frontmatter 和标题。
 - **微信发布集成 (`src/wechat_publisher.rs`)** — moonpub subprocess 封装，RAII 临时文件管理，`--articles` 参数传递。
 - **Scheduler 微信路由 (`src/scheduler/daily_report.rs`)** — `output = "wechat"` 时调用 moonpub 发布到微信草稿，同时保留群聊发送路径。
 - **CLI 手动测试** — `qunmind daily-report --output <path>` 命令。
@@ -91,7 +275,7 @@ qunmind (常驻进程)
 - 代码模板 + AI 只写叙述（解决 DeepSeek 不跟格式指令的问题）
 - 每条新闻强制带 URL（代码生成而非依赖 AI）
 - 内容富化、RSS 源、评论收集（参考 Horizon）
-- PR #34, #35 已合并到 master
+- PR #34, #35 已合并到当时的默认分支
 
 ## 2026-06-10
 
@@ -171,9 +355,9 @@ qunmind (常驻进程)
 - Moved wx-cli dry-run and handle-once replay JSON report and message-id guard construction into `src/diagnostic.rs` with pure Rust tests, keeping `main.rs` focused on CLI I/O.
 - Added wx-cli captured-message readiness output for effective daily report targets, including a warning when an enabled report target is not seen in the capture.
 - Added wx-cli captured-message readiness output for configured group overrides, including a warning when a group-level config is not seen in the capture.
-- Merged PR #1 into `master` after GitHub CI passed, preserving the PR-first development flow.
+- Merged PR #1 into the default branch after GitHub CI passed, preserving the PR-first development flow.
 - Created the local disposable `qunmind_test` PostgreSQL database and verified the ignored `postgres_store` integration test against it.
-- Added a PR-first contribution workflow, PR template, and `master` branch CI trigger so Codex changes can be pushed as branches and opened as self PRs.
+- Added a PR-first contribution workflow, PR template, and default-branch CI trigger so Codex changes can be pushed as branches and opened as self PRs.
 - Added tag-triggered GitHub Release automation so pushing a `v*` tag creates the matching release and unblocks the README release badge.
 - Added Dockerfile, Docker Compose, Docker-specific example config, deployment guide, Justfile deployment commands, CI Docker build validation, and GHCR image publishing on `v*` release tags.
 - Added optional Hacker News, CoinMarketCap, CoinGecko, DeFi Llama, Dune, GitHub Trending, and Slerf Blog fallback material for daily reports when the report group has no messages.

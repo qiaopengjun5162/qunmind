@@ -8,7 +8,7 @@ use super::{
     coingecko::CoinGeckoTrendingSource, coinmarketcap::CoinMarketCapSource,
     defillama::DeFiLlamaProtocolsSource, dune::DuneQuerySource, ethresear::EthResearchSource,
     github_trending::GitHubTrendingSource, hacker_news::HackerNewsSource, hn_daily::HnDailySource,
-    slerf_blog::SlerfBlogSource,
+    slerf_blog::SlerfBlogSource, wechat_rss::WechatRssSource,
 };
 
 /// 根据配置构建聚合新闻源。所有新闻源的注册都在这里，添加新源只需改这一处。
@@ -44,6 +44,9 @@ pub fn build(config: &PublicSourcesConfig) -> Result<Option<Arc<dyn PublicNewsSo
     }
     if config.ethresear_enabled {
         sources.push(Arc::new(EthResearchSource::new(config)?));
+    }
+    if config.wechat_rss_enabled {
+        sources.push(Arc::new(WechatRssSource::new(config)?));
     }
 
     if sources.is_empty() {

@@ -36,7 +36,68 @@ The project currently supports:
 
 ## Status
 
-This is an MVP foundation, not a production-ready bot yet. The next important step is real wx-cli group testing and per-group report configuration on top of the stored message stream.
+This is an MVP foundation, not a production-ready bot yet. The next important step is real wx-cli group testing and turning the `QunMind × moonpub` report path into something diagnosable before runtime, not only after a failed scheduled job.
+
+The current project phase is:
+
+- **Done**: core Rust backend boundaries, persistence, per-group config, wx-cli diagnostics/replay, MCP integration, and daily report generation/publishing.
+- **In progress**: real wx-cli sample validation, `QunMind × moonpub` readiness checks, multi-group report verification, and tighter doc consistency.
+- **Not done yet**: stable real-world normal WeChat group validation, production hardening, and long-term memory / permission / ops capabilities.
+
+Rough progress bars:
+
+- Product core loop: `[########--] ~80%`
+- wx-cli diagnostics and replay: `[########--] ~80%`
+- Daily report generation and publishing: `[#######---] ~75%`
+- Real WeChat validation: `[###-------] ~30%`
+- Production readiness: `[###-------] ~35%`
+
+One-sentence external summary:
+
+> QunMind already has the backend skeleton, diagnostics, and report pipeline for a WeChat AI group hub, and is now moving from MVP feature completeness to real-environment validation and stable demos.
+
+## Roadmap
+
+Final goal:
+
+- Build a real WeChat group AI hub, not just a demo bot or report script.
+- Close the full loop: receive -> persist -> context -> AI -> reply -> reports.
+- Keep Rust as the core with clear module boundaries, testability, diagnosability, and long-term maintainability.
+
+Next small goals:
+
+1. Keep shrinking `main.rs` and `src/mcp/tools.rs` by removing command-layer duplication.
+2. Expand the sanitized wx-cli fixture set so poll / dry-run / handle-once / send are exercised against more realistic samples.
+3. Surface `moonpub` and `public_sources` prerequisites before a WeChat daily-report target is treated as ready.
+4. Verify multi-group persona, context, and `schedule.daily_reports` combinations in practice.
+5. Keep README / PROGRESS / AGENTS aligned so project status is reusable for internal and external communication.
+
+Immediate next step:
+
+1. Continue modularizing the wx-cli command orchestration layer.
+2. Expand the new `tests/fixtures/wx_cli/` entry with more anonymized real samples.
+3. Keep the stage summary in docs continuously up to date.
+
+## Daily Report Integration Status
+
+The WeChat public-account report path currently depends on local `moonpub`, not on a standalone internal publisher:
+
+- Call path: `moonpub --articles <dir> push <temp_markdown_file> --render`
+- Upstream state: local `moonpub` is currently Beta / early adopter ready, better suited for draft generation plus manual review than for promising unattended publishing
+- `wx-cli doctor` now marks `output = "wechat"` report targets with `config_ready` and `dependency_blockers`, including whether `moonpub` is actually resolvable on this machine and whether `wechat_articles_dir` is a real directory
+
+That lets us surface the main blockers earlier:
+
+- missing `wechat_articles_dir`
+- no enabled `public_sources`
+- a configured WeChat report target that still cannot generate source material or hand off to `moonpub`
+
+Current working timeline:
+
+- June 23, 2026: local integration and config completion can start
+- June 24, 2026: first real draft-generation test is realistic
+- June 25-26, 2026: internal gray rollout is realistic if draft generation stays stable
+- not recommended to promise stable launch before June 27, 2026
 
 ## Quick Start
 
@@ -89,7 +150,9 @@ cargo run -- wx-cli send --chat-id "room@chatroom" --text "QunMind diagnostic me
 cargo run -- wx-cli send --chat-id "room@chatroom" --text "QunMind diagnostic message"
 ```
 
-`doctor`, `test-plan`, `capture`, `poll`, `dry-run`, and `send --dry-run` only read config and do not initialize PostgreSQL, AI clients, or the main bot loop. `doctor` checks wx-cli readiness before a real group test, including send placeholders, AI settings, mention safety, and optional captured-message signals. Captured summaries report both `reply_candidate_message_ids` and `group_reply_candidate_message_ids`, plus a `formal_test_readiness` object with the recommended group replay `message_id` when exactly one safe group candidate exists. They warn when no group reply candidate exists or when multiple group candidates require an explicit `--message-id`. Captured summaries also report configured group overrides and effective daily-report targets, warning when a configured group or enabled report target is not seen in the capture. `test-plan` prints the full formal-test command sequence, preserves the current `--config` path in generated commands, reuses the same readiness blockers, and marks which steps are safe previews or real WeChat sends. Add `--shell` to render the same plan as a shell script; non-send checks are executable, while real WeChat send steps are commented until you intentionally review and uncomment them. With `--input <json-file>`, it also inspects captured messages, auto-selects the only group reply candidate when unambiguous, includes a `selected_message` preview, derives the selected message chat id when no test chat id is configured, skips a fresh capture step that would overwrite the selected capture file, and blocks the plan when a specific, unique `--message-id`, group selected message, reply-triggering selected message, or test `chat_id` is still needed. Without captured input, pass `--message-id` explicitly before treating real replay steps as ready. `capture` runs `wx_cli.poll_args` once, writes normalized replayable messages to a JSON file, and prints `formal_test_readiness`, `recommended_commands`, and next steps for the first formal replay. Add `--input <json-file>` to `doctor`, `test-plan`, `poll`, `dry-run`, or `handle-once` to parse a captured wx-cli JSON output file without invoking wx-cli again. `dry-run` reports which parsed messages would trigger a bot reply according to `bot.mention_names`, without saving, calling AI, or sending. `send --dry-run` renders the final `wx_cli.send_args` command without sending to WeChat, so use it before the first real diagnostic send. `handle-once --no-send` still stores messages and calls the configured AI provider, but captures the reply in JSON instead of sending it through wx-cli. Plain `handle-once` stores the parsed messages, runs mention filtering, calls the configured AI provider when needed, and sends replies through `wx_cli.send_args`. Use `--message-id` with captured files when you want to inspect or replay exactly one message from a larger wx-cli output; a missing, duplicate, direct-chat, or non-replying requested message returns structured `ok = false` JSON instead of silently processing an unsafe selection. Keep `--limit 1` for the first real group test to avoid accidental noisy replies.
+`doctor`, `test-plan`, `capture`, `poll`, `dry-run`, and `send --dry-run` only read config and do not initialize PostgreSQL, AI clients, or the main bot loop. `doctor` checks wx-cli readiness before a real group test, including send placeholders, AI settings, mention safety, and optional captured-message signals. Captured summaries report both `reply_candidate_message_ids` and `group_reply_candidate_message_ids`, plus a `formal_test_readiness` object with the recommended group replay `message_id` when exactly one safe group candidate exists. They warn when no group reply candidate exists or when multiple group candidates require an explicit `--message-id`. Captured summaries also report configured group overrides and effective daily-report targets, warning when a configured group or enabled report target is not seen in the capture. `test-plan` prints the full formal-test command sequence, preserves the current `--config` path in generated commands, reuses the same readiness blockers, and marks which steps are safe previews or real WeChat sends. Add `--shell` to render the same plan as a shell script; non-send checks are executable, while real WeChat send steps are commented until you intentionally review and uncomment them. With `--input <json-file>`, it also inspects captured messages, auto-selects the only group reply candidate when unambiguous, includes a `selected_message` preview, derives the selected message chat id when no test chat id is configured, skips a fresh capture step that would overwrite the selected capture file, and blocks the plan when a specific, unique `--message-id`, group selected message, reply-triggering selected message, or test `chat_id` is still needed. Without captured input, pass `--message-id` explicitly before treating real replay steps as ready. `capture` runs `wx_cli.poll_args` once, writes normalized replayable messages to a JSON file, and prints `formal_test_readiness`, `recommended_commands`, and next steps for the first formal replay. Add `--input <json-file>` to `doctor`, `test-plan`, `poll`, `dry-run`, or `handle-once` to parse a captured wx-cli JSON output file without invoking wx-cli again. `dry-run` reports which parsed messages would trigger a bot reply according to `bot.mention_names`, without saving, calling AI, or sending. `send --dry-run` renders the final `wx_cli.send_args` command without sending to WeChat, so use it before the first real diagnostic send. `handle-once --no-send` still stores messages and calls the configured AI provider, but captures the reply in JSON instead of sending it through wx-cli. Plain `handle-once` stores the parsed messages, runs mention filtering, calls the configured AI provider when needed, and sends replies through `wx_cli.send_args`. When `handle-once` reads a captured file with multiple messages, it now requires an explicit `--message-id` instead of silently replaying the first few messages by limit, and the failure report includes both reply-candidate lists so the next selection step is visible immediately. It also rejects an explicitly selected direct-chat sample or a selected message that would not reply under the current mention rules before PostgreSQL / AI initialization. A missing, duplicate, ambiguous, direct-chat, or non-replying requested message returns structured `ok = false` JSON instead of silently processing an unsafe selection. Keep `--limit 1` for the first real group test to avoid accidental noisy replies.
+
+Internally, the CLI and MCP server now share the same `src/wx_cli_runtime.rs` helper for wx-cli message loading and structured replay reports. This keeps command wiring thinner while preserving the existing diagnostic behavior.
 
 ## Public Source Fallback
 
@@ -127,9 +190,106 @@ QunMind extracts `http://` / `https://` links from incoming text messages and st
 
 `src/research/tools.rs` tracks the project research tool catalog across six categories: market data, onchain analytics, code and security, community and social media, funding flows, and research opinions. Future CoinGecko, DeFi Llama, Dune, explorer, audit-report, or social-data integrations should start from this catalog and then become Rust sources or connectors.
 
+For an actual learning order instead of a flat list, use [docs/research-tools.md](docs/research-tools.md). It now captures the foundation path, onchain analyst path, project due-diligence path, and automation-first path.
+
+For WeChat public-account article material, QunMind now prefers a lighter integration shape: consuming RSS / Atom style upstream output through `[public_sources] wechat_rss_*`, instead of embedding a full login/proxy/anti-bot service into the main bot process.
+
+The current `wechat_rss` reader also normalizes a few common feed variants so mixed upstream services stay usable: Atom `<author><name>`, RSS `dc:creator`, and `pubDate` / `updated` / `published` / `dc:date` timestamps are mapped into the same `author` and UTC `published_at` fields before they enter the daily-report prompt.
+
+If you already have a WeChat public-account RSS / Atom upstream, the shortest rehearsal flow is:
+
+```bash
+just db-create
+just report-status report="微信公众号日报"
+just report-markdown report="微信公众号日报" output="/tmp/wechat-report.md"
+just report-publish report="微信公众号日报" output="/tmp/wechat-report.md"
+just report-history report="微信公众号日报"
+```
+
+Recommended order:
+- confirm `report-status` has empty `blockers` and `missing_publish_env`; if `WECHAT_APPID` or `WECHAT_SECRET` still appears, stop there before any real publish attempt
+- generate local markdown first and verify the RSS-backed article material appears in the report
+- only then run `report-publish` to push the draft through `moonpub`
+
+This path has now been verified with one real draft push:
+- `report-status` can advance to `recently_published`, and will now escalate to `recently_published_with_warnings` when the latest successful receipt still contains automation follow-up signals
+- `publish-history` now returns the first successful receipt
+- even when `moonpub` reports `automation: login timeout: QR code not scanned within 120s`, that warning did not block this draft from reaching the WeChat draft box
+- these post-publish automation hints are now surfaced as structured `warnings` in receipt JSON instead of living only inside `raw_output`
+
+Notes:
+- `just db-create` only creates the default local PostgreSQL database when it is missing; tables are still created by QunMind at runtime
+- `just report-publish` is a real external publish action and may send stored report material to the configured AI / publisher chain
+- `report-status` now also checks the `moonpub` publish env required by real draft pushes; missing `WECHAT_APPID` or `WECHAT_SECRET` is treated as a blocker before the first external publish attempt
+
+Semantics to keep in mind:
+- missing `wechat_bin` / `wechat_articles_dir` is a hard blocker
+- missing `WECHAT_APPID` / `WECHAT_SECRET` is also a hard blocker for `output = "wechat"` draft publish targets
+- `wechat_daily_report_public_sources_disabled_for_empty_group_fallback` is only a warning that an empty group would have no RSS/public-source fallback material
+
+For manual report rehearsals, `qunmind daily-report` can now target a configured report by name. Use `--report-name <name>` to reuse that target's `daily_quote` and related report settings, and add `--publish` when you want the same manual run to continue through the configured publisher boundary such as `output = "wechat"`.
+
+That manual publish path now also attempts to persist the structured publish receipt immediately. A successful manual draft push can therefore show up right away in `report-status` and `publish-history`. If the external publish succeeds but receipt persistence fails, the CLI JSON now exposes that split explicitly through `publish_receipt_saved = false` and `publish_receipt_save_error`, instead of collapsing both outcomes into one vague result.
+
+To reduce operator friction near delivery time, `qunmind daily-report` now auto-reuses the configured target when exactly one `schedule.daily_reports` entry exists. An explicit `--report-name` is only required when multiple report targets are configured.
+
+Manual report runs now also stay aligned with the configured report target's primary content source. If the target group already has stored messages and link intelligence within the lookback window, `qunmind daily-report` uses that group context first and only falls back to `public_sources` when the group is empty.
+
+Scheduled WeChat public-account report targets now follow the same rule. `output = "wechat"` no longer means "always generate from public sources first": when the target group already has stored messages, the scheduler builds the report from that group context and only falls back to `public_sources` when the group is empty.
+
+## Multi-Platform Publishing Boundary
+
+QunMind should keep report generation and publish orchestration, but not become
+the home for every platform-specific publishing workflow. The current direction
+is:
+
+- `QunMind`: generate reports, schedule them, expose readiness blockers, and
+  choose logical publish targets
+- dedicated publisher layer/project: own platform auth, rendering, media
+  upload, moderation polling, and retry logic
+
+The first step is already reflected in code: `src/publisher.rs` now provides a
+generic `publish_markdown(..., PublishTarget)` boundary, while the currently
+implemented `WechatDraft` target still delegates to local `moonpub`.
+
+Successful publish calls now return a structured `PublishReceipt` with target,
+destination, publish time, summary, and raw adapter output. That keeps future
+status persistence and multi-platform reconciliation on the same boundary.
+
+The next step is already partially in place: `QunMind` can persist successful
+publish receipts even before a separate publisher service exists, so future
+status history and retry workflows have a stable starting point.
+
+The next small improvement is local queryability: recent publish receipts should
+be readable from the same storage boundary, so operators can inspect recent
+draft pushes before a full multi-platform dashboard exists.
+
+The first operator-facing entry for that is the CLI. A dedicated history command
+is preferable to overloading diagnostics, because publish history is an
+operational status view, not a wx-cli readiness check.
+
+The same rule now extends to MCP: publish history is exposed as a dedicated tool
+instead of being folded into wx-cli diagnostics, so operator-state queries and
+message-pipeline diagnostics stay separate.
+
+For near-term delivery pressure, a dedicated report-status style view is more
+useful than raw internals: it should answer whether a report target is ready,
+what status it is in now, what is blocking it, what to do next, and whether
+recent publish receipts exist.
+
+That readiness view is now available in both places: `qunmind report-status`
+for operators and `report_status` for MCP clients, with shared target-selection
+and blocker logic so the CLI and MCP do not drift.
+
+See [docs/multi-platform-publishing.md](docs/multi-platform-publishing.md) for
+the full rationale and the recommended split for WeChat, Douyin, and future
+Xiaohongshu support.
+
 ## AI / Agent Learning Map
 
 `src/research/learning.rs` tracks the recommended LLM, API, coding-agent, agent-framework, Hermes execution-layer, and AI x Web3 learning resources. It includes the AI x Web3 School learning-agent startup prompt and handbook as structured references, so future prompt design, model-provider integration, tool calling, skills, memory, and long-running agent execution decisions can be reviewed without turning the WeChat message path into a documentation dump.
+
+That catalog now also includes multimodal-agent references such as JoyAI-VL-Interaction. For now, those are roadmap inputs for separate video/visual PoCs, not code that should be embedded into the current QunMind runtime. See [docs/multimodal-roadmap.md](docs/multimodal-roadmap.md).
 
 ## Development
 
@@ -143,9 +303,9 @@ Use `cargo nextest`, not `cargo test`, for project test runs.
 
 ## Contributing
 
-QunMind uses a PR-first workflow. Create a `codex/<short-topic>` branch, keep the
+QunMind uses a PR-first workflow. Create a `codex-<short-topic>` branch, keep the
 change focused, run `just clippy` and `just test`, push the branch, and open a
-pull request back to `master`. See [CONTRIBUTING.md](CONTRIBUTING.md) for the
+pull request back to `main`. See [CONTRIBUTING.md](CONTRIBUTING.md) for the
 full workflow and review checklist.
 
 ## Release Automation

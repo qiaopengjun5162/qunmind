@@ -30,9 +30,35 @@ pub enum CliCommand {
         /// 输出文件路径
         #[arg(long)]
         output: PathBuf,
+        /// 已配置日报目标名称；用于复用该目标的 daily_quote / output 配置
+        #[arg(long, default_value = "")]
+        report_name: String,
         /// 回溯小时数
         #[arg(long, default_value_t = 24)]
         hours: i64,
+        /// 生成 markdown 后，按目标配置继续执行发布
+        #[arg(long)]
+        publish: bool,
+    },
+    /// 查看最近的日报发布回执
+    #[command(name = "publish-history")]
+    PublishHistory {
+        /// 日报目标名称；为空时使用 legacy daily_report_chat_id 兼容名称
+        #[arg(long, default_value = "")]
+        report_name: String,
+        /// 最多返回多少条记录
+        #[arg(long, default_value_t = 5)]
+        limit: i64,
+    },
+    /// 查看日报发布就绪状态与最近发布记录
+    #[command(name = "report-status")]
+    ReportStatus {
+        /// 日报目标名称；为空时使用 legacy daily_report_chat_id 兼容名称
+        #[arg(long, default_value = "")]
+        report_name: String,
+        /// 最多返回多少条最近回执
+        #[arg(long, default_value_t = 5)]
+        limit: i64,
     },
 }
 
@@ -520,14 +546,24 @@ mod tests {
             "daily-report",
             "--output",
             "/tmp/daily.md",
+            "--report-name",
+            "技术群日报",
             "--hours",
             "48",
+            "--publish",
         ]);
 
         match args.command {
-            Some(CliCommand::DailyReport { output, hours }) => {
+            Some(CliCommand::DailyReport {
+                output,
+                report_name,
+                hours,
+                publish,
+            }) => {
                 assert_eq!(output, PathBuf::from("/tmp/daily.md"));
+                assert_eq!(report_name, "技术群日报");
                 assert_eq!(hours, 48);
+                assert!(publish);
             }
             _ => panic!("daily-report command should parse"),
         }
@@ -538,10 +574,57 @@ mod tests {
         let args = parse_args(&["qunmind", "daily-report", "--output", "/tmp/daily.md"]);
 
         match args.command {
-            Some(CliCommand::DailyReport { hours, .. }) => {
+            Some(CliCommand::DailyReport {
+                report_name,
+                hours,
+                publish,
+                ..
+            }) => {
+                assert_eq!(report_name, "");
                 assert_eq!(hours, 24);
+                assert!(!publish);
             }
             _ => panic!("daily-report command should parse"),
+        }
+    }
+
+    #[test]
+    fn parses_publish_history_command() {
+        let args = parse_args(&[
+            "qunmind",
+            "publish-history",
+            "--report-name",
+            "技术群日报",
+            "--limit",
+            "3",
+        ]);
+
+        match args.command {
+            Some(CliCommand::PublishHistory { report_name, limit }) => {
+                assert_eq!(report_name, "技术群日报");
+                assert_eq!(limit, 3);
+            }
+            _ => panic!("publish-history command should parse"),
+        }
+    }
+
+    #[test]
+    fn parses_report_status_command() {
+        let args = parse_args(&[
+            "qunmind",
+            "report-status",
+            "--report-name",
+            "技术群日报",
+            "--limit",
+            "2",
+        ]);
+
+        match args.command {
+            Some(CliCommand::ReportStatus { report_name, limit }) => {
+                assert_eq!(report_name, "技术群日报");
+                assert_eq!(limit, 2);
+            }
+            _ => panic!("report-status command should parse"),
         }
     }
 }

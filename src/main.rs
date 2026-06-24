@@ -1,6 +1,3 @@
-use std::path::Path;
-use std::sync::Arc;
-
 use anyhow::Context;
 use clap::Parser;
 use qunmind::ai;
@@ -8,26 +5,37 @@ use qunmind::ai::hermes::HermesClient;
 use qunmind::ai::openai::OpenAiClient;
 use qunmind::bot::handler::BotHandler;
 use qunmind::channel::Channel;
-use qunmind::channel::IncomingMessage;
 use qunmind::channel::wecom::WeComChannel;
-use qunmind::channel::wx_cli::WxCliChannel;
-use qunmind::channel::wx_cli::parse_wx_cli_messages_from_str;
+use qunmind::channel::wx_cli::{WxCliChannel, write_wx_cli_capture_file};
 use qunmind::cli::{Args, CliCommand, WxCliCommand};
 use qunmind::config::{AiProvider, ChannelKind, Config};
 use qunmind::daily_report::DailyReportGenerator;
 use qunmind::diagnostic::{
-    select_wx_cli_messages, wx_cli_capture_report, wx_cli_doctor_report,
-    wx_cli_dry_run_message_id_guard_report, wx_cli_dry_run_report, wx_cli_formal_test_plan,
+    wx_cli_capture_report, wx_cli_doctor_report, wx_cli_formal_test_plan,
     wx_cli_formal_test_plan_shell_script,
 };
 use qunmind::error::QunMindError;
+use qunmind::publisher::{PublishTarget, publish_markdown};
+use qunmind::reporting::{
+    ReportContentRequest, effective_publish_history_name, effective_report_status_target,
+    generate_group_report_from_store, publish_receipt_json, report_status_json,
+};
 use qunmind::scheduler::daily_report::DailyReportScheduler;
 use qunmind::source;
 use qunmind::source::PublicNewsSource;
 use qunmind::storage::MessageStore;
 use qunmind::storage::postgres::PostgresMessageStore;
+use qunmind::wx_cli_runtime;
+use std::path::Path;
+use std::sync::Arc;
 use tracing::{error, info};
 use tracing_subscriber::EnvFilter;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ManualPublishPersistence {
+    saved: bool,
+    save_error: Option<String>,
+}
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -137,21 +145,305 @@ async fn run_diagnostic_command(
             qunmind::mcp::run(config_path.to_path_buf()).await?;
             Ok(())
         }
-        CliCommand::DailyReport { output, hours: _ } => {
+        CliCommand::DailyReport {
+            output,
+            report_name,
+            hours: _,
+            publish,
+        } => {
             let ai_client = build_ai_client(config)?;
-            let public_news_source = build_public_news_source(config)?.ok_or_else(|| {
-                QunMindError::Config("daily-report 需要启用至少一个 public_sources".to_string())
-            })?;
-
-            let generator = DailyReportGenerator::new(ai_client, public_news_source, String::new());
-
-            let markdown = generator.generate().await?;
+            let report_target = resolve_manual_daily_report_target(config, &report_name)?;
+            let message_store = build_message_store(config).await?;
+            let public_news_source = build_public_news_source(config)?;
+            let markdown = generate_manual_daily_report_markdown(
+                config,
+                &report_target,
+                Arc::clone(&ai_client),
+                Arc::clone(&message_store),
+                public_news_source,
+            )
+            .await?;
             std::fs::write(&output, &markdown)
                 .with_context(|| format!("写入日报文件失败: {}", output.display()))?;
-            println!("日报已写入 {}", output.display());
+            let publish_receipt = if publish {
+                let target = manual_daily_report_publish_target(&report_target)?;
+                Some(publish_markdown(&markdown, &target)?)
+            } else {
+                None
+            };
+            let publish_persistence = match publish_receipt.as_ref() {
+                Some(receipt) => Some(
+                    persist_manual_publish_receipt(Ok(message_store), &report_target.name, receipt)
+                        .await,
+                ),
+                None => None,
+            };
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&serde_json::json!({
+                    "ok": true,
+                    "report_name": report_target.name,
+                    "output_path": output.display().to_string(),
+                    "published": publish_receipt.is_some(),
+                    "publish_receipt_saved": publish_persistence.as_ref().is_some_and(|result| result.saved),
+                    "publish_receipt_save_error": publish_persistence.and_then(|result| result.save_error),
+                    "publish_receipt": publish_receipt.map(|receipt| serde_json::json!({
+                        "target": receipt.target,
+                        "destination": receipt.destination,
+                        "published_at": receipt.published_at,
+                        "summary": receipt.summary,
+                        "raw_output": receipt.raw_output,
+                        "warnings": receipt.warnings,
+                    })),
+                }))?
+            );
+            Ok(())
+        }
+        CliCommand::PublishHistory { report_name, limit } => {
+            let message_store = build_message_store(config).await?;
+            let report_name = effective_publish_history_name(config, &report_name)?;
+            let receipts = message_store
+                .recent_publish_receipts(&report_name, limit)
+                .await?;
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&serde_json::json!({
+                    "ok": true,
+                    "report_name": report_name,
+                    "count": receipts.len(),
+                    "items": receipts
+                        .into_iter()
+                        .map(publish_receipt_json)
+                        .collect::<Vec<_>>(),
+                }))?
+            );
+            Ok(())
+        }
+        CliCommand::ReportStatus { report_name, limit } => {
+            let message_store = build_message_store(config).await?;
+            let report_name = effective_publish_history_name(config, &report_name)?;
+            let target = effective_report_status_target(config, &report_name)?;
+            let receipts = message_store
+                .recent_publish_receipts(&report_name, limit)
+                .await?;
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&report_status_json(
+                    config,
+                    &report_name,
+                    &target,
+                    receipts,
+                ))?
+            );
             Ok(())
         }
     }
+}
+
+async fn persist_manual_publish_receipt(
+    store_result: anyhow::Result<Arc<dyn MessageStore>>,
+    report_name: &str,
+    receipt: &qunmind::publisher::PublishReceipt,
+) -> ManualPublishPersistence {
+    if report_name.trim().is_empty() {
+        return ManualPublishPersistence {
+            saved: false,
+            save_error: Some(
+                "manual publish receipt was not saved because report_name is empty".to_string(),
+            ),
+        };
+    }
+
+    let store = match store_result {
+        Ok(store) => store,
+        Err(err) => {
+            error!(report_name = %report_name, error = %err, "手动日报发布成功，但初始化发布回执存储失败");
+            return ManualPublishPersistence {
+                saved: false,
+                save_error: Some(err.to_string()),
+            };
+        }
+    };
+
+    match store.save_publish_receipt(report_name, receipt).await {
+        Ok(()) => ManualPublishPersistence {
+            saved: true,
+            save_error: None,
+        },
+        Err(err) => {
+            error!(report_name = %report_name, error = %err, "手动日报发布成功，但保存发布回执失败");
+            ManualPublishPersistence {
+                saved: false,
+                save_error: Some(err.to_string()),
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+struct ManualDailyReportTarget {
+    name: String,
+    chat_id: String,
+    output: String,
+    prompt: String,
+    lookback_hours: i64,
+    max_messages: i64,
+    max_links: i64,
+    daily_quote: String,
+    wechat_bin: String,
+    wechat_articles_dir: String,
+}
+
+fn resolve_manual_daily_report_target(
+    config: &Config,
+    report_name: &str,
+) -> anyhow::Result<ManualDailyReportTarget> {
+    if report_name.trim().is_empty() {
+        if config.schedule.daily_reports.len() == 1 {
+            let report = &config.schedule.daily_reports[0];
+            return Ok(ManualDailyReportTarget {
+                name: report.name.clone(),
+                chat_id: report.chat_id.clone(),
+                output: report.output.clone(),
+                prompt: report
+                    .prompt
+                    .clone()
+                    .unwrap_or_else(|| config.schedule.daily_report_prompt.clone()),
+                lookback_hours: report
+                    .lookback_hours
+                    .unwrap_or(config.schedule.daily_report_lookback_hours),
+                max_messages: report
+                    .max_messages
+                    .unwrap_or(config.schedule.daily_report_max_messages),
+                max_links: report
+                    .max_links
+                    .unwrap_or(config.schedule.daily_report_max_links),
+                daily_quote: report.daily_quote.clone(),
+                wechat_bin: report.wechat_bin.clone(),
+                wechat_articles_dir: report.wechat_articles_dir.clone(),
+            });
+        }
+
+        if config.schedule.daily_reports.len() > 1 {
+            return Err(QunMindError::Config(
+                "daily-report requires explicit report_name when multiple daily report targets exist"
+                    .to_string(),
+            )
+            .into());
+        }
+
+        return Ok(ManualDailyReportTarget {
+            name: String::new(),
+            chat_id: config.schedule.daily_report_chat_id.clone(),
+            output: "markdown".to_string(),
+            prompt: config.schedule.daily_report_prompt.clone(),
+            lookback_hours: config.schedule.daily_report_lookback_hours,
+            max_messages: config.schedule.daily_report_max_messages,
+            max_links: config.schedule.daily_report_max_links,
+            daily_quote: String::new(),
+            wechat_bin: String::new(),
+            wechat_articles_dir: String::new(),
+        });
+    }
+
+    let report = config
+        .schedule
+        .daily_reports
+        .iter()
+        .find(|report| report.name == report_name || report.chat_id == report_name)
+        .ok_or_else(|| {
+            QunMindError::Config(format!("daily-report 找不到日报目标: {}", report_name))
+        })?;
+
+    Ok(ManualDailyReportTarget {
+        name: report.name.clone(),
+        chat_id: report.chat_id.clone(),
+        output: report.output.clone(),
+        prompt: report
+            .prompt
+            .clone()
+            .unwrap_or_else(|| config.schedule.daily_report_prompt.clone()),
+        lookback_hours: report
+            .lookback_hours
+            .unwrap_or(config.schedule.daily_report_lookback_hours),
+        max_messages: report
+            .max_messages
+            .unwrap_or(config.schedule.daily_report_max_messages),
+        max_links: report
+            .max_links
+            .unwrap_or(config.schedule.daily_report_max_links),
+        daily_quote: report.daily_quote.clone(),
+        wechat_bin: report.wechat_bin.clone(),
+        wechat_articles_dir: report.wechat_articles_dir.clone(),
+    })
+}
+
+fn manual_daily_report_publish_target(
+    report_target: &ManualDailyReportTarget,
+) -> anyhow::Result<PublishTarget> {
+    match report_target.output.as_str() {
+        "wechat" => Ok(PublishTarget::WechatDraft {
+            bin: report_target.wechat_bin.clone(),
+            articles_dir: report_target.wechat_articles_dir.clone(),
+        }),
+        other => Err(QunMindError::Config(format!(
+            "daily-report --publish 暂不支持 output = {}",
+            other
+        ))
+        .into()),
+    }
+}
+
+async fn generate_manual_daily_report_markdown(
+    config: &Config,
+    report_target: &ManualDailyReportTarget,
+    ai_client: Arc<dyn ai::AiClient>,
+    message_store: Arc<dyn MessageStore>,
+    public_news_source: Option<Arc<dyn PublicNewsSource>>,
+) -> anyhow::Result<String> {
+    let ai_client_for_fallback = Arc::clone(&ai_client);
+    if let Some(markdown) = generate_group_report_from_store(
+        ai_client,
+        message_store,
+        &ReportContentRequest {
+            chat_id: report_target.chat_id.clone(),
+            prompt: report_target.prompt.clone(),
+            lookback_hours: report_target.lookback_hours,
+            max_messages: report_target.max_messages,
+            max_links: report_target.max_links,
+        },
+    )
+    .await?
+    {
+        return Ok(markdown);
+    }
+
+    let public_news_source = public_news_source.ok_or_else(|| {
+        QunMindError::Config("daily-report 需要启用至少一个 public_sources".to_string())
+    })?;
+
+    generate_manual_public_daily_report(
+        config,
+        report_target,
+        ai_client_for_fallback,
+        public_news_source,
+    )
+    .await
+}
+
+async fn generate_manual_public_daily_report(
+    _config: &Config,
+    report_target: &ManualDailyReportTarget,
+    ai_client: Arc<dyn ai::AiClient>,
+    public_news_source: Arc<dyn PublicNewsSource>,
+) -> anyhow::Result<String> {
+    let generator = DailyReportGenerator::new(
+        ai_client,
+        public_news_source,
+        report_target.daily_quote.clone(),
+    );
+
+    generator.generate().await.map_err(Into::into)
 }
 
 async fn run_wx_cli_command(
@@ -161,10 +453,7 @@ async fn run_wx_cli_command(
 ) -> anyhow::Result<()> {
     match command {
         WxCliCommand::Doctor { input, limit } => {
-            let messages = match input.as_ref() {
-                Some(input) => Some(load_wx_cli_messages(config, Some(input)).await?),
-                None => None,
-            };
+            let messages = wx_cli_runtime::maybe_load_messages(config, input.as_deref())?;
             println!(
                 "{}",
                 serde_json::to_string_pretty(&wx_cli_doctor_report(
@@ -175,8 +464,8 @@ async fn run_wx_cli_command(
             );
         }
         WxCliCommand::Capture { output } => {
-            let messages = load_wx_cli_messages(config, None).await?;
-            write_wx_cli_capture(&output, &messages)?;
+            let messages = wx_cli_runtime::load_messages(config, None).await?;
+            write_wx_cli_capture_file(&output, &messages)?;
             println!(
                 "{}",
                 serde_json::to_string_pretty(&wx_cli_capture_report(
@@ -195,10 +484,7 @@ async fn run_wx_cli_command(
             text,
             shell,
         } => {
-            let messages = match input.as_ref() {
-                Some(input) => Some(load_wx_cli_messages(config, Some(input)).await?),
-                None => None,
-            };
+            let messages = wx_cli_runtime::maybe_load_messages(config, input.as_deref())?;
             let capture_file = match input.as_ref() {
                 Some(input) => input,
                 None => &capture_file,
@@ -219,7 +505,7 @@ async fn run_wx_cli_command(
             }
         }
         WxCliCommand::Poll { input } => {
-            let messages = load_wx_cli_messages(config, input.as_ref()).await?;
+            let messages = wx_cli_runtime::load_messages(config, input.as_deref()).await?;
             println!("{}", serde_json::to_string_pretty(&messages)?);
         }
         WxCliCommand::DryRun {
@@ -227,25 +513,10 @@ async fn run_wx_cli_command(
             message_id,
             limit,
         } => {
-            let messages = load_wx_cli_messages(config, input.as_ref()).await?;
-            let total_polled = messages.len();
-            if let Some(report) = wx_cli_dry_run_message_id_guard_report(
-                &messages,
-                total_polled,
-                message_id.as_deref(),
-            ) {
-                println!("{}", serde_json::to_string_pretty(&report)?);
-                return Ok(());
-            }
-            let messages = select_wx_cli_messages(messages, message_id.as_deref(), limit);
-            println!(
-                "{}",
-                serde_json::to_string_pretty(&wx_cli_dry_run_report(
-                    config,
-                    total_polled,
-                    &messages
-                ))?
-            );
+            let messages = wx_cli_runtime::load_messages(config, input.as_deref()).await?;
+            let report =
+                wx_cli_runtime::dry_run_json(config, messages, message_id.as_deref(), limit);
+            println!("{}", serde_json::to_string_pretty(&report)?);
         }
         WxCliCommand::HandleOnce {
             input,
@@ -254,19 +525,15 @@ async fn run_wx_cli_command(
             no_send,
         } => {
             // handle-once exercises the real reply pipeline, so the default limit stays low to avoid chat spam.
-            let wx_channel = Arc::new(WxCliChannel::new(&config.wx_cli));
-            let messages = if input.is_some() {
-                load_wx_cli_messages(config, input.as_ref()).await?
-            } else {
-                wx_channel.poll_once().await?
-            };
-
-            let (report, _suppressed_replies) = qunmind::diagnostic::wx_cli_handle_once_pipeline(
+            let require_explicit_message_id = input.is_some();
+            let messages = wx_cli_runtime::load_messages(config, input.as_deref()).await?;
+            let report = wx_cli_runtime::handle_once_json(
                 config,
                 messages,
                 message_id.as_deref(),
                 limit,
                 no_send,
+                require_explicit_message_id,
             )
             .await;
             println!("{}", serde_json::to_string_pretty(&report)?);
@@ -340,41 +607,16 @@ async fn run_wx_cli_command(
     Ok(())
 }
 
-async fn load_wx_cli_messages(
-    config: &Config,
-    input: Option<&std::path::PathBuf>,
-) -> anyhow::Result<Vec<IncomingMessage>> {
-    if let Some(input) = input {
-        let raw = std::fs::read_to_string(input)
-            .with_context(|| format!("读取 wx-cli 输入文件失败: {}", input.display()))?;
-        return Ok(parse_wx_cli_messages_from_str(
-            &raw,
-            &config.wx_cli.group_chat_id,
-        )?);
-    }
-
-    let channel = WxCliChannel::new(&config.wx_cli);
-    Ok(channel.poll_once().await?)
-}
-
-fn write_wx_cli_capture(output: &Path, messages: &[IncomingMessage]) -> anyhow::Result<()> {
-    if let Some(parent) = output
-        .parent()
-        .filter(|parent| !parent.as_os_str().is_empty())
-    {
-        std::fs::create_dir_all(parent)
-            .with_context(|| format!("创建 wx-cli 捕获目录失败: {}", parent.display()))?;
-    }
-    let body = serde_json::to_string_pretty(messages)?;
-    std::fs::write(output, body)
-        .with_context(|| format!("写入 wx-cli 捕获文件失败: {}", output.display()))?;
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use qunmind::channel::IncomingMessage;
     use qunmind::channel::MsgType;
+    use qunmind::channel::wx_cli::parse_wx_cli_messages_from_str;
+    use qunmind::publisher::PublishReceipt;
+    use qunmind::source::PublicNewsItem;
+    use qunmind::storage::{NewMessage, StoredLink, StoredMessage, StoredPublishReceipt};
+    use tokio::sync::Mutex;
 
     fn config_from(input: &str) -> Config {
         must(toml::from_str(input), "config")
@@ -419,6 +661,106 @@ mod tests {
             "write duplicate capture fixture",
         );
         path
+    }
+
+    #[derive(Default)]
+    struct RecordingPublishReceiptStore {
+        receipts: Mutex<Vec<(String, PublishReceipt)>>,
+    }
+
+    #[async_trait::async_trait]
+    impl MessageStore for RecordingPublishReceiptStore {
+        async fn save(&self, _message: NewMessage) -> qunmind::error::Result<()> {
+            Ok(())
+        }
+
+        async fn save_publish_receipt(
+            &self,
+            report_name: &str,
+            receipt: &PublishReceipt,
+        ) -> qunmind::error::Result<()> {
+            self.receipts
+                .lock()
+                .await
+                .push((report_name.to_string(), receipt.clone()));
+            Ok(())
+        }
+
+        async fn recent_publish_receipts(
+            &self,
+            report_name: &str,
+            limit: i64,
+        ) -> qunmind::error::Result<Vec<StoredPublishReceipt>> {
+            let mut receipts = self
+                .receipts
+                .lock()
+                .await
+                .iter()
+                .filter(|(name, _)| name == report_name)
+                .map(|(name, receipt)| StoredPublishReceipt {
+                    report_name: name.clone(),
+                    target: receipt.target.clone(),
+                    destination: receipt.destination.clone(),
+                    published_at: match chrono::DateTime::parse_from_rfc3339(&receipt.published_at)
+                    {
+                        Ok(time) => time.with_timezone(&chrono::Utc),
+                        Err(err) => panic!("receipt time {}: {}", receipt.published_at, err),
+                    },
+                    summary: receipt.summary.clone(),
+                    raw_output: receipt.raw_output.clone(),
+                })
+                .collect::<Vec<_>>();
+            receipts.truncate(limit.max(1) as usize);
+            Ok(receipts)
+        }
+
+        async fn text_messages(
+            &self,
+            _chat_id: &str,
+            _since: chrono::DateTime<chrono::Utc>,
+            _until: chrono::DateTime<chrono::Utc>,
+            _limit: i64,
+        ) -> qunmind::error::Result<Vec<StoredMessage>> {
+            Ok(Vec::new())
+        }
+    }
+
+    struct FailingPublishReceiptStore;
+
+    #[async_trait::async_trait]
+    impl MessageStore for FailingPublishReceiptStore {
+        async fn save(&self, _message: NewMessage) -> qunmind::error::Result<()> {
+            Ok(())
+        }
+
+        async fn save_publish_receipt(
+            &self,
+            _report_name: &str,
+            _receipt: &PublishReceipt,
+        ) -> qunmind::error::Result<()> {
+            Err(QunMindError::Storage("receipt store down".to_string()))
+        }
+
+        async fn text_messages(
+            &self,
+            _chat_id: &str,
+            _since: chrono::DateTime<chrono::Utc>,
+            _until: chrono::DateTime<chrono::Utc>,
+            _limit: i64,
+        ) -> qunmind::error::Result<Vec<StoredMessage>> {
+            Ok(Vec::new())
+        }
+    }
+
+    fn sample_publish_receipt() -> PublishReceipt {
+        PublishReceipt {
+            target: "wechat_draft".to_string(),
+            destination: "/tmp/articles".to_string(),
+            published_at: "2026-06-24T10:00:00+00:00".to_string(),
+            summary: "moonpub draft push completed".to_string(),
+            raw_output: "ok".to_string(),
+            warnings: Vec::new(),
+        }
     }
 
     #[test]
@@ -548,6 +890,258 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn persist_manual_publish_receipt_saves_receipt_for_report_target() {
+        let store = Arc::new(RecordingPublishReceiptStore::default()) as Arc<dyn MessageStore>;
+        let receipt = sample_publish_receipt();
+
+        let persistence =
+            persist_manual_publish_receipt(Ok(store.clone()), "技术群日报", &receipt).await;
+
+        assert!(persistence.saved);
+        assert!(persistence.save_error.is_none());
+
+        let receipts = store
+            .recent_publish_receipts("技术群日报", 10)
+            .await
+            .expect("recent receipts");
+        assert_eq!(receipts.len(), 1);
+        assert_eq!(receipts[0].report_name, "技术群日报");
+        assert_eq!(receipts[0].target, "wechat_draft");
+    }
+
+    #[tokio::test]
+    async fn persist_manual_publish_receipt_surfaces_store_failure_without_throwing() {
+        let receipt = sample_publish_receipt();
+
+        let persistence = persist_manual_publish_receipt(
+            Ok(Arc::new(FailingPublishReceiptStore) as Arc<dyn MessageStore>),
+            "技术群日报",
+            &receipt,
+        )
+        .await;
+
+        assert!(!persistence.saved);
+        assert_eq!(
+            persistence.save_error,
+            Some("存储错误: receipt store down".to_string())
+        );
+    }
+
+    #[tokio::test]
+    async fn manual_daily_report_uses_group_messages_without_public_sources() {
+        let config = config_from(
+            r#"
+            [ai]
+            provider = "hermes"
+
+            [schedule]
+            daily_report_prompt = "请总结群聊"
+
+            [[schedule.daily_reports]]
+            chat_id = "group-1"
+            name = "技术群日报"
+            output = "chat"
+            lookback_hours = 6
+            max_messages = 10
+            max_links = 3
+            "#,
+        );
+        let ai = Arc::new(ManualReportAi::new("日报正文"));
+        let store = Arc::new(RecordingPublishReceiptStoreWithMessages {
+            messages: vec![StoredMessage {
+                message_id: "m1".to_string(),
+                channel: "wx_cli".to_string(),
+                chat_id: "group-1".to_string(),
+                from: "alice".to_string(),
+                is_group: true,
+                msg_type: MsgType::Text,
+                text: Some("今天完成了日报联调".to_string()),
+                received_at: chrono::Utc::now(),
+            }],
+            links: vec![StoredLink {
+                message_id: "m1".to_string(),
+                channel: "wx_cli".to_string(),
+                chat_id: "group-1".to_string(),
+                from: "alice".to_string(),
+                url: "https://example.com/report".to_string(),
+                normalized_url: "https://example.com/report".to_string(),
+                title: Some("日报链接".to_string()),
+                received_at: chrono::Utc::now(),
+            }],
+            receipts: Mutex::new(Vec::new()),
+        });
+
+        let report_target = must(
+            resolve_manual_daily_report_target(&config, ""),
+            "manual daily report target",
+        );
+        let markdown = must(
+            generate_manual_daily_report_markdown(&config, &report_target, ai.clone(), store, None)
+                .await,
+            "manual daily report markdown",
+        );
+
+        assert_eq!(markdown, "日报正文");
+        let requests = ai.requests.lock().await;
+        assert_eq!(requests.len(), 1);
+        assert!(requests[0][0].content.contains("请总结群聊"));
+        assert!(requests[0][0].content.contains("今天完成了日报联调"));
+        assert!(requests[0][0].content.contains("日报链接"));
+    }
+
+    #[tokio::test]
+    async fn manual_daily_report_falls_back_to_public_sources_when_group_is_empty() {
+        let config = config_from(
+            r#"
+            [ai]
+            provider = "hermes"
+
+            [[schedule.daily_reports]]
+            chat_id = "group-1"
+            name = "技术群日报"
+            output = "chat"
+            daily_quote = "stay hungry"
+            "#,
+        );
+        let ai = Arc::new(ManualReportAi::new(
+            r#"{"title_hint":"今日技术信号","intro":"今天 AI 很活跃","focus_text":"","focus_url":"","ai_items":[],"ai_signals":[],"web3_items":[],"tech_items":[],"tech_timeline":[],"reads":[],"summary":"总结"}"#,
+        ));
+        let store = Arc::new(RecordingPublishReceiptStoreWithMessages {
+            messages: Vec::new(),
+            links: Vec::new(),
+            receipts: Mutex::new(Vec::new()),
+        });
+        let source = Arc::new(ManualReportNewsSource {
+            items: vec![PublicNewsItem {
+                source: "Hacker News".to_string(),
+                title: "Rust release".to_string(),
+                url: "https://example.com/rust".to_string(),
+                summary: Some("Rust release summary".to_string()),
+                author: Some("alice".to_string()),
+                published_at: Some("2026-06-24T00:00:00+00:00".to_string()),
+                score: Some(100),
+                comments: Some(20),
+                ai_score: None,
+                category: None,
+            }],
+        });
+
+        let report_target = must(
+            resolve_manual_daily_report_target(&config, ""),
+            "manual daily report target",
+        );
+        let markdown = must(
+            generate_manual_daily_report_markdown(
+                &config,
+                &report_target,
+                ai.clone(),
+                store,
+                Some(source),
+            )
+            .await,
+            "manual public daily report markdown",
+        );
+
+        assert!(markdown.contains("今日技术信号"));
+        assert!(markdown.contains("Rust release"));
+    }
+
+    #[test]
+    fn resolve_manual_daily_report_target_uses_named_daily_report() {
+        let config = config_from(
+            r#"
+            [[schedule.daily_reports]]
+            chat_id = "group-1"
+            name = "技术群日报"
+            output = "wechat"
+            daily_quote = "stay hungry"
+            wechat_bin = "moonpub"
+            wechat_articles_dir = "/tmp/articles"
+            "#,
+        );
+
+        let target = must(
+            resolve_manual_daily_report_target(&config, "技术群日报"),
+            "manual daily report target",
+        );
+
+        assert_eq!(target.name, "技术群日报");
+        assert_eq!(target.output, "wechat");
+        assert_eq!(target.daily_quote, "stay hungry");
+        assert_eq!(target.wechat_bin, "moonpub");
+        assert_eq!(target.wechat_articles_dir, "/tmp/articles");
+    }
+
+    #[test]
+    fn resolve_manual_daily_report_target_uses_single_daily_report_when_name_is_empty() {
+        let config = config_from(
+            r#"
+            [[schedule.daily_reports]]
+            chat_id = "group-1"
+            name = "技术群日报"
+            output = "wechat"
+            daily_quote = "stay hungry"
+            wechat_bin = "moonpub"
+            wechat_articles_dir = "/tmp/articles"
+            "#,
+        );
+
+        let target = must(
+            resolve_manual_daily_report_target(&config, ""),
+            "single manual daily report target",
+        );
+
+        assert_eq!(target.name, "技术群日报");
+        assert_eq!(target.output, "wechat");
+        assert_eq!(target.daily_quote, "stay hungry");
+    }
+
+    #[test]
+    fn resolve_manual_daily_report_target_rejects_ambiguous_targets_when_name_is_empty() {
+        let config = config_from(
+            r#"
+            [[schedule.daily_reports]]
+            chat_id = "group-1"
+            name = "技术群日报"
+            output = "wechat"
+
+            [[schedule.daily_reports]]
+            chat_id = "group-2"
+            name = "运营日报"
+            output = "wechat"
+            "#,
+        );
+
+        let err = match resolve_manual_daily_report_target(&config, "") {
+            Ok(_) => panic!("multiple daily report targets should require report_name"),
+            Err(err) => err,
+        };
+
+        assert!(err.to_string().contains("report_name"));
+    }
+
+    #[test]
+    fn manual_daily_report_publish_target_rejects_non_wechat_output() {
+        let err = match manual_daily_report_publish_target(&ManualDailyReportTarget {
+            name: "技术群日报".to_string(),
+            chat_id: "group-1".to_string(),
+            output: "channel".to_string(),
+            prompt: "请总结".to_string(),
+            lookback_hours: 24,
+            max_messages: 200,
+            max_links: 20,
+            daily_quote: String::new(),
+            wechat_bin: String::new(),
+            wechat_articles_dir: String::new(),
+        }) {
+            Ok(_) => panic!("non-wechat output should fail"),
+            Err(err) => err,
+        };
+
+        assert!(err.to_string().contains("暂不支持"));
+    }
+
+    #[tokio::test]
     async fn load_wx_cli_messages_reads_input_file() {
         let path =
             std::env::temp_dir().join(format!("qunmind-wx-cli-input-{}.json", std::process::id()));
@@ -567,7 +1161,10 @@ mod tests {
         must(write_result, "write fixture");
         let config = config_from("");
 
-        let messages = must(load_wx_cli_messages(&config, Some(&path)).await, "messages");
+        let messages = must(
+            wx_cli_runtime::load_messages(&config, Some(path.as_path())).await,
+            "messages",
+        );
 
         must(std::fs::remove_file(path), "remove fixture");
         assert_eq!(messages.len(), 1);
@@ -589,7 +1186,7 @@ mod tests {
             msg_type: MsgType::Text,
         }];
 
-        must(write_wx_cli_capture(&path, &messages), "write capture");
+        must(write_wx_cli_capture_file(&path, &messages), "write capture");
         let raw = must(std::fs::read_to_string(&path), "read capture");
         let replayed = must(
             parse_wx_cli_messages_from_str(&raw, ""),
@@ -793,5 +1390,114 @@ mod tests {
         );
 
         must(std::fs::remove_file(path), "remove handle-once fixture");
+    }
+
+    struct RecordingPublishReceiptStoreWithMessages {
+        messages: Vec<StoredMessage>,
+        links: Vec<StoredLink>,
+        receipts: Mutex<Vec<(String, PublishReceipt)>>,
+    }
+
+    struct ManualReportAi {
+        reply: String,
+        requests: Mutex<Vec<Vec<qunmind::ai::ChatMessage>>>,
+    }
+
+    impl ManualReportAi {
+        fn new(reply: &str) -> Self {
+            Self {
+                reply: reply.to_string(),
+                requests: Mutex::new(Vec::new()),
+            }
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl ai::AiClient for ManualReportAi {
+        async fn chat(
+            &self,
+            messages: &[qunmind::ai::ChatMessage],
+        ) -> qunmind::error::Result<String> {
+            self.requests.lock().await.push(messages.to_vec());
+            Ok(self.reply.clone())
+        }
+    }
+
+    struct ManualReportNewsSource {
+        items: Vec<PublicNewsItem>,
+    }
+
+    #[async_trait::async_trait]
+    impl PublicNewsSource for ManualReportNewsSource {
+        async fn fetch_top_items(&self) -> qunmind::error::Result<Vec<PublicNewsItem>> {
+            Ok(self.items.clone())
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl MessageStore for RecordingPublishReceiptStoreWithMessages {
+        async fn save(&self, _message: NewMessage) -> qunmind::error::Result<()> {
+            Ok(())
+        }
+
+        async fn save_publish_receipt(
+            &self,
+            report_name: &str,
+            receipt: &PublishReceipt,
+        ) -> qunmind::error::Result<()> {
+            self.receipts
+                .lock()
+                .await
+                .push((report_name.to_string(), receipt.clone()));
+            Ok(())
+        }
+
+        async fn recent_publish_receipts(
+            &self,
+            report_name: &str,
+            limit: i64,
+        ) -> qunmind::error::Result<Vec<StoredPublishReceipt>> {
+            let mut receipts = self
+                .receipts
+                .lock()
+                .await
+                .iter()
+                .filter(|(name, _)| name == report_name)
+                .map(|(name, receipt)| StoredPublishReceipt {
+                    report_name: name.clone(),
+                    target: receipt.target.clone(),
+                    destination: receipt.destination.clone(),
+                    published_at: match chrono::DateTime::parse_from_rfc3339(&receipt.published_at)
+                    {
+                        Ok(time) => time.with_timezone(&chrono::Utc),
+                        Err(err) => panic!("receipt time {}: {}", receipt.published_at, err),
+                    },
+                    summary: receipt.summary.clone(),
+                    raw_output: receipt.raw_output.clone(),
+                })
+                .collect::<Vec<_>>();
+            receipts.truncate(limit.max(1) as usize);
+            Ok(receipts)
+        }
+
+        async fn text_messages(
+            &self,
+            _chat_id: &str,
+            _since: chrono::DateTime<chrono::Utc>,
+            _until: chrono::DateTime<chrono::Utc>,
+            _limit: i64,
+        ) -> qunmind::error::Result<Vec<StoredMessage>> {
+            Ok(self.messages.clone())
+        }
+
+        async fn recent_links(
+            &self,
+            _chat_id: &str,
+            _since: chrono::DateTime<chrono::Utc>,
+            _until: chrono::DateTime<chrono::Utc>,
+            _limit: i64,
+        ) -> qunmind::error::Result<Vec<StoredLink>> {
+            Ok(self.links.clone())
+        }
     }
 }

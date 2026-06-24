@@ -1,6 +1,8 @@
+use anyhow::Context;
 use async_trait::async_trait;
 use serde_json::Value;
 use std::collections::HashSet;
+use std::path::Path;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tracing::{debug, error, info, warn};
@@ -363,6 +365,32 @@ pub fn parse_wx_cli_messages_from_str(
         .collect())
 }
 
+pub fn load_wx_cli_messages_from_file(
+    input: &Path,
+    fallback_chat_id: &str,
+) -> anyhow::Result<Vec<IncomingMessage>> {
+    let raw = std::fs::read_to_string(input)
+        .with_context(|| format!("读取 wx-cli 输入文件失败: {}", input.display()))?;
+    Ok(parse_wx_cli_messages_from_str(&raw, fallback_chat_id)?)
+}
+
+pub fn write_wx_cli_capture_file(
+    output: &Path,
+    messages: &[IncomingMessage],
+) -> anyhow::Result<()> {
+    if let Some(parent) = output
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+    {
+        std::fs::create_dir_all(parent)
+            .with_context(|| format!("创建 wx-cli 捕获目录失败: {}", parent.display()))?;
+    }
+    let body = serde_json::to_string_pretty(messages)?;
+    std::fs::write(output, body)
+        .with_context(|| format!("写入 wx-cli 捕获文件失败: {}", output.display()))?;
+    Ok(())
+}
+
 // Re-use existing parsing for captured JSON replay compatibility.
 fn parse_messages(value: &Value, fallback_chat_id: &str) -> Vec<RawWechatMessage> {
     candidate_arrays(value)
@@ -510,6 +538,7 @@ impl From<RawWechatMessage> for IncomingMessage {
 mod tests {
     use super::*;
     use serde_json::json;
+    use std::path::PathBuf;
 
     fn parse_raw_messages(raw: &str, fallback_chat_id: &str) -> Vec<IncomingMessage> {
         match parse_wx_cli_messages_from_str(raw, fallback_chat_id) {
@@ -630,5 +659,48 @@ mod tests {
         assert!(cmd.command.starts_with("osascript"));
         assert!(cmd.command.contains("测试群"));
         assert!(cmd.command.contains("hello"));
+    }
+
+    #[test]
+    fn load_wx_cli_messages_from_file_reads_capture() {
+        let path = temp_file("wx-cli-load.json");
+        std::fs::write(
+            &path,
+            r#"{"messages":[{"id":"100","talker":"room@chatroom","content":"@bot raw hello"}]}"#,
+        )
+        .unwrap();
+
+        let messages = load_wx_cli_messages_from_file(&path, "").unwrap();
+
+        assert_eq!(messages.len(), 1);
+        assert_eq!(messages[0].message_id, "100");
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn write_wx_cli_capture_file_writes_replayable_json() {
+        let path = temp_file("wx-cli-capture.json");
+        let messages = vec![IncomingMessage {
+            message_id: "m-1".to_string(),
+            from: "alice".to_string(),
+            chat_id: "room@chatroom".to_string(),
+            is_group: true,
+            text: Some("@bot hello".to_string()),
+            msg_type: MsgType::Text,
+        }];
+
+        write_wx_cli_capture_file(&path, &messages).unwrap();
+        let reloaded = load_wx_cli_messages_from_file(&path, "").unwrap();
+
+        assert_eq!(reloaded.len(), 1);
+        assert_eq!(reloaded[0].message_id, "m-1");
+        assert_eq!(reloaded[0].chat_id, "room@chatroom");
+        assert_eq!(reloaded[0].text.as_deref(), Some("@bot hello"));
+        assert!(reloaded[0].is_group);
+        let _ = std::fs::remove_file(path);
+    }
+
+    fn temp_file(name: &str) -> PathBuf {
+        std::env::temp_dir().join(format!("qunmind-{}-{}", std::process::id(), name))
     }
 }

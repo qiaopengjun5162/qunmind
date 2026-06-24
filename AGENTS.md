@@ -1,5 +1,11 @@
 # AGENTS.md
 
+每次项目发生实质性修改后，都要同步更新相关文档，不要把文档更新留到“之后再说”。至少检查 `AGENTS.md`、`PROGRESS.md`、`README.md`、`README_zh.md`、`CONTRIBUTING.md` 和 `.github/pull_request_template.md` 是否需要同步。
+
+如果本次工作涉及绘画、图示、生成图片、界面草图或其他可视化操作，必须把来源、输出文件和备注追加记录到 `docs/visual-operations.md`，避免后续重复生成和重复消耗 token。
+
+默认把一次完整项目修改视为 **代码/文档完成 + 验证完成 + Commit + Push + PR 已创建**。除非用户明确要求停在本地修改，否则不要把“只改完文件”当成流程结束。
+
 ## 项目定位
 
 `QunMind` 是一个 Rust 编写的微信群 AI 群智中枢，不是前端看板。当前支持企业微信内部群智能机器人通道，也支持通过 wx-cli 形态的本地微信通道做普通微信群/外部群 PoC。消息处理链路是：
@@ -14,25 +20,71 @@
 
 `src/research/tools.rs` 维护项目投研工具目录，覆盖基础信息与行情数据、链上数据与分析、项目代码与安全、社区与社交媒体、投资与资金动向、研究报告与专家观点。新增投研来源时先归类到该目录，再决定是否实现为 `PublicNewsSource`、链上 connector 或人工辅助入口。
 
+如果用户给出新的投研工具学习清单或尽调方法，不要只把名称塞进目录；优先同步到 `docs/research-tools.md` 里的学习路径、尽调顺序和自动化优先级，保证后续可以直接复用。
+
 `src/research/learning.rs` 维护 AI / Agent 学习资源目录，覆盖 LLM 基础、API 调用、coding agent、agent 框架、Hermes 执行层、微信 Agent Skill 和 AI x Web3 参考。新增课程、文档、Prompt、Handbook 或微信私域 Agent 参考时先放进该目录，避免把学习资料直接耦合进微信消息处理链路。
 
-`src/diagnostic.rs` 维护 wx-cli 诊断和捕获消息重放的纯逻辑，包括 dry-run 输出、按 `message_id` 选择消息和群级配置预览；`main.rs` 只负责 CLI I/O、依赖初始化和命令编排。
+多模态 / 视频语言交互类能力（例如 JoyAI-VL-Interaction）当前只作为学习与路线图参考，不直接并入 `QunMind` 主进程。优先把它们沉淀到 `research::learning` 和 `docs/multimodal-roadmap.md`，等后续单独 PoC 能稳定产出结构化事件后，再考虑通过 `PublicNewsSource`、`Connector` 或日报素材入口回接主项目。
 
-`src/mcp/mod.rs` 维护 MCP JSON-RPC 2.0 server，`src/mcp/tools.rs` 维护 7 个 MCP tool 的 inputSchema 定义和 diagnostic 纯函数适配。新增 MCP tool 时优先在 `tools.rs` 补纯函数测试，不要往 `mod.rs` 塞业务逻辑。
+`src/diagnostic/` 目录维护 wx-cli 诊断和捕获消息重放的纯逻辑，当前拆成 `doctor`、`dry_run`、`formal_test`、`pipeline`、`support`；`main.rs` 只负责 CLI I/O、依赖初始化和命令编排。
+
+`src/channel/wx_cli.rs` 同时承载 wx-cli / 微信数据库通道的捕获文件读写 helper（例如 capture JSON 读写）和通道侧解析；凡是会被 CLI 与 MCP 复用、但不属于 `diagnostic` 纯逻辑的文件 I/O，优先放这里，避免在 `main.rs` 和 `src/mcp/tools.rs` 各写一份。
+
+`src/wx_cli_runtime.rs` 维护 CLI / MCP 共用的 wx-cli 运行时适配 helper，例如“按输入来源读取消息”“dry-run 结构化 JSON 组装”“handle-once 管线报告渲染”。这里可以编排已有 `channel::wx_cli` 与 `diagnostic` 能力，但不要把新的诊断业务规则直接堆回 `main.rs` 或 `src/mcp/tools.rs`。
+
+`tests/fixtures/wx_cli/` 用于存放脱敏后的离线 wx-cli capture 样本。后续补真实联调证据时，优先把匿名化样本放这里，并通过独立 `tests/*_test.rs` 消费这些 fixture，不要把越来越长的“近真实 JSON”继续内联到单元测试字符串里。
+
+`src/mcp/mod.rs` 维护 MCP JSON-RPC 2.0 server，`src/mcp/tools.rs` 维护 MCP tool 的 inputSchema 定义和 diagnostic / reporting 纯函数适配。新增 MCP tool 时优先在 `tools.rs` 补纯函数测试，不要往 `mod.rs` 塞业务逻辑。
+
+`src/reporting.rs` 维护日报运营状态的共享 helper，例如 `report_name` 解析、`report-status` 目标选择、readiness blocker 判定和发布回执 JSON 渲染。凡是 CLI 与 MCP 都需要复用的日报状态逻辑，优先放这里，不要在 `main.rs` 和 `src/mcp/tools.rs` 各写一套。
+
+如果定时 `output = "wechat"` 日报与手工 `daily-report` 的内容生成语义发生分叉，优先把“群消息 + 链接情报 -> AI”这段共享逻辑抽到 `src/reporting.rs` 或其他纯 helper 中复用，不要让 scheduler 和 CLI 各自维护一份日报素材选择逻辑。
+
+`qunmind daily-report` 不再只是一条“随便生成一份 markdown”的孤立命令；如果传 `--report-name`，应尽量复用已配置日报目标的 `daily_quote` / `output` / 发布参数，作为手工联调正式日报目标的入口。涉及这条手工链路的行为变更时，同步检查 README / PROGRESS 对“如何手工跑一次日报”的描述是否一致。
+
+手工 `daily-report --report-name ... --publish` 一旦发布成功，应尽量沿用与 scheduler 相同的发布回执落库边界，让 `report-status` / `publish-history` 立刻看到最新结果；如果回执保存失败，也要把“外部发布成功但内部状态保存失败”明确暴露出来，不要把两者混成同一个失败语义。
+
+如果只配置了一个 `schedule.daily_reports` 目标，手工 `daily-report` 应优先自动复用它，而不是退回成脱离正式目标配置的空白 markdown 模式；只有在存在多个日报目标时，才要求显式传 `--report-name`，避免手工联调和正式目标配置脱节。
+
+手工 `daily-report` 的内容来源也应尽量与正式日报目标保持一致：目标群在回看窗口内有已保存消息时，优先基于群消息和链接情报生成；只有群消息为空时，才回退到 `public_sources`。不要让“手工联调”和“定时正式日报”走出两套不同的内容来源语义。
 
 `src/source/hn_daily.rs` 抓取 HN Daily 每日 top 10 文章作为日报素材源，HTML 解析逻辑保持无依赖（纯字符串匹配），不需要额外 HTML parser。新增类似轻量抓取来源时参考其模式。
+
+公众号文章这类外部内容入口优先走 `PublicNewsSource` 边界。当前更推荐的第一步是消费 RSS / Atom 上游输出（例如 `wechat-download-api` 提供的 RSS），而不是把登录、代理和反风控逻辑直接嵌进 `QunMind` 主进程。
+
+`src/publisher.rs` 是日报发布边界。`QunMind` 负责“生成什么、何时发、目标是否 ready”；平台侧项目或适配器负责“按平台规则怎么发”。当前只落地了 `PublishTarget::WechatDraft`，通过本地 `moonpub` 推公众号草稿。后续即使接抖音、小红书，也优先新增 publisher target 或独立发布子系统，不把平台鉴权、素材渲染和风控逻辑塞回 scheduler。
+
+发布适配器成功后优先返回结构化 `PublishReceipt`（目标、目的地、时间、摘要、原始输出），不要只在 scheduler 里打印一句成功日志。这样后续补持久化、失败重试或多平台对账时不用重新拆接口。
+
+如果发布成功但状态记录失败，行为优先级应该是“保留成功发布事实，同时明确记录回执保存失败”，不要因为回执落库失败就把外部发布结果误报成整体失败。
+
+发布记录一旦开始落库，后续优先补“最近发布历史查询”这类轻量可见性接口，再考虑独立 dashboard。先保证 CLI / scheduler / 后续 MCP 至少能拿到最近几次发布状态，不要等完整后台做完才看得到结果。
+
+如果新增发布历史查询入口，优先保持输出结构化 JSON，并兼容“单目标 legacy 配置可直接查看、多目标配置必须显式选择 report_name”这类安全约束，避免历史记录被误查到错误日报目标。
+
+同样的约束要在 MCP tool 层保持一致，不要让 CLI 和 MCP 在 `report_name` 选择规则上出现分叉；发布历史属于运营状态查询，不要混进 wx-cli 诊断 tool 里。
+
+如果用户临近交付、更关心“明天能不能用”，优先提供像 `report-status` 这样的专用日报链路状态视图：直接回答 `status` / `ready` / `blockers` / `next_steps` / `recent_receipts`，而不是要求用户自己拼 doctor、history 和配置字段。
 
 `channel.kind = "wx_cli"` 时通过 `wx_cli.bin + wx_cli.poll_args` 轮询 JSON 消息，通过 `wx_cli.send_args` 模板发送文本。`ai.provider = "hermes"` 时调用 `[hermes]` 中的 HTTP API，适合先对接爱马仕/小龙虾一类 Agent 平台。
 
 `[schedule] daily_report_chat_id` 是兼容旧配置的单群日报入口；多群日报使用 `[[schedule.daily_reports]]`，每个目标可以覆盖 `cron`、`prompt`、`lookback_hours`、`max_messages`、`max_links`。未覆盖字段继承全局 `[schedule]`。
 
-可以用 `cargo run -- wx-cli doctor`、`cargo run -- wx-cli test-plan --capture-file wx-output.json`、`cargo run -- wx-cli capture --output wx-output.json`、`cargo run -- wx-cli poll`、`cargo run -- wx-cli dry-run --limit 10` 和 `cargo run -- wx-cli send --chat-id "<chat_id>" --text "<text>" --dry-run` 单独诊断 wx-cli 收发命令；这些命令只读取配置，不会初始化 PG、AI、日报调度或进入机器人主循环。`doctor` 会在真实群测前输出 blockers、warnings 和 next_steps，检查发送参数占位符、AI 配置、@ 触发安全性，以及可选捕获消息里的群聊和 message_id 信号；带捕获文件时还会输出 `reply_candidate_message_ids`、`group_reply_candidate_message_ids`、`formal_test_readiness`、`group_overrides`、`daily_report_targets`、`group_override_not_seen_in_capture` 和 `daily_report_target_not_seen_in_capture` warning，方便真实发送前先精确选择群聊目标消息，并确认群级配置和日报目标群出现在捕获里。`capture_has_no_group_reply_candidates` 和 `capture_has_multiple_group_reply_candidates_select_message_id` 是正式微信群重放前的重要 warning，不要用私聊候选替代群聊候选；`formal_test_readiness.recommended_message_id` 只有在唯一安全群聊候选存在时才可直接用于正式重放。`test-plan` 会输出正式群测命令顺序，生成命令会保留当前 `--config` 路径，复用 `doctor` 的完整 readiness blockers，并用 `safe_to_send` 标记哪些步骤会真的触达微信；`test-plan --shell` 会把同一份计划渲染成 shell 脚本，其中非发送检查可直接执行，真实发微信步骤默认注释，必须人工确认 dry-run 输出后再取消注释。`test-plan --input <json-file>` 会读取捕获消息，在只有一个群聊回复候选时自动填入 message_id，并输出 `selected_message` 预览，避免正式重放前只看到一个 ID；在没有显式测试 chat_id 或 `wx_cli.group_chat_id` 时会从选中消息推断 chat_id，同时跳过新的 capture 步骤，避免覆盖已选中 message_id 所在的捕获文件；候选、测试 chat_id、唯一 message_id、群聊消息或选中消息的回复触发条件不明确时会要求显式修正，避免真实发送步骤带占位符、私聊样本或空跑；没有捕获输入时，真实重放前同样需要显式 `--message-id`。`capture` 会执行一次 `wx_cli.poll_args`，把归一化后的可复放消息写入 JSON 文件，并输出 `formal_test_readiness`、`recommended_commands` 与下一步建议；新增 capture 报告字段时优先在 `diagnostic` 里补纯函数测试，不要把 JSON 组装逻辑写回 `main.rs`。`doctor`、`test-plan`、`poll`、`dry-run` 和 `handle-once` 都支持 `--input <json-file>`，用于解析已捕获的 wx-cli JSON 输出文件，不会再次调用 wx-cli。`dry-run` 会按 `bot.mention_names` 输出哪些消息会触发回复，但不会保存、调用 AI 或发送；`send --dry-run` 会预览最终发送命令但不会调用 wx-cli 发送；捕获文件里有多条消息时可用 `--message-id` 精确预检一条，若指定 ID 不存在、不唯一、来自私聊或不会触发回复会返回结构化 `ok = false` JSON。需要测试“轮询/捕获消息 -> 保存 -> mention 过滤 -> AI -> 回复”真实链路但不想发群消息时，用 `cargo run -- wx-cli handle-once --input wx-output.json --message-id "<msg_id>" --limit 1 --no-send`；它会初始化 PostgreSQL 和 AI，并把本应发送的回复输出为 JSON。去掉 `--no-send` 后会真的通过 wx-cli 回复。
+`[[schedule.daily_reports]]` 中 `output = "wechat"` 的目标依赖本地 `moonpub`，当前调用形态是 `moonpub --articles <dir> push <temp_markdown_file> --render`。这类目标至少要检查两类硬前提：`wechat_bin` 可调用且本机可找到、`wechat_articles_dir` 指向真实存在的 moonpub articles 根目录；`[public_sources]` 更适合作为“群消息为空时的回退素材能力”提示，而不是一刀切的 readiness blocker。新增这类诊断时优先放在 `diagnostic` 纯函数报告里前置暴露，不要等到定时任务运行时报错才发现。
+
+如果微信草稿发布实际还依赖上游 publisher 的运行时环境变量（当前本机 `moonpub` 已确认依赖 `WECHAT_APPID` 与 `WECHAT_SECRET`），`report-status` / `doctor` 也要把这类缺失提前暴露成 blocker，不要让状态页显示 ready、真实试发时才在 publisher stderr 里失败。
+
+如果用户目标是“尽快测试公众号日报发布”，默认优先给出 RSS 上游联调路径，而不是展开按公众号名字抓取的高风控方案。最短可执行路径应围绕 `report-status` -> `daily-report --output` -> `daily-report --publish` -> `publish-history` 展开。
+
+可以用 `cargo run -- wx-cli doctor`、`cargo run -- wx-cli test-plan --capture-file wx-output.json`、`cargo run -- wx-cli capture --output wx-output.json`、`cargo run -- wx-cli poll`、`cargo run -- wx-cli dry-run --limit 10` 和 `cargo run -- wx-cli send --chat-id "<chat_id>" --text "<text>" --dry-run` 单独诊断 wx-cli 收发命令；这些命令只读取配置，不会初始化 PG、AI、日报调度或进入机器人主循环。`doctor` 会在真实群测前输出 blockers、warnings 和 next_steps，检查发送参数占位符、AI 配置、@ 触发安全性，以及可选捕获消息里的群聊和 message_id 信号；带捕获文件时还会输出 `reply_candidate_message_ids`、`group_reply_candidate_message_ids`、`formal_test_readiness`、`group_overrides`、`daily_report_targets`、`group_override_not_seen_in_capture` 和 `daily_report_target_not_seen_in_capture` warning，方便真实发送前先精确选择群聊目标消息，并确认群级配置和日报目标群出现在捕获里。`capture_has_no_group_reply_candidates` 和 `capture_has_multiple_group_reply_candidates_select_message_id` 是正式微信群重放前的重要 warning，不要用私聊候选替代群聊候选；`formal_test_readiness.recommended_message_id` 只有在唯一安全群聊候选存在时才可直接用于正式重放。`test-plan` 会输出正式群测命令顺序，生成命令会保留当前 `--config` 路径，复用 `doctor` 的完整 readiness blockers，并用 `safe_to_send` 标记哪些步骤会真的触达微信；`test-plan --shell` 会把同一份计划渲染成 shell 脚本，其中非发送检查可直接执行，真实发微信步骤默认注释，必须人工确认 dry-run 输出后再取消注释。`test-plan --input <json-file>` 会读取捕获消息，在只有一个群聊回复候选时自动填入 message_id，并输出 `selected_message` 预览，避免正式重放前只看到一个 ID；在没有显式测试 chat_id 或 `wx_cli.group_chat_id` 时会从选中消息推断 chat_id，同时跳过新的 capture 步骤，避免覆盖已选中 message_id 所在的捕获文件；候选、测试 chat_id、唯一 message_id、群聊消息或选中消息的回复触发条件不明确时会要求显式修正，避免真实发送步骤带占位符、私聊样本或空跑；没有捕获输入时，真实重放前同样需要显式 `--message-id`。`capture` 会执行一次 `wx_cli.poll_args`，把归一化后的可复放消息写入 JSON 文件，并输出 `formal_test_readiness`、`recommended_commands` 与下一步建议；新增 capture 报告字段时优先在 `diagnostic` 里补纯函数测试，不要把 JSON 组装逻辑写回 `main.rs`。`doctor`、`test-plan`、`poll`、`dry-run` 和 `handle-once` 都支持 `--input <json-file>`，用于解析已捕获的 wx-cli JSON 输出文件，不会再次调用 wx-cli。`dry-run` 会按 `bot.mention_names` 输出哪些消息会触发回复，但不会保存、调用 AI 或发送；`send --dry-run` 会预览最终发送命令但不会调用 wx-cli 发送；捕获文件里有多条消息时可用 `--message-id` 精确预检一条，若指定 ID 不存在、不唯一、来自私聊或不会触发回复会返回结构化 `ok = false` JSON。`handle-once --input <json-file>` 在捕获文件含多条消息时同样必须显式给 `--message-id`，否则会先返回 `message_id_required_for_multiple_messages`，并直接附带 `reply_candidate_message_ids` / `group_reply_candidate_message_ids`，方便下一步立刻选 ID，避免把“离线复放一条消息”误跑成“顺序处理前几条消息”；即使 `message_id` 已给出，若选中的是私聊样本或根本不会触发回复的消息，也会在初始化 PostgreSQL / AI 前直接返回 `selected_message_not_group` 或 `selected_message_would_not_reply`。需要测试“轮询/捕获消息 -> 保存 -> mention 过滤 -> AI -> 回复”真实链路但不想发群消息时，用 `cargo run -- wx-cli handle-once --input wx-output.json --message-id "<msg_id>" --limit 1 --no-send`；它会初始化 PostgreSQL 和 AI，并把本应发送的回复输出为 JSON。去掉 `--no-send` 后会真的通过 wx-cli 回复。
 
 `bot.mention_names` 配置后，群聊只回复包含这些文本的消息；留空则保持兼容行为，回复所有文本消息。wx-cli 群机器人场景优先配置普通微信号在群里的 @ 展示名，避免刷屏。
 
 `bot.context_messages` 控制回复时纳入多少条最近同会话文本消息作为 AI 上下文，默认 8。这里是短期上下文，不是长期记忆；后续多群 persona、权限和长期记忆应继续独立设计。
 
 `storage.database_url` 默认是 `postgres://postgres:postgres@localhost:5432/qunmind`。本地运行前需要先创建 PostgreSQL 数据库；QunMind 启动时会自动创建当前需要的表和索引。
+
+如果只是补齐默认本地日报试发环境，优先使用 `just db-create` 创建缺失的 `qunmind` 数据库，再跑 `just report-status` / `just report-markdown`；不要把这条入口泛化成修改任意生产数据库的通用脚本。
 
 部署工程化已包含 `Dockerfile`、`docker-compose.yml`、`config.docker.example.toml` 和 `DEPLOYMENT.md`。Compose 默认启动 QunMind + PostgreSQL，并把本地 `config.toml` 只读挂载到 `/app/config.toml`；不要把 `config.toml` 复制进镜像或提交到仓库。Docker/Compose 更适合企业微信内部群、日报和 PG 持久化；普通微信 wx-cli 通道通常依赖宿主机 WeChat session 和宿主 CLI/daemon，容器化前必须先确认 socket、HTTP endpoint 或二进制挂载方案，不要默认认为容器能访问本机微信数据。
 
@@ -45,6 +97,11 @@
 - `just clippy`：运行 clippy，警告视为错误
 - `just test`：使用 `cargo nextest run --all-features`
 - `just check-all`：完整检查
+- `just db-create`：在默认本地 PostgreSQL 缺库时补建 `qunmind`
+- `just report-status report="微信公众号日报"`：查看公众号日报 readiness
+- `just report-markdown report="微信公众号日报" output="/tmp/wechat-report.md"`：只生成本地日报 markdown，不触发发布
+- `just report-publish report="微信公众号日报" output="/tmp/wechat-report.md"`：沿正式 publisher 边界真实推送日报
+- `just report-history report="微信公众号日报"`：查看最近发布回执
 - `just run`：运行本地服务
 - `just docker-build`：构建本地 Docker 镜像 `qunmind:local`
 - `just compose-config`：检查 Docker Compose 最终配置
@@ -64,7 +121,7 @@
 - `cargo run -- wx-cli dry-run --input wx-output.json --limit 10`：离线预检已捕获消息是否会触发回复
 - `cargo run -- wx-cli dry-run --input wx-output.json --message-id "<msg_id>"`：从捕获文件中精确预检一条消息
 - `cargo run -- wx-cli handle-once --limit 1`：执行一次 wx-cli 轮询并交给真实 `BotHandler` 链路处理
-- `cargo run -- wx-cli handle-once --input wx-output.json --limit 1`：把已捕获 wx-cli JSON 交给真实 `BotHandler` 链路处理
+- `cargo run -- wx-cli handle-once --input wx-output.json --limit 1`：把已捕获 wx-cli JSON 交给真实 `BotHandler` 链路处理；若捕获文件含多条消息，仍需显式 `--message-id`
 - `cargo run -- wx-cli handle-once --input wx-output.json --message-id "<msg_id>" --limit 1 --no-send`：真实保存并调用 AI，但只捕获回复不发微信
 - `cargo run -- wx-cli handle-once --input wx-output.json --message-id "<msg_id>" --limit 1`：从捕获文件中精确重放一条消息
 - `cargo run -- wx-cli send --chat-id "<chat_id>" --text "<text>" --dry-run`：渲染 `[wx_cli].send_args` 但不执行发送
@@ -80,14 +137,17 @@
 - 测试使用 `cargo nextest run --all-features`，不要用 `cargo test` 代替。
 - 新增测试放在 `tests/`，命名使用 `*_test.rs`。
 - Commit message 使用 Conventional Commits，英文消息。
-- 默认使用 PR-first 工作流：从 `master` 创建 `codex/<short-topic>` 分支，提交并 push 分支，再用 `gh pr create --base master --head <branch>` 自己给自己提 PR；除非用户明确要求，后续不要直接 push 到 `master`。
-- Release 使用 tag-first 自动化：推送 `v*` tag 后，`.github/workflows/release.yml` 会用 GitHub Actions 自动创建对应 GitHub Release；正式发版前仍先确认 `master` CI 通过。
+- 默认使用 PR-first 工作流：从 `main` 创建 `codex/<short-topic>` 分支，提交并 push 分支，再用 `gh pr create --base main --head <branch>` 自己给自己提 PR；除非用户明确要求，后续不要直接 push 到 `main`。
+- 当前仓库里已有历史平铺分支名 `codex-wx-cli-replay-docs`，会阻塞新的 `codex/<short-topic>` ref 目录创建；在清理该历史分支前，新分支统一使用 `codex-<short-topic>`，避免 `cannot lock ref 'refs/heads/codex/...'`。
+- Release 使用 tag-first 自动化：推送 `v*` tag 后，`.github/workflows/release.yml` 会用 GitHub Actions 自动创建对应 GitHub Release；正式发版前仍先确认 `main` CI 通过。
 - Release workflow 也会把镜像发布到 `ghcr.io/qiaopengjun5162/qunmind:<tag>` 和 `ghcr.io/qiaopengjun5162/qunmind:latest`；修改 Dockerfile、Compose 或部署文档时至少跑 `docker compose config`，有 Docker daemon 时继续跑 `docker build --tag qunmind:local .`。
 - 如果后续加入 Rust/WASM 前端，使用 `wasm-pack` 构建；`wasm-bindgen` 暴露函数时避免 `Option<&str>` 这类不支持的参数形态。
+- 提交流程默认必须走 `git add` → `git commit` → `git push` → `gh pr create`。如果本次修改形成了可复用流程或经验，优先沉淀到 `skills/` 下的本地 Skill，而不是只留在聊天记录里。
 
 ## 本地约束
 
 - `config.toml` 包含本地凭据，默认不要读取、修改或提交；需要示例配置时使用 `config.example.toml`。
+- `just report-publish` 会触发真实外部发布链路，也可能向当前配置的 AI / publisher 发送本地素材；未获明确同意时，优先停在 `just report-status` / `just report-markdown`。
 - `config.toml` 已被 `.gitignore` 忽略，初始化或格式化时不要把它纳入批量 TOML 格式化命令；`just fmt` / `just fmt-check` 只覆盖 `config.example.toml` 和 `config.docker.example.toml`。
 - Docker 部署示例使用 `config.docker.example.toml`；真实部署仍复制成本地 `config.toml` 后挂载，不能把真实凭据写入 `docker-compose.yml`、Dockerfile、CI workflow 或 GHCR image layer。
 - `tests/` 已初始化，新增对外行为测试时放在这里，命名使用 `*_test.rs`。
@@ -122,6 +182,22 @@
   - Rust 实现的本地微信数据 CLI/daemon 参考。
   - 可作为未来个人微信历史、会话、搜索、统计、群成员等数据的只读导入通道。
   - 它不替代当前企业微信主动收发通道；主动聊天机器人能力仍需单独评估。
+
+- https://github.com/tmwgsicp/wechat-download-api
+  - 微信公众号文章获取、历史文章列表、RSS 订阅和 markdown 导出的 API 服务参考。
+  - 更适合放在公共信息源、投研素材补充和公众号文章归档入口，不适合作为微信群消息收发主通道。
+  - 对 QunMind 的启发是：后续如需把公众号文章纳入日报或研究素材，可优先把它视为独立上游服务或参考其接口边界，而不是把扫码登录、代理池和反风控逻辑直接耦合进主机器人进程。
+  - 判断原则：**吸收能力，不照搬实现**。优先吸收“文章列表 / 文章正文 / RSS / markdown 输出”这类内容接口边界；不要把它的登录态管理、代理池、反风控和服务端形态直接内嵌进 QunMind。
+
+- https://github.com/Panniantong/Agent-Reach
+  - 多平台内容获取与 Agent 能力层参考，更适合借鉴“doctor / 路由 / skill 安装 / 多后端切换”的产品结构，而不是照搬其 Python 工具编排实现。
+  - 对 QunMind 的启发是把公共投研来源继续抽象成独立 connector / capability layer，让微信群消息主链路与外部研究素材采集保持边界清晰。
+  - 不要把高风控平台登录态、Cookie、浏览器自动化或账号运营逻辑直接并入 QunMind 主进程；优先吸收低风险、可公开、可测试的来源边界。
+
+- https://github.com/jd-opensource/JoyAI-VL-Interaction
+  - 实时视频-语言交互、多模态 Agent runtime 和“说 / 停 / 委托”决策参考。
+  - 对 QunMind 的启发是未来把直播、视频、桌面或可视化画面先做成独立多模态 PoC，再把结构化事件或摘要结果回灌到群日报和 Agent 工作流。
+  - 当前不要把重型视频推理、ASR/TTS 或 GPU 运行时直接耦合进 QunMind 主链路。
 
 - https://mp.weixin.qq.com/s/djeUolNR4bms8wGsvBTAZQ
   - 文章标题：`wx-cli 的 AI Agent Skill 来了！让 AI 直接帮你管微信私域`。

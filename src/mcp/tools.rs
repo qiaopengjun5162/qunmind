@@ -1,8 +1,15 @@
 use std::path::PathBuf;
 
-use crate::channel::wx_cli::{self, WxCliChannel};
+use crate::channel::wx_cli::{WxCliChannel, write_wx_cli_capture_file};
 use crate::config::Config;
 use crate::diagnostic;
+use crate::reporting::{
+    effective_publish_history_name, effective_report_status_target, publish_receipt_json,
+    report_status_json,
+};
+use crate::storage::MessageStore;
+use crate::storage::postgres::PostgresMessageStore;
+use crate::wx_cli_runtime;
 
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct Tool {
@@ -14,6 +21,42 @@ pub struct Tool {
 
 pub fn list_tools() -> Vec<Tool> {
     vec![
+        Tool {
+            name: "publish_history".into(),
+            description: "Read recent persisted publish receipts for one report target.".into(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "report_name": {
+                        "type": "string",
+                        "description": "Explicit daily report target name. Required when multiple schedule.daily_reports entries exist."
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "Max receipts to return (default: 5)."
+                    }
+                },
+                "required": []
+            }),
+        },
+        Tool {
+            name: "report_status".into(),
+            description: "Check whether a daily report target is ready to publish and return recent persisted receipts.".into(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "report_name": {
+                        "type": "string",
+                        "description": "Explicit daily report target name. Required when multiple schedule.daily_reports entries exist."
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "Max recent receipts to return (default: 5)."
+                    }
+                },
+                "required": []
+            }),
+        },
         Tool {
             name: "wxcli_doctor".into(),
             description: "Validate wx-cli readiness. Optionally parse a captured JSON file for group reply candidate analysis.".into(),
@@ -161,13 +204,16 @@ pub fn list_tools() -> Vec<Tool> {
 
 pub async fn call_tool(
     config: &Config,
+    config_path: &std::path::Path,
     tool_name: &str,
     arguments: &serde_json::Value,
 ) -> anyhow::Result<String> {
     match tool_name {
+        "publish_history" => tool_publish_history(config, arguments).await,
+        "report_status" => tool_report_status(config, arguments).await,
         "wxcli_doctor" => tool_doctor(config, arguments),
-        "wxcli_capture" => tool_capture(config, arguments).await,
-        "wxcli_test_plan" => tool_test_plan(config, arguments),
+        "wxcli_capture" => tool_capture(config, config_path, arguments).await,
+        "wxcli_test_plan" => tool_test_plan(config, config_path, arguments),
         "wxcli_dry_run" => tool_dry_run(config, arguments),
         "wxcli_poll" => tool_poll(config, arguments).await,
         "wxcli_send" => tool_send(config, arguments),
@@ -180,17 +226,69 @@ pub async fn call_tool(
 // Tool implementations
 // ---------------------------------------------------------------------------
 
+async fn tool_publish_history(config: &Config, args: &serde_json::Value) -> anyhow::Result<String> {
+    let report_name = args
+        .get("report_name")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    let limit = args.get("limit").and_then(|v| v.as_i64()).unwrap_or(5);
+
+    let report_name = effective_publish_history_name(config, report_name)?;
+    let store = PostgresMessageStore::connect(&config.storage).await?;
+    let receipts = store.recent_publish_receipts(&report_name, limit).await?;
+
+    Ok(serde_json::to_string_pretty(&serde_json::json!({
+        "ok": true,
+        "report_name": report_name,
+        "count": receipts.len(),
+        "items": receipts
+            .into_iter()
+            .map(publish_receipt_json)
+            .collect::<Vec<_>>(),
+    }))?)
+}
+
+async fn tool_report_status(config: &Config, args: &serde_json::Value) -> anyhow::Result<String> {
+    let report_name = args
+        .get("report_name")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    let limit = args.get("limit").and_then(|v| v.as_i64()).unwrap_or(5);
+
+    let report_name = effective_publish_history_name(config, report_name)?;
+    let target = effective_report_status_target(config, &report_name)?;
+    let store = PostgresMessageStore::connect(&config.storage).await?;
+    let receipts = store.recent_publish_receipts(&report_name, limit).await?;
+
+    Ok(serde_json::to_string_pretty(&report_status_json(
+        config,
+        &report_name,
+        &target,
+        receipts,
+    ))?)
+}
+
 fn tool_doctor(config: &Config, args: &serde_json::Value) -> anyhow::Result<String> {
     let limit = args
         .get("limit")
         .and_then(|v| v.as_u64())
         .map_or(10, |v| v as usize);
-    let messages = load_messages_or_none(config, args)?;
+    let messages = wx_cli_runtime::maybe_load_messages(
+        config,
+        args.get("input")
+            .and_then(|v| v.as_str())
+            .map(PathBuf::from)
+            .as_deref(),
+    )?;
     let report = diagnostic::wx_cli_doctor_report(config, messages.as_deref(), limit);
     Ok(serde_json::to_string_pretty(&report)?)
 }
 
-async fn tool_capture(config: &Config, args: &serde_json::Value) -> anyhow::Result<String> {
+async fn tool_capture(
+    config: &Config,
+    config_path: &std::path::Path,
+    args: &serde_json::Value,
+) -> anyhow::Result<String> {
     let output = required_string(args, "output")?;
     let output = PathBuf::from(&output);
 
@@ -200,24 +298,17 @@ async fn tool_capture(config: &Config, args: &serde_json::Value) -> anyhow::Resu
         .await
         .map_err(|e| anyhow::anyhow!("wx-cli poll failed: {e}"))?;
 
-    // Write capture file (mirrors main.rs write_wx_cli_capture).
-    if let Some(parent) = output.parent().filter(|p| !p.as_os_str().is_empty()) {
-        std::fs::create_dir_all(parent)?;
-    }
-    let body = serde_json::to_string_pretty(&messages)?;
-    std::fs::write(&output, body)?;
+    write_wx_cli_capture_file(&output, &messages)?;
 
-    // config_path is not available in the MCP context; use a placeholder.
-    let report = diagnostic::wx_cli_capture_report(
-        config,
-        std::path::Path::new("config.toml"),
-        &output,
-        &messages,
-    );
+    let report = diagnostic::wx_cli_capture_report(config, config_path, &output, &messages);
     Ok(serde_json::to_string_pretty(&report)?)
 }
 
-fn tool_test_plan(config: &Config, args: &serde_json::Value) -> anyhow::Result<String> {
+fn tool_test_plan(
+    config: &Config,
+    config_path: &std::path::Path,
+    args: &serde_json::Value,
+) -> anyhow::Result<String> {
     let capture_file = required_string(args, "capture_file")?;
     let capture_file = PathBuf::from(&capture_file);
     let input = args.get("input").and_then(|v| v.as_str());
@@ -230,14 +321,11 @@ fn tool_test_plan(config: &Config, args: &serde_json::Value) -> anyhow::Result<S
     let shell = args.get("shell").and_then(|v| v.as_bool()).unwrap_or(false);
 
     let input = input.map(PathBuf::from);
-    let messages = match input.as_ref() {
-        Some(input) => Some(load_wx_cli_messages_from_file(config, input)?),
-        None => None,
-    };
+    let messages = wx_cli_runtime::maybe_load_messages(config, input.as_deref())?;
 
     let plan = diagnostic::wx_cli_formal_test_plan(
         config,
-        std::path::Path::new("config.toml"),
+        config_path,
         &capture_file,
         message_id,
         chat_id,
@@ -258,30 +346,18 @@ fn tool_dry_run(config: &Config, args: &serde_json::Value) -> anyhow::Result<Str
         .and_then(|v| v.as_u64())
         .map_or(10, |v| v as usize);
     let message_id = args.get("message_id").and_then(|v| v.as_str());
-    let messages = load_wx_cli_messages_from_file(config, &required_input_path(args)?)?;
-
-    let total_polled = messages.len();
-    if let Some(report) =
-        diagnostic::wx_cli_dry_run_message_id_guard_report(&messages, total_polled, message_id)
-    {
-        return Ok(serde_json::to_string_pretty(&report)?);
-    }
-
-    let selected = diagnostic::select_wx_cli_messages(messages, message_id, limit);
-    let report = diagnostic::wx_cli_dry_run_report(config, total_polled, &selected);
+    let input = required_input_path(args)?;
+    let messages = wx_cli_runtime::load_messages_from_file(config, input.as_path())?;
+    let report = wx_cli_runtime::dry_run_json(config, messages, message_id, limit);
     Ok(serde_json::to_string_pretty(&report)?)
 }
 
 async fn tool_poll(config: &Config, args: &serde_json::Value) -> anyhow::Result<String> {
-    let messages = if let Some(input) = args.get("input").and_then(|v| v.as_str()) {
-        load_wx_cli_messages_from_file(config, &PathBuf::from(input))?
-    } else {
-        let channel = WxCliChannel::new(&config.wx_cli);
-        channel
-            .poll_once()
-            .await
-            .map_err(|e| anyhow::anyhow!("wx-cli poll failed: {e}"))?
-    };
+    let input = args
+        .get("input")
+        .and_then(|v| v.as_str())
+        .map(PathBuf::from);
+    let messages = wx_cli_runtime::load_messages(config, input.as_deref()).await?;
     Ok(serde_json::to_string_pretty(&messages)?)
 }
 
@@ -305,11 +381,10 @@ async fn tool_handle_once(config: &Config, args: &serde_json::Value) -> anyhow::
         .get("limit")
         .and_then(|v| v.as_u64())
         .map_or(1, |v| v as usize);
-    let messages = load_wx_cli_messages_from_file(config, &required_input_path(args)?)?;
-
-    // MCP tools never send real WeChat messages.
-    let (report, _suppressed) =
-        diagnostic::wx_cli_handle_once_pipeline(config, messages, message_id, limit, true).await;
+    let input = required_input_path(args)?;
+    let messages = wx_cli_runtime::load_messages(config, Some(input.as_path())).await?;
+    let report =
+        wx_cli_runtime::handle_once_json(config, messages, message_id, limit, true, true).await;
     Ok(serde_json::to_string_pretty(&report)?)
 }
 
@@ -328,30 +403,6 @@ fn required_string(args: &serde_json::Value, key: &str) -> anyhow::Result<String
 fn required_input_path(args: &serde_json::Value) -> anyhow::Result<PathBuf> {
     let input = required_string(args, "input")?;
     Ok(PathBuf::from(input))
-}
-
-fn load_messages_or_none(
-    config: &Config,
-    args: &serde_json::Value,
-) -> anyhow::Result<Option<Vec<crate::channel::IncomingMessage>>> {
-    match args.get("input").and_then(|v| v.as_str()) {
-        Some(input) => Ok(Some(load_wx_cli_messages_from_file(
-            config,
-            &PathBuf::from(input),
-        )?)),
-        None => Ok(None),
-    }
-}
-
-fn load_wx_cli_messages_from_file(
-    config: &Config,
-    input: &std::path::Path,
-) -> anyhow::Result<Vec<crate::channel::IncomingMessage>> {
-    let raw = std::fs::read_to_string(input)?;
-    Ok(wx_cli::parse_wx_cli_messages_from_str(
-        &raw,
-        &config.wx_cli.group_chat_id,
-    )?)
 }
 
 #[cfg(test)]
@@ -398,11 +449,31 @@ mod tests {
         std::fs::write(path, serde_json::to_string_pretty(&json).unwrap()).unwrap();
     }
 
+    fn write_multi_capture_fixture(path: &std::path::Path) {
+        let json = serde_json::json!([
+            {
+                "id": "m-1",
+                "chat": "test@chatroom",
+                "sender": "alice",
+                "content": "@bot hello world"
+            },
+            {
+                "id": "m-2",
+                "chat": "test@chatroom",
+                "sender": "bob",
+                "content": "@bot summarize this too"
+            }
+        ]);
+        std::fs::write(path, serde_json::to_string_pretty(&json).unwrap()).unwrap();
+    }
+
     #[test]
-    fn list_tools_returns_seven_tools() {
+    fn list_tools_returns_nine_tools() {
         let tools = list_tools();
-        assert_eq!(tools.len(), 7);
+        assert_eq!(tools.len(), 9);
         let names: Vec<&str> = tools.iter().map(|t| t.name.as_str()).collect();
+        assert!(names.contains(&"publish_history"));
+        assert!(names.contains(&"report_status"));
         assert!(names.contains(&"wxcli_doctor"));
         assert!(names.contains(&"wxcli_capture"));
         assert!(names.contains(&"wxcli_test_plan"));
@@ -453,12 +524,97 @@ mod tests {
         assert_eq!(required_string(&args, "input").unwrap(), "wx-output.json");
     }
 
+    #[test]
+    fn publish_history_name_uses_requested_name() {
+        let config = test_config();
+        let name = effective_publish_history_name(&config, "技术群日报").unwrap();
+        assert_eq!(name, "技术群日报");
+    }
+
+    #[test]
+    fn publish_history_name_rejects_ambiguous_multi_target_setup() {
+        let config = config_from(
+            r#"
+            [schedule]
+            daily_report_chat_id = "legacy-group"
+
+            [[schedule.daily_reports]]
+            chat_id = "group-1"
+            name = "技术群日报"
+            "#,
+        );
+
+        let err = effective_publish_history_name(&config, "").unwrap_err();
+        assert!(err.to_string().contains("report_name"));
+    }
+
+    #[tokio::test]
+    async fn tool_publish_history_rejects_ambiguous_multi_target_setup() {
+        let config = config_from(
+            r#"
+            [storage]
+            database_url = "postgres://postgres:postgres@localhost:5432/qunmind"
+
+            [schedule]
+            daily_report_chat_id = "legacy-group"
+
+            [[schedule.daily_reports]]
+            chat_id = "group-1"
+            name = "技术群日报"
+            "#,
+        );
+
+        let err = call_tool(
+            &config,
+            std::path::Path::new("test-config.toml"),
+            "publish_history",
+            &serde_json::json!({}),
+        )
+        .await
+        .unwrap_err();
+
+        assert!(err.to_string().contains("report_name"));
+    }
+
+    #[tokio::test]
+    async fn tool_report_status_rejects_ambiguous_multi_target_setup() {
+        let config = config_from(
+            r#"
+            [storage]
+            database_url = "postgres://postgres:postgres@localhost:5432/qunmind"
+
+            [schedule]
+            daily_report_chat_id = "legacy-group"
+
+            [[schedule.daily_reports]]
+            chat_id = "group-1"
+            name = "技术群日报"
+            "#,
+        );
+
+        let err = call_tool(
+            &config,
+            std::path::Path::new("test-config.toml"),
+            "report_status",
+            &serde_json::json!({}),
+        )
+        .await
+        .unwrap_err();
+
+        assert!(err.to_string().contains("report_name"));
+    }
+
     #[tokio::test]
     async fn tool_doctor_reports_ok_when_config_is_complete() {
         let config = test_config();
-        let report_str = call_tool(&config, "wxcli_doctor", &serde_json::json!({}))
-            .await
-            .unwrap();
+        let report_str = call_tool(
+            &config,
+            std::path::Path::new("test-config.toml"),
+            "wxcli_doctor",
+            &serde_json::json!({}),
+        )
+        .await
+        .unwrap();
         let report: serde_json::Value = serde_json::from_str(&report_str).unwrap();
 
         assert_eq!(report["ok"], true);
@@ -475,6 +631,7 @@ mod tests {
         let config = test_config();
         let report_str = call_tool(
             &config,
+            std::path::Path::new("test-config.toml"),
             "wxcli_doctor",
             &serde_json::json!({"input": input.to_str().unwrap()}),
         )
@@ -499,6 +656,7 @@ mod tests {
         let config = test_config();
         let report_str = call_tool(
             &config,
+            std::path::Path::new("test-config.toml"),
             "wxcli_dry_run",
             &serde_json::json!({"input": input.to_str().unwrap(), "limit": 10}),
         )
@@ -518,9 +676,14 @@ mod tests {
     async fn tool_dry_run_rejects_missing_input() {
         let config = test_config();
         assert!(
-            call_tool(&config, "wxcli_dry_run", &serde_json::json!({}))
-                .await
-                .is_err()
+            call_tool(
+                &config,
+                std::path::Path::new("test-config.toml"),
+                "wxcli_dry_run",
+                &serde_json::json!({}),
+            )
+            .await
+            .is_err()
         );
     }
 
@@ -534,6 +697,7 @@ mod tests {
         let config = test_config();
         let report_str = call_tool(
             &config,
+            std::path::Path::new("test-config.toml"),
             "wxcli_poll",
             &serde_json::json!({"input": input.to_str().unwrap()}),
         )
@@ -553,6 +717,7 @@ mod tests {
         let config = test_config();
         let report_str = call_tool(
             &config,
+            std::path::Path::new("test-config.toml"),
             "wxcli_send",
             &serde_json::json!({
                 "chat_id": "test@chatroom",
@@ -574,6 +739,7 @@ mod tests {
         assert!(
             call_tool(
                 &config,
+                std::path::Path::new("test-config.toml"),
                 "wxcli_send",
                 &serde_json::json!({"chat_id": "chat"})
             )
@@ -581,9 +747,14 @@ mod tests {
             .is_err()
         );
         assert!(
-            call_tool(&config, "wxcli_send", &serde_json::json!({"text": "hi"}))
-                .await
-                .is_err()
+            call_tool(
+                &config,
+                std::path::Path::new("test-config.toml"),
+                "wxcli_send",
+                &serde_json::json!({"text": "hi"}),
+            )
+            .await
+            .is_err()
         );
     }
 
@@ -591,9 +762,14 @@ mod tests {
     async fn tool_test_plan_requires_capture_file() {
         let config = test_config();
         assert!(
-            call_tool(&config, "wxcli_test_plan", &serde_json::json!({}))
-                .await
-                .is_err()
+            call_tool(
+                &config,
+                std::path::Path::new("test-config.toml"),
+                "wxcli_test_plan",
+                &serde_json::json!({}),
+            )
+            .await
+            .is_err()
         );
     }
 
@@ -608,6 +784,7 @@ mod tests {
         let config = test_config();
         let report_str = call_tool(
             &config,
+            std::path::Path::new("test-config.toml"),
             "wxcli_test_plan",
             &serde_json::json!({
                 "capture_file": "wx-output.json",
@@ -640,6 +817,7 @@ mod tests {
         let config = test_config();
         let script = call_tool(
             &config,
+            std::path::Path::new("test-config.toml"),
             "wxcli_test_plan",
             &serde_json::json!({
                 "capture_file": "wx-output.json",
@@ -669,6 +847,7 @@ mod tests {
         let config = test_config();
         let report_str = call_tool(
             &config,
+            std::path::Path::new("test-config.toml"),
             "wxcli_handle_once",
             &serde_json::json!({
                 "input": input.to_str().unwrap(),
@@ -692,12 +871,50 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn tool_handle_once_requires_explicit_message_id_for_multi_message_capture() {
+        let dir = std::env::temp_dir().join(format!(
+            "qunmind-mcp-handle-once-multi-{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let input = dir.join("capture.json");
+        write_multi_capture_fixture(&input);
+
+        let config = test_config();
+        let report_str = call_tool(
+            &config,
+            std::path::Path::new("test-config.toml"),
+            "wxcli_handle_once",
+            &serde_json::json!({
+                "input": input.to_str().unwrap(),
+                "limit": 1
+            }),
+        )
+        .await
+        .unwrap();
+        let report: serde_json::Value = serde_json::from_str(&report_str).unwrap();
+
+        assert_eq!(report["ok"], false);
+        assert_eq!(report["error"], "message_id_required_for_multiple_messages");
+        assert_eq!(report["total_polled"], 2);
+        assert_eq!(report["processed"], 0);
+
+        let _ = std::fs::remove_file(&input);
+        let _ = std::fs::remove_dir(&dir);
+    }
+
+    #[tokio::test]
     async fn unknown_tool_returns_error() {
         let config = test_config();
         assert!(
-            call_tool(&config, "nonexistent_tool", &serde_json::json!({}))
-                .await
-                .is_err()
+            call_tool(
+                &config,
+                std::path::Path::new("test-config.toml"),
+                "nonexistent_tool",
+                &serde_json::json!({}),
+            )
+            .await
+            .is_err()
         );
     }
 }

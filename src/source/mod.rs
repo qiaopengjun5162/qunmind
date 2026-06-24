@@ -9,6 +9,7 @@ pub mod hacker_news;
 pub mod hn_daily;
 pub mod registry;
 pub mod slerf_blog;
+pub mod wechat_rss;
 
 use async_trait::async_trait;
 use std::collections::HashSet;
@@ -22,6 +23,9 @@ pub struct PublicNewsItem {
     pub source: String,
     pub title: String,
     pub url: String,
+    pub summary: Option<String>,
+    pub author: Option<String>,
+    pub published_at: Option<String>,
     pub score: Option<i64>,
     pub comments: Option<i64>,
     pub ai_score: Option<f64>,
@@ -110,7 +114,10 @@ fn matches_topics(item: &PublicNewsItem, topic_keywords: &[String]) -> bool {
 }
 
 fn is_curated_source_url(url: &str) -> bool {
-    url.contains("github.com") || url.contains("arxiv.org") || url.contains("ethresear.ch")
+    url.contains("github.com")
+        || url.contains("arxiv.org")
+        || url.contains("ethresear.ch")
+        || url.contains("mp.weixin.qq.com")
 }
 
 #[cfg(test)]
@@ -137,6 +144,9 @@ mod tests {
                     source: "test".to_string(),
                     title: "Rust ZKP library".to_string(),
                     url: "https://example.com/rust-zkp".to_string(),
+                    summary: None,
+                    author: None,
+                    published_at: None,
                     score: None,
                     comments: None,
                     ai_score: None,
@@ -146,6 +156,9 @@ mod tests {
                     source: "test".to_string(),
                     title: "Rust ZKP library".to_string(),
                     url: "https://example.com/rust-zkp".to_string(),
+                    summary: None,
+                    author: None,
+                    published_at: None,
                     score: None,
                     comments: None,
                     ai_score: None,
@@ -155,6 +168,9 @@ mod tests {
                     source: "test".to_string(),
                     title: "Gardening".to_string(),
                     url: "https://example.com/gardening".to_string(),
+                    summary: None,
+                    author: None,
+                    published_at: None,
                     score: None,
                     comments: None,
                     ai_score: None,
@@ -196,6 +212,9 @@ mod tests {
                         source: "test".to_string(),
                         title: "AI agent runtime".to_string(),
                         url: "https://example.com/ai-agent".to_string(),
+                        summary: None,
+                        author: None,
+                        published_at: None,
                         score: Some(10),
                         comments: Some(2),
                         ai_score: None,

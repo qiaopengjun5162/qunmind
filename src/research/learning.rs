@@ -7,6 +7,7 @@ pub enum LearningResourceCategory {
     AgentFrameworks,
     HermesExecution,
     WechatAgentSkills,
+    MultimodalAgents,
     LearningWorkflow,
     AiWeb3Bridge,
 }
@@ -161,6 +162,15 @@ pub const LEARNING_RESOURCES: &[LearningResource] = &[
         url: Some("https://mp.weixin.qq.com/s/djeUolNR4bms8wGsvBTAZQ"),
     },
     LearningResource {
+        title: "JoyAI-VL-Interaction",
+        category: LearningResourceCategory::MultimodalAgents,
+        provider: "JD Open Source",
+        focus: "理解实时视频-语言交互、边看边说、说/停/委托决策和多模态 Agent 运行时",
+        format: LearningResourceFormat::Docs,
+        priority: 138,
+        url: Some("https://github.com/jd-opensource/JoyAI-VL-Interaction"),
+    },
+    LearningResource {
         title: "AI × Web3 School Learning Agent 启动 Prompt",
         category: LearningResourceCategory::LearningWorkflow,
         provider: "AI x Web3 School",
@@ -210,6 +220,7 @@ pub fn agent_path() -> Vec<&'static LearningResource> {
                     | LearningResourceCategory::AgentFrameworks
                     | LearningResourceCategory::HermesExecution
                     | LearningResourceCategory::WechatAgentSkills
+                    | LearningResourceCategory::MultimodalAgents
             )
         })
         .collect()
@@ -279,6 +290,7 @@ mod tests {
             "Hermes Agent Docs",
             "Zread.ai 解读 OpenClaw / Hermes",
             "wx-cli 的 AI Agent Skill 来了！让 AI 直接帮你管微信私域",
+            "JoyAI-VL-Interaction",
             "AI × Web3 School Learning Agent 启动 Prompt",
             "AI × Web3 School Handbook",
         ] {
@@ -296,6 +308,7 @@ mod tests {
             LearningResourceCategory::AgentFrameworks,
             LearningResourceCategory::HermesExecution,
             LearningResourceCategory::WechatAgentSkills,
+            LearningResourceCategory::MultimodalAgents,
             LearningResourceCategory::LearningWorkflow,
             LearningResourceCategory::AiWeb3Bridge,
         ] {
@@ -329,6 +342,7 @@ mod tests {
         assert!(titles.contains(&"Hermes Agent Docs"));
         assert!(titles.contains(&"Zread.ai 解读 OpenClaw / Hermes"));
         assert!(titles.contains(&"wx-cli 的 AI Agent Skill 来了！让 AI 直接帮你管微信私域"));
+        assert!(titles.contains(&"JoyAI-VL-Interaction"));
         assert!(!titles.contains(&"Hugging Face LLM Course Chapter 1"));
     }
 
@@ -351,6 +365,7 @@ mod tests {
         let claude = resource("anthropic building with the claude api");
         let zread = resource("Zread AI OpenClaw Hermes");
         let wx_cli_skill = resource("wx-cli 的 AI Agent Skill 来了！让 AI 直接帮你管微信私域");
+        let joyai = resource("joy ai vl interaction");
         let handbook = resource("AI Web3 School Handbook");
 
         assert_eq!(claude.provider, "Anthropic");
@@ -360,6 +375,7 @@ mod tests {
             wx_cli_skill.category,
             LearningResourceCategory::WechatAgentSkills
         );
+        assert_eq!(joyai.category, LearningResourceCategory::MultimodalAgents);
         assert_eq!(handbook.category, LearningResourceCategory::AiWeb3Bridge);
         assert_eq!(handbook.url, Some("https://aiweb3.school/zh/handbook/"));
     }

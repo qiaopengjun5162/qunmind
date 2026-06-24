@@ -104,6 +104,9 @@ fn parse_li(li: &str) -> Option<PublicNewsItem> {
         source: "HN Daily".to_string(),
         title,
         url: article_url,
+        summary: None,
+        author: None,
+        published_at: None,
         // HN Daily does not expose score or comment count from the daily summary page.
         score: None,
         comments: None,
