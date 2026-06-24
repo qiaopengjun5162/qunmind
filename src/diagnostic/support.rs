@@ -1,5 +1,6 @@
 use crate::channel::{IncomingMessage, MsgType};
 use crate::config::{AiProvider, ChannelKind, Config, DailyReportConfig, GroupConfig};
+use crate::reporting::{ReportStatusTarget, report_status_blockers};
 use std::collections::BTreeSet;
 
 pub fn select_wx_cli_messages(
@@ -125,12 +126,30 @@ pub(super) fn has_wechat_daily_report_target_without_articles_dir(config: &Confi
     })
 }
 
+pub(super) fn has_wechat_daily_report_target_with_invalid_articles_dir(config: &Config) -> bool {
+    effective_daily_report_targets(config).iter().any(|target| {
+        target.output == "wechat"
+            && target
+                .dependency_blockers
+                .contains(&"wechat_daily_report_articles_dir_not_dir")
+    })
+}
+
 pub(super) fn has_wechat_daily_report_target_without_bin(config: &Config) -> bool {
     effective_daily_report_targets(config).iter().any(|target| {
         target.output == "wechat"
             && target
                 .dependency_blockers
                 .contains(&"wechat_daily_report_bin_empty")
+    })
+}
+
+pub(super) fn has_wechat_daily_report_target_with_missing_bin(config: &Config) -> bool {
+    effective_daily_report_targets(config).iter().any(|target| {
+        target.output == "wechat"
+            && target
+                .dependency_blockers
+                .contains(&"wechat_daily_report_bin_not_found")
     })
 }
 
@@ -310,33 +329,13 @@ fn daily_report_target_dependency_blockers(
     config: &Config,
     report: &DailyReportConfig,
 ) -> Vec<&'static str> {
-    if report.output != "wechat" {
-        return Vec::new();
-    }
-
-    let mut blockers = Vec::new();
-    if report.wechat_bin.trim().is_empty() {
-        blockers.push("wechat_daily_report_bin_empty");
-    }
-    if report.wechat_articles_dir.trim().is_empty() {
-        blockers.push("wechat_daily_report_articles_dir_empty");
-    }
-    if !has_enabled_public_sources(config) {
-        blockers.push("wechat_daily_report_public_sources_disabled");
-    }
-    blockers
-}
-
-fn has_enabled_public_sources(config: &Config) -> bool {
-    let sources = &config.public_sources;
-    sources.hacker_news_enabled
-        || sources.coinmarketcap_enabled
-        || sources.coingecko_enabled
-        || sources.defillama_enabled
-        || sources.dune_enabled
-        || sources.github_trending_enabled
-        || sources.slerf_blog_enabled
-        || sources.hn_daily_enabled
-        || sources.arxiv_enabled
-        || sources.ethresear_enabled
+    report_status_blockers(
+        config,
+        &ReportStatusTarget {
+            chat_id: report.chat_id.clone(),
+            output: report.output.clone(),
+            wechat_bin: report.wechat_bin.clone(),
+            wechat_articles_dir: report.wechat_articles_dir.clone(),
+        },
+    )
 }

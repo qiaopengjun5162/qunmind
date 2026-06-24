@@ -84,7 +84,7 @@ The WeChat public-account report path currently depends on local `moonpub`, not 
 
 - Call path: `moonpub --articles <dir> push <temp_markdown_file> --render`
 - Upstream state: local `moonpub` is currently Beta / early adopter ready, better suited for draft generation plus manual review than for promising unattended publishing
-- `wx-cli doctor` now marks `output = "wechat"` report targets with `config_ready` and `dependency_blockers`
+- `wx-cli doctor` now marks `output = "wechat"` report targets with `config_ready` and `dependency_blockers`, including whether `moonpub` is actually resolvable on this machine and whether `wechat_articles_dir` is a real directory
 
 That lets us surface the main blockers earlier:
 

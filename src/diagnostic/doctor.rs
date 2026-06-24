@@ -7,6 +7,8 @@ use super::dry_run::wx_cli_dry_run_item;
 use super::support::{
     ai_provider_name, args_contain_placeholder, channel_kind_name, has_duplicate_message_ids,
     has_unseen_daily_report_targets, has_unseen_group_overrides,
+    has_wechat_daily_report_target_with_invalid_articles_dir,
+    has_wechat_daily_report_target_with_missing_bin,
     has_wechat_daily_report_target_without_articles_dir,
     has_wechat_daily_report_target_without_bin,
     has_wechat_daily_report_target_without_public_sources, wx_cli_daily_report_target_statuses,
@@ -132,8 +134,14 @@ pub(super) fn wx_cli_doctor_warnings(
     if has_wechat_daily_report_target_without_bin(config) {
         warnings.push("wechat_daily_report_bin_empty");
     }
+    if has_wechat_daily_report_target_with_missing_bin(config) {
+        warnings.push("wechat_daily_report_bin_not_found");
+    }
     if has_wechat_daily_report_target_without_articles_dir(config) {
         warnings.push("wechat_daily_report_articles_dir_empty");
+    }
+    if has_wechat_daily_report_target_with_invalid_articles_dir(config) {
+        warnings.push("wechat_daily_report_articles_dir_not_dir");
     }
     if has_wechat_daily_report_target_without_public_sources(config) {
         warnings.push("wechat_daily_report_public_sources_disabled");

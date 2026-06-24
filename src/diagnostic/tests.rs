@@ -469,6 +469,7 @@ fn wx_cli_doctor_warns_when_wechat_daily_report_dependencies_are_incomplete() {
         chat_id = "room@chatroom"
         name = "微信公众号日报"
         output = "wechat"
+        wechat_bin = "/definitely/missing/moonpub"
         "#,
     );
     let messages = vec![test_message("m-1")];
@@ -487,6 +488,10 @@ fn wx_cli_doctor_warns_when_wechat_daily_report_dependencies_are_incomplete() {
         &report["warnings"],
         "wechat_daily_report_bin_empty"
     ));
+    assert!(array_contains(
+        &report["warnings"],
+        "wechat_daily_report_bin_not_found"
+    ));
     assert_eq!(
         report["capture"]["daily_report_targets"],
         serde_json::json!([
@@ -498,6 +503,7 @@ fn wx_cli_doctor_warns_when_wechat_daily_report_dependencies_are_incomplete() {
                 "seen_in_capture": true,
                 "config_ready": false,
                 "dependency_blockers": [
+                    "wechat_daily_report_bin_not_found",
                     "wechat_daily_report_articles_dir_empty",
                     "wechat_daily_report_public_sources_disabled"
                 ]

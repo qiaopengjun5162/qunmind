@@ -1,6 +1,7 @@
 use crate::config::Config;
 use crate::error::QunMindError;
 use crate::storage::StoredPublishReceipt;
+use std::path::Path;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ReportStatusTarget {
@@ -72,9 +73,13 @@ pub fn report_status_blockers(config: &Config, target: &ReportStatusTarget) -> V
     let mut blockers = Vec::new();
     if target.wechat_bin.trim().is_empty() {
         blockers.push("wechat_daily_report_bin_empty");
+    } else if !command_exists(&target.wechat_bin) {
+        blockers.push("wechat_daily_report_bin_not_found");
     }
     if target.wechat_articles_dir.trim().is_empty() {
         blockers.push("wechat_daily_report_articles_dir_empty");
+    } else if !Path::new(&target.wechat_articles_dir).is_dir() {
+        blockers.push("wechat_daily_report_articles_dir_not_dir");
     }
     if !has_enabled_public_sources(config) {
         blockers.push("wechat_daily_report_public_sources_disabled");
@@ -106,6 +111,20 @@ fn has_enabled_public_sources(config: &Config) -> bool {
         || sources.hn_daily_enabled
         || sources.arxiv_enabled
         || sources.ethresear_enabled
+}
+
+fn command_exists(bin: &str) -> bool {
+    let bin = bin.trim();
+    if bin.is_empty() {
+        return false;
+    }
+
+    if bin.contains(std::path::MAIN_SEPARATOR) {
+        return Path::new(bin).is_file();
+    }
+
+    std::env::var_os("PATH")
+        .is_some_and(|paths| std::env::split_paths(&paths).any(|dir| dir.join(bin).is_file()))
 }
 
 #[cfg(test)]
@@ -199,7 +218,7 @@ mod tests {
     }
 
     #[test]
-    fn report_status_blockers_accept_wechat_rss_as_enabled_source() {
+    fn report_status_blockers_detect_missing_runtime_dependencies() {
         let config = config_from(
             r#"
             [public_sources]
@@ -209,13 +228,43 @@ mod tests {
             chat_id = "group-1"
             name = "技术群日报"
             output = "wechat"
-            wechat_bin = "/usr/local/bin/moonpub"
-            wechat_articles_dir = "/tmp/articles"
+            wechat_bin = "/definitely/missing/moonpub"
+            wechat_articles_dir = "/definitely/missing/articles"
             "#,
         );
         let target = effective_report_status_target(&config, "技术群日报").unwrap();
 
         let blockers = report_status_blockers(&config, &target);
+        assert!(blockers.contains(&"wechat_daily_report_bin_not_found"));
+        assert!(blockers.contains(&"wechat_daily_report_articles_dir_not_dir"));
+    }
+
+    #[test]
+    fn report_status_blockers_accept_wechat_rss_as_enabled_source_with_real_paths() {
+        let dir =
+            std::env::temp_dir().join(format!("qunmind-reporting-articles-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+
+        let config = config_from(&format!(
+            r#"
+            [public_sources]
+            wechat_rss_enabled = true
+
+            [[schedule.daily_reports]]
+            chat_id = "group-1"
+            name = "技术群日报"
+            output = "wechat"
+            wechat_bin = "rustc"
+            wechat_articles_dir = "{}"
+            "#,
+            dir.display()
+        ));
+        let target = effective_report_status_target(&config, "技术群日报").unwrap();
+
+        let blockers = report_status_blockers(&config, &target);
         assert!(blockers.is_empty());
+
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 }

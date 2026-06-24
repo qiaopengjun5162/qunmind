@@ -76,7 +76,7 @@
 
 - 调用路径：`moonpub --articles <dir> push <temp_markdown_file> --render`
 - 当前上游状态：本地 `moonpub` 已是 Beta / early adopter ready，更适合“生成草稿并人工复核”，还不适合承诺完全无人值守发布
-- `wx-cli doctor` 现在会把 `output = "wechat"` 的日报目标额外标记 `config_ready` 和 `dependency_blockers`
+- `wx-cli doctor` 现在会把 `output = "wechat"` 的日报目标额外标记 `config_ready` 和 `dependency_blockers`，并进一步检查 `moonpub` 在本机是否可找到、`wechat_articles_dir` 是否真的是目录
 
 这意味着现在可以更早看出几类典型阻塞：
 
