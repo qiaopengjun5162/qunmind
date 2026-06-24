@@ -145,10 +145,15 @@ pub fn report_status_json(
     let blockers = report_status_blockers(config, target);
     let missing_publish_env = missing_wechat_publish_env_vars(target);
     let ready = blockers.is_empty();
+    let has_recent_warning = receipts
+        .iter()
+        .any(|receipt| !publish_receipt_warnings(&receipt.raw_output).is_empty());
     let status = if !ready {
         "blocked"
     } else if receipts.is_empty() {
         "ready_for_first_publish"
+    } else if has_recent_warning {
+        "recently_published_with_warnings"
     } else {
         "recently_published"
     };
@@ -300,6 +305,13 @@ fn report_status_next_steps(status: &str, blockers: &[&str]) -> Vec<&'static str
         return vec![
             "generate_markdown_and_push_wechat_draft",
             "rerun_report_status_after_manual_publish_test",
+        ];
+    }
+
+    if status == "recently_published_with_warnings" {
+        return vec![
+            "review_recent_publish_warnings_and_verify_wechat_draft",
+            "continue_monitoring_recent_publish_receipts_and_draft_flow",
         ];
     }
 
@@ -566,6 +578,55 @@ mod tests {
         assert_eq!(
             report["next_steps"],
             serde_json::json!(["continue_monitoring_recent_publish_receipts_and_draft_flow"])
+        );
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn report_status_json_marks_recently_published_with_warnings_when_receipt_has_warning() {
+        let _appid_guard = EnvVarGuard::set("WECHAT_APPID", "wx-test");
+        let _secret_guard = EnvVarGuard::set("WECHAT_SECRET", "secret-test");
+        let dir = std::env::temp_dir().join(format!(
+            "qunmind-reporting-published-warning-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+
+        let config = config_from(&format!(
+            r#"
+            [[schedule.daily_reports]]
+            chat_id = "group-1"
+            name = "微信公众号日报"
+            output = "wechat"
+            wechat_bin = "rustc"
+            wechat_articles_dir = "{}"
+            "#,
+            dir.display()
+        ));
+        let target = effective_report_status_target(&config, "微信公众号日报").unwrap();
+        let receipts = vec![StoredPublishReceipt {
+            report_name: "微信公众号日报".to_string(),
+            target: "wechat_draft".to_string(),
+            destination: "/tmp/articles".to_string(),
+            published_at: Utc::now(),
+            summary: "moonpub draft push completed with warnings".to_string(),
+            raw_output:
+                "pushed\n  ⚠ automation: login timeout: QR code not scanned within 120s\n"
+                    .to_string(),
+        }];
+
+        let report = report_status_json(&config, "微信公众号日报", &target, receipts);
+
+        assert_eq!(report["ready"], true);
+        assert_eq!(report["status"], "recently_published_with_warnings");
+        assert_eq!(
+            report["next_steps"],
+            serde_json::json!([
+                "review_recent_publish_warnings_and_verify_wechat_draft",
+                "continue_monitoring_recent_publish_receipts_and_draft_flow"
+            ])
         );
 
         std::fs::remove_dir_all(&dir).unwrap();

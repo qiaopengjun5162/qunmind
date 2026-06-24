@@ -217,7 +217,7 @@ just report-history report="微信公众号日报"
 - 最后再执行 `report-publish` 推到 `moonpub` 的公众号草稿箱
 
 当前这条链路已经完成过一次真实试发验证：
-- `report-status` 可到 `recently_published`
+- `report-status` 可到 `recently_published`；若最近成功回执里带自动化提示，则会进一步显示为 `recently_published_with_warnings`
 - `publish-history` 已能查到首条成功回执
 - `moonpub` 原始输出里即使带 `automation: login timeout: QR code not scanned within 120s`，本次也没有阻止草稿成功推入公众号草稿箱
 - 现在这类成功后的自动化提示也会作为结构化 `warnings` 出现在发布回执 JSON 里，不必再手工翻 `raw_output`

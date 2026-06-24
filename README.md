@@ -212,7 +212,7 @@ Recommended order:
 - only then run `report-publish` to push the draft through `moonpub`
 
 This path has now been verified with one real draft push:
-- `report-status` can advance to `recently_published`
+- `report-status` can advance to `recently_published`, and will now escalate to `recently_published_with_warnings` when the latest successful receipt still contains automation follow-up signals
 - `publish-history` now returns the first successful receipt
 - even when `moonpub` reports `automation: login timeout: QR code not scanned within 120s`, that warning did not block this draft from reaching the WeChat draft box
 - these post-publish automation hints are now surfaced as structured `warnings` in receipt JSON instead of living only inside `raw_output`
