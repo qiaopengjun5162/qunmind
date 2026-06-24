@@ -200,6 +200,8 @@ For manual report rehearsals, `qunmind daily-report` can now target a configured
 
 That manual publish path now also attempts to persist the structured publish receipt immediately. A successful manual draft push can therefore show up right away in `report-status` and `publish-history`. If the external publish succeeds but receipt persistence fails, the CLI JSON now exposes that split explicitly through `publish_receipt_saved = false` and `publish_receipt_save_error`, instead of collapsing both outcomes into one vague result.
 
+To reduce operator friction near delivery time, `qunmind daily-report` now auto-reuses the configured target when exactly one `schedule.daily_reports` entry exists. An explicit `--report-name` is only required when multiple report targets are configured.
+
 ## Multi-Platform Publishing Boundary
 
 QunMind should keep report generation and publish orchestration, but not become

@@ -298,6 +298,25 @@ fn resolve_manual_daily_report_target(
     report_name: &str,
 ) -> anyhow::Result<ManualDailyReportTarget> {
     if report_name.trim().is_empty() {
+        if config.schedule.daily_reports.len() == 1 {
+            let report = &config.schedule.daily_reports[0];
+            return Ok(ManualDailyReportTarget {
+                name: report.name.clone(),
+                output: report.output.clone(),
+                daily_quote: report.daily_quote.clone(),
+                wechat_bin: report.wechat_bin.clone(),
+                wechat_articles_dir: report.wechat_articles_dir.clone(),
+            });
+        }
+
+        if config.schedule.daily_reports.len() > 1 {
+            return Err(QunMindError::Config(
+                "daily-report requires explicit report_name when multiple daily report targets exist"
+                    .to_string(),
+            )
+            .into());
+        }
+
         return Ok(ManualDailyReportTarget {
             name: String::new(),
             output: "markdown".to_string(),
@@ -844,6 +863,54 @@ mod tests {
         assert_eq!(target.daily_quote, "stay hungry");
         assert_eq!(target.wechat_bin, "moonpub");
         assert_eq!(target.wechat_articles_dir, "/tmp/articles");
+    }
+
+    #[test]
+    fn resolve_manual_daily_report_target_uses_single_daily_report_when_name_is_empty() {
+        let config = config_from(
+            r#"
+            [[schedule.daily_reports]]
+            chat_id = "group-1"
+            name = "技术群日报"
+            output = "wechat"
+            daily_quote = "stay hungry"
+            wechat_bin = "moonpub"
+            wechat_articles_dir = "/tmp/articles"
+            "#,
+        );
+
+        let target = must(
+            resolve_manual_daily_report_target(&config, ""),
+            "single manual daily report target",
+        );
+
+        assert_eq!(target.name, "技术群日报");
+        assert_eq!(target.output, "wechat");
+        assert_eq!(target.daily_quote, "stay hungry");
+    }
+
+    #[test]
+    fn resolve_manual_daily_report_target_rejects_ambiguous_targets_when_name_is_empty() {
+        let config = config_from(
+            r#"
+            [[schedule.daily_reports]]
+            chat_id = "group-1"
+            name = "技术群日报"
+            output = "wechat"
+
+            [[schedule.daily_reports]]
+            chat_id = "group-2"
+            name = "运营日报"
+            output = "wechat"
+            "#,
+        );
+
+        let err = match resolve_manual_daily_report_target(&config, "") {
+            Ok(_) => panic!("multiple daily report targets should require report_name"),
+            Err(err) => err,
+        };
+
+        assert!(err.to_string().contains("report_name"));
     }
 
     #[test]
