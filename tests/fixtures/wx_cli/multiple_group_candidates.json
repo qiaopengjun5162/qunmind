@@ -1,0 +1,22 @@
+{
+  "msg_list": [
+    {
+      "client_msg_id": "group-multi-1",
+      "conversation_id": "room-gamma@chatroom",
+      "room_name": "Rust Ops",
+      "msg_content": "@QunMind 帮我看一下今天的告警",
+      "plain_text": "@QunMind 帮我看一下今天的告警",
+      "is_group": true,
+      "is_chatroom": true
+    },
+    {
+      "client_msg_id": "group-multi-2",
+      "conversation_id": "room-gamma@chatroom",
+      "room_name": "Rust Ops",
+      "msg_content": "@QunMind 再顺手总结一下进度",
+      "plain_text": "@QunMind 再顺手总结一下进度",
+      "is_group": true,
+      "is_chatroom": true
+    }
+  ]
+}

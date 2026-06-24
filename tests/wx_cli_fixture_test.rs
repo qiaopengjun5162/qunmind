@@ -158,3 +158,59 @@ fn direct_only_fixture_blocks_group_replay_plan() {
     assert!(warnings.contains(&serde_json::json!("capture_has_no_group_messages")));
     assert!(warnings.contains(&serde_json::json!("capture_has_no_group_reply_candidates")));
 }
+
+#[test]
+fn multiple_group_fixture_requires_explicit_message_id() {
+    let path = fixture_path("multiple_group_candidates.json");
+    let config = config_from(
+        r#"
+        [channel]
+        kind = "wx_cli"
+
+        [ai]
+        api_key = "token"
+
+        [wx_cli]
+        bin = "wx"
+        poll_args = ["poll", "--json"]
+        send_args = ["send", "--chat", "{chat_id}", "--text", "{text}"]
+        group_chat_id = "room-gamma@chatroom"
+
+        [bot]
+        mention_names = ["@QunMind"]
+        "#,
+    );
+    let messages = match load_wx_cli_messages_from_file(&path, "") {
+        Ok(messages) => messages,
+        Err(err) => panic!("fixture load: {err}"),
+    };
+
+    let report = wx_cli_doctor_report(&config, Some(&messages), 10);
+    let warnings = report["warnings"].as_array().cloned().unwrap_or_default();
+
+    assert!(warnings.contains(&serde_json::json!(
+        "capture_has_multiple_group_reply_candidates_select_message_id"
+    )));
+    assert_eq!(
+        report["capture"]["formal_test_readiness"]["recommended_message_id"],
+        serde_json::Value::Null
+    );
+    assert_eq!(
+        report["capture"]["group_reply_candidate_message_ids"],
+        serde_json::json!(["group-multi-1", "group-multi-2"])
+    );
+
+    let plan = wx_cli_formal_test_plan(
+        &config,
+        std::path::Path::new("fixture-config.toml"),
+        std::path::Path::new("tests/fixtures/wx_cli/multiple_group_candidates.json"),
+        None,
+        None,
+        "QunMind diagnostic message",
+        Some(&messages),
+    );
+    let blockers = plan["blockers"].as_array().cloned().unwrap_or_default();
+
+    assert_eq!(plan["ok"], false);
+    assert!(blockers.contains(&serde_json::json!("capture_requires_explicit_message_id")));
+}

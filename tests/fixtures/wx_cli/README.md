@@ -14,3 +14,4 @@ Current files:
 - `sample_capture.json`: minimal sanitized group-chat sample used by `tests/wx_cli_fixture_test.rs`
 - `unique_group_candidate.json`: one safe group reply candidate, used to verify doctor / formal replay recommendation
 - `direct_only.json`: direct-message-only sample, used to verify formal group replay stays blocked
+- `multiple_group_candidates.json`: multiple valid group reply candidates, used to verify explicit `--message-id` is required
