@@ -80,6 +80,7 @@
 - **首轮真实公众号草稿试发成功** — 在补齐 `WECHAT_APPID` / `WECHAT_SECRET` 并放行当前公网 IP 后，`daily-report --publish` 已真实推送成功，`publish-history` 已出现第一条回执，`report-status` 也从 `ready_for_first_publish` 切换到 `recently_published`。当前 `moonpub` 返回的附加提示是 `automation: login timeout: QR code not scanned within 120s`，但这次并未阻止草稿成功入库，说明真正的“推草稿”主路径已经跑通。
 - **发布 warning 结构化** — `PublishReceipt`、`report-status`、`publish-history` 和手工 `daily-report --publish` 的 JSON 现在会显式输出 `warnings`。像这次 `moonpub` 的 `automation: login timeout` 不再只藏在 `raw_output` 里，后续判断“这次是完全干净成功”还是“成功但仍需人工盯一下自动化”会更直接。
 - **发布 warning 升级为状态信号** — `report-status` 现在不再把“最近成功但有自动化 warning”的情况和普通 `recently_published` 混在一起。只要最近成功回执里仍有结构化 `warnings`，状态就会直接升级成 `recently_published_with_warnings`，并给出“人工复核草稿 + 继续监控回执”的下一步动作。
+- **`mcp/tools.rs` 开始复用 wx-cli 共享 helper** — 这轮继续把 MCP 侧的 `test-plan`、`send` 和 `doctor` 命令胶水往 `src/wx_cli_runtime.rs` 收口，先让 CLI / MCP 共享 test-plan 渲染、send dry-run JSON 和 doctor 报告组装，减少两边各自拼装同一份 wx-cli 输出的重复。
 
 ### Verified
 
@@ -100,6 +101,13 @@
 - `cargo nextest run --all-features wx_cli_send_dry_run_does_not_execute_command`
 - `cargo nextest run --all-features wx_cli_test_plan_input_file_does_not_execute_external_commands`
 - `cargo nextest run --all-features wx_cli_handle_once_rejects_duplicate_message_id_before_dependencies`
+- `cargo nextest run --all-features render_test_plan_output_renders_shell_script_when_requested`
+- `cargo nextest run --all-features send_dry_run_json_renders_command`
+- `cargo nextest run --all-features doctor_report_json_reads_capture_when_input_is_provided`
+- `cargo nextest run --all-features tool_test_plan_shell_renders_script`
+- `cargo nextest run --all-features tool_send_dry_run_renders_command`
+- `cargo nextest run --all-features tool_doctor_with_input_file`
+- `cargo nextest run --all-features tool_doctor_reports_ok_when_config_is_complete`
 - PR #41 CI：`test = pass`，`docker = pass`
 
 ## 2026-06-23
