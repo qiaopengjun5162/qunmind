@@ -10,7 +10,8 @@ pub use dry_run::{
     wx_cli_dry_run_message_id_not_found_report, wx_cli_dry_run_message_id_not_unique_report,
     wx_cli_dry_run_report, wx_cli_handle_once_message_id_guard_report,
     wx_cli_handle_once_message_id_not_found_report,
-    wx_cli_handle_once_message_id_not_unique_report, wx_cli_handle_once_report,
+    wx_cli_handle_once_message_id_not_unique_report, wx_cli_handle_once_message_id_required_report,
+    wx_cli_handle_once_report,
 };
 pub use formal_test::{wx_cli_formal_test_plan, wx_cli_formal_test_plan_shell_script};
 pub use pipeline::wx_cli_handle_once_pipeline;

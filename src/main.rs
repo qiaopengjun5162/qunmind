@@ -318,6 +318,7 @@ async fn run_wx_cli_command(
                 message_id.as_deref(),
                 limit,
                 no_send,
+                input.is_some(),
             )
             .await;
             println!("{}", serde_json::to_string_pretty(&report)?);

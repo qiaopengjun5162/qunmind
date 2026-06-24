@@ -19,7 +19,7 @@
 粗粒度进度条：
 
 - 产品主链路：`[########--] ~80%`
-- wx-cli 诊断与重放：`[########--] ~80%`
+- wx-cli 诊断与重放：`[#########-] ~85%`
 - 日报生成与发布：`[#######---] ~75%`
 - 真实微信联调验证：`[###-------] ~30%`
 - 生产可用度：`[###-------] ~35%`
@@ -37,7 +37,7 @@
    继续拆薄 `main.rs` 和 `src/mcp/tools.rs`，减少 wx-cli 命令适配重复。
 
 2. **真实 wx-cli 样本联调**  
-   用脱敏后的 capture fixture 验证 poll / dry-run / handle-once / send 的实际行为，而不是只停留在合成样本。
+   用脱敏后的 capture fixture 验证 poll / dry-run / handle-once / send 的实际行为，而不是只停留在合成样本；继续把“必须唯一选中一条消息才能离线重放”的安全约束固化进去。
 
 3. **`QunMind × moonpub` 联调固化**  
    把微信公众号日报依赖前置检查、联调清单和上线前提写实，避免“代码能调起 moonpub”被误判为“日报已经可上线”。
@@ -57,6 +57,8 @@
 
 ### Done
 
+- **离线 `handle-once` 重放默认收紧** — `handle-once --input <json-file>` 和 MCP `wxcli_handle_once` 现在在 capture 含多条消息、但未显式指定 `message_id` 时，会先返回结构化 `message_id_required_for_multiple_messages`，而不是继续往 PostgreSQL / AI 依赖走。这让“离线复放一条消息”与命令语义重新一致，也避免明天真实联调时误把前几条消息顺序处理掉。
+- **`handle-once` 安全边界补测试** — 新增针对 `diagnostic` guard 和 MCP `wxcli_handle_once` 的测试，覆盖“多消息 capture 未指定 `message_id` 必须阻断”的场景。现在这条规则不只写在说明里，而是被测试固定住了。
 - **脱敏 wx-cli fixture 入口落地** — 新增 `tests/fixtures/wx_cli/` 目录、fixture README、`sample_capture.json`、`unique_group_candidate.json`、`direct_only.json`、`multiple_group_candidates.json` 和 `tests/wx_cli_fixture_test.rs`。现在项目已经有一条可持续扩展的“匿名化真实样本”测试入口，既能验证 wx-cli 导出字段兼容和 dry-run 决策，也能覆盖“唯一群聊候选可直接推荐重放”“只有私聊样本时正式群测必须阻塞”以及“多个群聊候选并存时必须显式选择 `--message-id`”。
 - **日报就绪状态视图落地** — 新增 `report-status` 顶层命令，直接输出某个日报目标的 `ready`、`blockers` 和 `recent_receipts`。这比把 `doctor`、`publish-history` 和配置手工拼起来更适合临近交付时快速判断“明天能不能用”。
 - **日报就绪状态接入 MCP** — 新增独立 `report_status` MCP tool，让 Agent / 外部系统也能直接读取 `ready`、`blockers` 和最近发布回执，而不用把这类运营状态查询塞进 wx-cli 诊断工具。

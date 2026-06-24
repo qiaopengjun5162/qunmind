@@ -39,6 +39,7 @@ QUNMIND_TEST_DATABASE_URL="postgres://postgres:postgres@localhost:5432/qunmind_t
 - Update related docs in the same branch whenever project state, roadmap, commands, or constraints changed.
 - If the change includes generated images, diagrams, or other visual operations, append a record to `docs/visual-operations.md`.
 - Add or update tests for behavior changes.
+- Keep CLI / MCP safety semantics aligned when changing replay, diagnostics, or report-status behavior; avoid documenting a stricter workflow than the code actually enforces.
 - Run `just clippy` and `just test` before opening a PR.
 - For Docker, Compose, or release workflow changes, make sure the Docker image build passes locally or in CI.
 - Fill out the pull request template with behavior changes, verification, and remaining risks.

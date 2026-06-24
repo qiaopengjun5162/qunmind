@@ -936,6 +936,19 @@ fn wx_cli_handle_once_message_id_not_unique_report_is_structured() {
 }
 
 #[test]
+fn wx_cli_handle_once_message_id_required_report_is_structured() {
+    let report = wx_cli_handle_once_message_id_required_report(2, true);
+
+    assert_eq!(report["ok"], false);
+    assert_eq!(report["error"], "message_id_required_for_multiple_messages");
+    assert_eq!(report["total_polled"], 2);
+    assert_eq!(report["requested_message_id"], serde_json::Value::Null);
+    assert_eq!(report["processed"], 0);
+    assert_eq!(report["no_send"], true);
+    assert_eq!(report["suppressed_replies"], serde_json::json!([]));
+}
+
+#[test]
 fn wx_cli_dry_run_message_id_guard_rejects_duplicate_id() {
     let messages = vec![test_message("m-dup"), test_message("m-dup")];
 
@@ -959,6 +972,7 @@ fn wx_cli_handle_once_message_id_guard_rejects_missing_id() {
         messages.len(),
         Some("missing"),
         true,
+        false,
     ) {
         Some(report) => report,
         None => panic!("missing message_id should be rejected"),
@@ -967,6 +981,28 @@ fn wx_cli_handle_once_message_id_guard_rejects_missing_id() {
     assert_eq!(report["ok"], false);
     assert_eq!(report["error"], "message_id_not_found");
     assert_eq!(report["processed"], 0);
+}
+
+#[test]
+fn wx_cli_handle_once_message_id_guard_rejects_ambiguous_capture_without_explicit_id() {
+    let messages = vec![test_message("m-1"), test_message("m-2")];
+
+    let report = match wx_cli_handle_once_message_id_guard_report(
+        &messages,
+        messages.len(),
+        None,
+        true,
+        true,
+    ) {
+        Some(report) => report,
+        None => panic!("ambiguous captured replay should require explicit message_id"),
+    };
+
+    assert_eq!(report["ok"], false);
+    assert_eq!(report["error"], "message_id_required_for_multiple_messages");
+    assert_eq!(report["total_polled"], 2);
+    assert_eq!(report["processed"], 0);
+    assert_eq!(report["requested_message_id"], serde_json::Value::Null);
 }
 
 #[test]

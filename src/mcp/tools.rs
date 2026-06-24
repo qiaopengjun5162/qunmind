@@ -408,7 +408,8 @@ async fn tool_handle_once(config: &Config, args: &serde_json::Value) -> anyhow::
 
     // MCP tools never send real WeChat messages.
     let (report, _suppressed) =
-        diagnostic::wx_cli_handle_once_pipeline(config, messages, message_id, limit, true).await;
+        diagnostic::wx_cli_handle_once_pipeline(config, messages, message_id, limit, true, true)
+            .await;
     Ok(serde_json::to_string_pretty(&report)?)
 }
 
@@ -481,6 +482,24 @@ mod tests {
                 "chat": "test@chatroom",
                 "sender": "alice",
                 "content": "@bot hello world"
+            }
+        ]);
+        std::fs::write(path, serde_json::to_string_pretty(&json).unwrap()).unwrap();
+    }
+
+    fn write_multi_capture_fixture(path: &std::path::Path) {
+        let json = serde_json::json!([
+            {
+                "id": "m-1",
+                "chat": "test@chatroom",
+                "sender": "alice",
+                "content": "@bot hello world"
+            },
+            {
+                "id": "m-2",
+                "chat": "test@chatroom",
+                "sender": "bob",
+                "content": "@bot summarize this too"
             }
         ]);
         std::fs::write(path, serde_json::to_string_pretty(&json).unwrap()).unwrap();
@@ -885,6 +904,39 @@ mod tests {
             "handle-once report should be well-formed JSON"
         );
         // Cleanup
+        let _ = std::fs::remove_file(&input);
+        let _ = std::fs::remove_dir(&dir);
+    }
+
+    #[tokio::test]
+    async fn tool_handle_once_requires_explicit_message_id_for_multi_message_capture() {
+        let dir = std::env::temp_dir().join(format!(
+            "qunmind-mcp-handle-once-multi-{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let input = dir.join("capture.json");
+        write_multi_capture_fixture(&input);
+
+        let config = test_config();
+        let report_str = call_tool(
+            &config,
+            std::path::Path::new("test-config.toml"),
+            "wxcli_handle_once",
+            &serde_json::json!({
+                "input": input.to_str().unwrap(),
+                "limit": 1
+            }),
+        )
+        .await
+        .unwrap();
+        let report: serde_json::Value = serde_json::from_str(&report_str).unwrap();
+
+        assert_eq!(report["ok"], false);
+        assert_eq!(report["error"], "message_id_required_for_multiple_messages");
+        assert_eq!(report["total_polled"], 2);
+        assert_eq!(report["processed"], 0);
+
         let _ = std::fs::remove_file(&input);
         let _ = std::fs::remove_dir(&dir);
     }

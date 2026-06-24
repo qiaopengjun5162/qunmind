@@ -71,6 +71,21 @@ pub fn wx_cli_handle_once_message_id_not_unique_report(
     })
 }
 
+pub fn wx_cli_handle_once_message_id_required_report(
+    total_polled: usize,
+    no_send: bool,
+) -> serde_json::Value {
+    serde_json::json!({
+        "ok": false,
+        "error": "message_id_required_for_multiple_messages",
+        "total_polled": total_polled,
+        "requested_message_id": serde_json::Value::Null,
+        "processed": 0,
+        "no_send": no_send,
+        "suppressed_replies": []
+    })
+}
+
 pub fn wx_cli_dry_run_message_id_guard_report(
     messages: &[IncomingMessage],
     total_polled: usize,
@@ -95,7 +110,15 @@ pub fn wx_cli_handle_once_message_id_guard_report(
     total_polled: usize,
     message_id: Option<&str>,
     no_send: bool,
+    require_explicit_message_id: bool,
 ) -> Option<serde_json::Value> {
+    if require_explicit_message_id && message_id.is_none() && messages.len() > 1 {
+        return Some(wx_cli_handle_once_message_id_required_report(
+            total_polled,
+            no_send,
+        ));
+    }
+
     match wx_cli_message_id_match_count(messages, message_id) {
         Some(0) => Some(wx_cli_handle_once_message_id_not_found_report(
             total_polled,

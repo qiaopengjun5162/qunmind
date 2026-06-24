@@ -15,12 +15,17 @@ pub async fn wx_cli_handle_once_pipeline(
     message_id: Option<&str>,
     limit: usize,
     no_send: bool,
+    require_explicit_message_id: bool,
 ) -> (serde_json::Value, Vec<serde_json::Value>) {
     let total_polled = messages.len();
 
-    if let Some(report) =
-        wx_cli_handle_once_message_id_guard_report(&messages, total_polled, message_id, no_send)
-    {
+    if let Some(report) = wx_cli_handle_once_message_id_guard_report(
+        &messages,
+        total_polled,
+        message_id,
+        no_send,
+        require_explicit_message_id,
+    ) {
         return (report, Vec::new());
     }
 
