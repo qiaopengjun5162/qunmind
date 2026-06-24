@@ -55,13 +55,13 @@ name = "投研群日报"
 # 微信公众号 RSS 日报 (需要 moonpub 已配置；目标群为空时可回退到 wechat_rss/public_sources)
 # [[schedule.daily_reports]]
 # chat_id = ""
-# name = "微信公众号日报"
-# enabled = true
 # cron = "0 0 8 * * *"
-# output = "wechat"
-# wechat_bin = "moonpub"
-# wechat_articles_dir = "/data/moonpub"   # moonpub 的 articles 根目录
 # daily_quote = ""   # 可选: 日报底部每日一句
+# enabled = true
+# name = "微信公众号日报"
+# output = "wechat"
+# wechat_articles_dir = "/data/moonpub"   # moonpub 的 articles 根目录
+# wechat_bin = "moonpub"
 
 [storage]
 database_url = "postgres://postgres:postgres@localhost:5432/qunmind"
