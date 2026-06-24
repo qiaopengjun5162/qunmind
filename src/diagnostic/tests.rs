@@ -949,6 +949,50 @@ fn wx_cli_handle_once_message_id_required_report_is_structured() {
 }
 
 #[test]
+fn wx_cli_handle_once_selected_message_not_group_report_is_structured() {
+    let report = wx_cli_handle_once_selected_message_not_group_report(
+        2,
+        Some("direct-only-1"),
+        &["direct-only-1".to_string()],
+        true,
+    );
+
+    assert_eq!(report["ok"], false);
+    assert_eq!(report["error"], "selected_message_not_group");
+    assert_eq!(report["total_polled"], 2);
+    assert_eq!(report["requested_message_id"], "direct-only-1");
+    assert_eq!(
+        report["selected_message_ids"],
+        serde_json::json!(["direct-only-1"])
+    );
+    assert_eq!(report["processed"], 0);
+    assert_eq!(report["no_send"], true);
+    assert_eq!(report["suppressed_replies"], serde_json::json!([]));
+}
+
+#[test]
+fn wx_cli_handle_once_selected_message_would_not_reply_report_is_structured() {
+    let report = wx_cli_handle_once_selected_message_would_not_reply_report(
+        2,
+        Some("fixture-msg-2"),
+        &["fixture-msg-2".to_string()],
+        true,
+    );
+
+    assert_eq!(report["ok"], false);
+    assert_eq!(report["error"], "selected_message_would_not_reply");
+    assert_eq!(report["total_polled"], 2);
+    assert_eq!(report["requested_message_id"], "fixture-msg-2");
+    assert_eq!(
+        report["selected_message_ids"],
+        serde_json::json!(["fixture-msg-2"])
+    );
+    assert_eq!(report["processed"], 0);
+    assert_eq!(report["no_send"], true);
+    assert_eq!(report["suppressed_replies"], serde_json::json!([]));
+}
+
+#[test]
 fn wx_cli_dry_run_message_id_guard_rejects_duplicate_id() {
     let messages = vec![test_message("m-dup"), test_message("m-dup")];
 

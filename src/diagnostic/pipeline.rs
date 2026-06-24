@@ -2,8 +2,14 @@ use crate::channel::{Channel, IncomingMessage, MessageHandler};
 use crate::config::{AiProvider, Config};
 use std::sync::Arc;
 
-use super::dry_run::{wx_cli_handle_once_message_id_guard_report, wx_cli_handle_once_report};
-use super::support::{select_wx_cli_messages, wx_cli_message_ids};
+use super::dry_run::{
+    wx_cli_handle_once_message_id_guard_report, wx_cli_handle_once_report,
+    wx_cli_handle_once_selected_message_not_group_report,
+    wx_cli_handle_once_selected_message_would_not_reply_report,
+};
+use super::support::{
+    effective_bot_config, select_wx_cli_messages, wx_cli_dry_run_decision, wx_cli_message_ids,
+};
 
 /// Run the full handle-once pipeline: PG persistence, mention filter, AI reply, and wx-cli send.
 ///
@@ -43,6 +49,34 @@ pub async fn wx_cli_handle_once_pipeline(
             ),
             Vec::new(),
         );
+    }
+
+    if require_explicit_message_id {
+        let selected = &messages[0];
+        let effective = effective_bot_config(config, selected);
+        let (would_reply, _) = wx_cli_dry_run_decision(&effective, selected);
+        if !selected.is_group {
+            return (
+                wx_cli_handle_once_selected_message_not_group_report(
+                    total_polled,
+                    message_id,
+                    &selected_message_ids,
+                    no_send,
+                ),
+                Vec::new(),
+            );
+        }
+        if !would_reply {
+            return (
+                wx_cli_handle_once_selected_message_would_not_reply_report(
+                    total_polled,
+                    message_id,
+                    &selected_message_ids,
+                    no_send,
+                ),
+                Vec::new(),
+            );
+        }
     }
 
     // Build the channel, storage, and AI dependencies inline so the function

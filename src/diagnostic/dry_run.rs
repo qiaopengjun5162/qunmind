@@ -86,6 +86,42 @@ pub fn wx_cli_handle_once_message_id_required_report(
     })
 }
 
+pub fn wx_cli_handle_once_selected_message_not_group_report(
+    total_polled: usize,
+    message_id: Option<&str>,
+    selected_message_ids: &[String],
+    no_send: bool,
+) -> serde_json::Value {
+    serde_json::json!({
+        "ok": false,
+        "error": "selected_message_not_group",
+        "total_polled": total_polled,
+        "requested_message_id": message_id,
+        "selected_message_ids": selected_message_ids,
+        "processed": 0,
+        "no_send": no_send,
+        "suppressed_replies": []
+    })
+}
+
+pub fn wx_cli_handle_once_selected_message_would_not_reply_report(
+    total_polled: usize,
+    message_id: Option<&str>,
+    selected_message_ids: &[String],
+    no_send: bool,
+) -> serde_json::Value {
+    serde_json::json!({
+        "ok": false,
+        "error": "selected_message_would_not_reply",
+        "total_polled": total_polled,
+        "requested_message_id": message_id,
+        "selected_message_ids": selected_message_ids,
+        "processed": 0,
+        "no_send": no_send,
+        "suppressed_replies": []
+    })
+}
+
 pub fn wx_cli_dry_run_message_id_guard_report(
     messages: &[IncomingMessage],
     total_polled: usize,

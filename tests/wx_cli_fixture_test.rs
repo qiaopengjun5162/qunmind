@@ -1,6 +1,9 @@
 use qunmind::channel::wx_cli::load_wx_cli_messages_from_file;
 use qunmind::config::Config;
-use qunmind::diagnostic::{wx_cli_doctor_report, wx_cli_dry_run_report, wx_cli_formal_test_plan};
+use qunmind::diagnostic::{
+    wx_cli_doctor_report, wx_cli_dry_run_report, wx_cli_formal_test_plan,
+    wx_cli_handle_once_pipeline,
+};
 
 fn fixture_path(name: &str) -> std::path::PathBuf {
     std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -213,4 +216,72 @@ fn multiple_group_fixture_requires_explicit_message_id() {
 
     assert_eq!(plan["ok"], false);
     assert!(blockers.contains(&serde_json::json!("capture_requires_explicit_message_id")));
+}
+
+#[tokio::test]
+async fn direct_only_fixture_blocks_handle_once_before_dependencies() {
+    let path = fixture_path("direct_only.json");
+    let config = config_from(
+        r#"
+        [channel]
+        kind = "wx_cli"
+
+        [ai]
+        api_key = "token"
+
+        [wx_cli]
+        bin = "wx"
+        poll_args = ["poll", "--json"]
+        send_args = ["send", "--chat", "{chat_id}", "--text", "{text}"]
+
+        [bot]
+        mention_names = ["@QunMind"]
+        "#,
+    );
+    let messages = match load_wx_cli_messages_from_file(&path, "") {
+        Ok(messages) => messages,
+        Err(err) => panic!("fixture load: {err}"),
+    };
+
+    let (report, suppressed) =
+        wx_cli_handle_once_pipeline(&config, messages, Some("direct-only-1"), 1, true, true).await;
+
+    assert_eq!(report["ok"], false);
+    assert_eq!(report["error"], "selected_message_not_group");
+    assert_eq!(report["processed"], 0);
+    assert_eq!(suppressed, Vec::<serde_json::Value>::new());
+}
+
+#[tokio::test]
+async fn sample_fixture_blocks_handle_once_when_selected_message_would_not_reply() {
+    let path = fixture_path("sample_capture.json");
+    let config = config_from(
+        r#"
+        [channel]
+        kind = "wx_cli"
+
+        [ai]
+        api_key = "token"
+
+        [wx_cli]
+        bin = "wx"
+        poll_args = ["poll", "--json"]
+        send_args = ["send", "--chat", "{chat_id}", "--text", "{text}"]
+
+        [bot]
+        mention_names = ["@QunMind"]
+        "#,
+    );
+    let messages = match load_wx_cli_messages_from_file(&path, "") {
+        Ok(messages) => messages,
+        Err(err) => panic!("fixture load: {err}"),
+    };
+
+    let (report, suppressed) =
+        wx_cli_handle_once_pipeline(&config, messages, Some("fixture-msg-2"), 1, true, true).await;
+
+    assert_eq!(report["ok"], false);
+    assert_eq!(report["error"], "selected_message_would_not_reply");
+    assert_eq!(report["processed"], 0);
+    assert_eq!(suppressed, Vec::<serde_json::Value>::new());
 }
