@@ -212,7 +212,7 @@ QunMind 会在保存文本消息时抽取 `http://` / `https://` 链接，写入
 
 同样的边界也延续到 MCP：发布历史应该是独立 tool，而不是混进 wx-cli 诊断工具里。这样 Agent 或外部系统调它时，语义会更清楚。
 
-如果是临近交付、只想知道“明天到底能不能用”，那就更适合直接看 `report-status` 这类专用视图：它应该直接告诉你 ready、不 ready 的 blockers，以及最近有没有成功发布记录。
+如果是临近交付、只想知道“明天到底能不能用”，那就更适合直接看 `report-status` 这类专用视图：它应该直接告诉你当前 `status`、ready / 不 ready 的 blockers、下一步该做什么，以及最近有没有成功发布记录。
 
 现在这套状态视图已经同时接到 CLI 和 MCP：操作者可以直接跑 `qunmind report-status`，Agent / 外部系统可以调 `report_status`，两边复用同一份目标选择和 blocker 判定逻辑，避免口径漂移。
 

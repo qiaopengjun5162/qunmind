@@ -54,7 +54,7 @@
 
 同样的约束要在 MCP tool 层保持一致，不要让 CLI 和 MCP 在 `report_name` 选择规则上出现分叉；发布历史属于运营状态查询，不要混进 wx-cli 诊断 tool 里。
 
-如果用户临近交付、更关心“明天能不能用”，优先提供像 `report-status` 这样的专用日报链路状态视图：直接回答 ready / blockers / recent receipts，而不是要求用户自己拼 doctor、history 和配置字段。
+如果用户临近交付、更关心“明天能不能用”，优先提供像 `report-status` 这样的专用日报链路状态视图：直接回答 `status` / `ready` / `blockers` / `next_steps` / `recent_receipts`，而不是要求用户自己拼 doctor、history 和配置字段。
 
 `channel.kind = "wx_cli"` 时通过 `wx_cli.bin + wx_cli.poll_args` 轮询 JSON 消息，通过 `wx_cli.send_args` 模板发送文本。`ai.provider = "hermes"` 时调用 `[hermes]` 中的 HTTP API，适合先对接爱马仕/小龙虾一类 Agent 平台。
 

@@ -233,7 +233,8 @@ message-pipeline diagnostics stay separate.
 
 For near-term delivery pressure, a dedicated report-status style view is more
 useful than raw internals: it should answer whether a report target is ready,
-what is blocking it, and whether recent publish receipts exist.
+what status it is in now, what is blocking it, what to do next, and whether
+recent publish receipts exist.
 
 That readiness view is now available in both places: `qunmind report-status`
 for operators and `report_status` for MCP clients, with shared target-selection

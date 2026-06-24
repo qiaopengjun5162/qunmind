@@ -98,6 +98,40 @@ pub fn publish_receipt_json(receipt: StoredPublishReceipt) -> serde_json::Value 
     })
 }
 
+pub fn report_status_json(
+    config: &Config,
+    report_name: &str,
+    target: &ReportStatusTarget,
+    receipts: Vec<StoredPublishReceipt>,
+) -> serde_json::Value {
+    let blockers = report_status_blockers(config, target);
+    let ready = blockers.is_empty();
+    let status = if !ready {
+        "blocked"
+    } else if receipts.is_empty() {
+        "ready_for_first_publish"
+    } else {
+        "recently_published"
+    };
+    let next_steps = report_status_next_steps(status, &blockers);
+
+    serde_json::json!({
+        "ok": true,
+        "ready": ready,
+        "status": status,
+        "report_name": report_name,
+        "output": target.output,
+        "chat_id": target.chat_id,
+        "blockers": blockers,
+        "next_steps": next_steps,
+        "recent_receipts_count": receipts.len(),
+        "recent_receipts": receipts
+            .into_iter()
+            .map(publish_receipt_json)
+            .collect::<Vec<_>>(),
+    })
+}
+
 fn has_enabled_public_sources(config: &Config) -> bool {
     let sources = &config.public_sources;
     sources.hacker_news_enabled
@@ -127,9 +161,43 @@ fn command_exists(bin: &str) -> bool {
         .is_some_and(|paths| std::env::split_paths(&paths).any(|dir| dir.join(bin).is_file()))
 }
 
+fn report_status_next_steps(status: &str, blockers: &[&str]) -> Vec<&'static str> {
+    if status == "blocked" {
+        let mut next_steps = Vec::new();
+        if blockers
+            .iter()
+            .any(|blocker| blocker.starts_with("wechat_daily_report_bin"))
+        {
+            next_steps.push("install_or_fix_moonpub_bin");
+        }
+        if blockers.contains(&"wechat_daily_report_articles_dir_empty")
+            || blockers.contains(&"wechat_daily_report_articles_dir_not_dir")
+        {
+            next_steps.push("configure_wechat_articles_dir");
+        }
+        if blockers.contains(&"wechat_daily_report_public_sources_disabled") {
+            next_steps.push("enable_at_least_one_public_source");
+        }
+        if next_steps.is_empty() {
+            next_steps.push("fix_report_status_blockers");
+        }
+        return next_steps;
+    }
+
+    if status == "ready_for_first_publish" {
+        return vec![
+            "run_report_status_again_after_manual_publish_test",
+            "generate_markdown_and_push_wechat_draft",
+        ];
+    }
+
+    vec!["continue_monitoring_recent_publish_receipts"]
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use chrono::Utc;
 
     fn config_from(input: &str) -> Config {
         match toml::from_str(input) {
@@ -264,6 +332,82 @@ mod tests {
 
         let blockers = report_status_blockers(&config, &target);
         assert!(blockers.is_empty());
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn report_status_json_marks_blocked_reports_with_actionable_next_steps() {
+        let config = config_from(
+            r#"
+            [[schedule.daily_reports]]
+            chat_id = "group-1"
+            name = "技术群日报"
+            output = "wechat"
+            "#,
+        );
+        let target = ReportStatusTarget {
+            chat_id: "group-1".to_string(),
+            output: "wechat".to_string(),
+            wechat_bin: String::new(),
+            wechat_articles_dir: String::new(),
+        };
+
+        let report = report_status_json(&config, "技术群日报", &target, Vec::new());
+
+        assert_eq!(report["ready"], false);
+        assert_eq!(report["status"], "blocked");
+        assert_eq!(
+            report["next_steps"],
+            serde_json::json!([
+                "install_or_fix_moonpub_bin",
+                "configure_wechat_articles_dir",
+                "enable_at_least_one_public_source"
+            ])
+        );
+    }
+
+    #[test]
+    fn report_status_json_marks_recently_published_when_receipts_exist() {
+        let dir = std::env::temp_dir().join(format!(
+            "qunmind-reporting-published-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+
+        let config = config_from(&format!(
+            r#"
+            [public_sources]
+            wechat_rss_enabled = true
+
+            [[schedule.daily_reports]]
+            chat_id = "group-1"
+            name = "技术群日报"
+            output = "wechat"
+            wechat_bin = "rustc"
+            wechat_articles_dir = "{}"
+            "#,
+            dir.display()
+        ));
+        let target = effective_report_status_target(&config, "技术群日报").unwrap();
+        let receipts = vec![StoredPublishReceipt {
+            report_name: "技术群日报".to_string(),
+            target: "wechat_draft".to_string(),
+            destination: "公众号草稿箱".to_string(),
+            published_at: Utc::now(),
+            summary: "published".to_string(),
+            raw_output: "ok".to_string(),
+        }];
+
+        let report = report_status_json(&config, "技术群日报", &target, receipts);
+
+        assert_eq!(report["ready"], true);
+        assert_eq!(report["status"], "recently_published");
+        assert_eq!(
+            report["next_steps"],
+            serde_json::json!(["continue_monitoring_recent_publish_receipts"])
+        );
 
         std::fs::remove_dir_all(&dir).unwrap();
     }

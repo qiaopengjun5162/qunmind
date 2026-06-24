@@ -5,7 +5,7 @@ use crate::config::Config;
 use crate::diagnostic;
 use crate::reporting::{
     effective_publish_history_name, effective_report_status_target, publish_receipt_json,
-    report_status_blockers,
+    report_status_json,
 };
 use crate::storage::MessageStore;
 use crate::storage::postgres::PostgresMessageStore;
@@ -259,21 +259,13 @@ async fn tool_report_status(config: &Config, args: &serde_json::Value) -> anyhow
     let target = effective_report_status_target(config, &report_name)?;
     let store = PostgresMessageStore::connect(&config.storage).await?;
     let receipts = store.recent_publish_receipts(&report_name, limit).await?;
-    let blockers = report_status_blockers(config, &target);
 
-    Ok(serde_json::to_string_pretty(&serde_json::json!({
-        "ok": true,
-        "ready": blockers.is_empty(),
-        "report_name": report_name,
-        "output": target.output,
-        "chat_id": target.chat_id,
-        "blockers": blockers,
-        "recent_receipts_count": receipts.len(),
-        "recent_receipts": receipts
-            .into_iter()
-            .map(publish_receipt_json)
-            .collect::<Vec<_>>(),
-    }))?)
+    Ok(serde_json::to_string_pretty(&report_status_json(
+        config,
+        &report_name,
+        &target,
+        receipts,
+    ))?)
 }
 
 fn tool_doctor(config: &Config, args: &serde_json::Value) -> anyhow::Result<String> {

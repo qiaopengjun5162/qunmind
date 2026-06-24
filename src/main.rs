@@ -17,7 +17,7 @@ use qunmind::diagnostic::{
 use qunmind::error::QunMindError;
 use qunmind::reporting::{
     effective_publish_history_name, effective_report_status_target, publish_receipt_json,
-    report_status_blockers,
+    report_status_json,
 };
 use qunmind::scheduler::daily_report::DailyReportScheduler;
 use qunmind::source;
@@ -179,23 +179,14 @@ async fn run_diagnostic_command(
             let receipts = message_store
                 .recent_publish_receipts(&report_name, limit)
                 .await?;
-            let blockers = report_status_blockers(config, &target);
-            let ready = blockers.is_empty();
             println!(
                 "{}",
-                serde_json::to_string_pretty(&serde_json::json!({
-                    "ok": true,
-                    "ready": ready,
-                    "report_name": report_name,
-                    "output": target.output,
-                    "chat_id": target.chat_id,
-                    "blockers": blockers,
-                    "recent_receipts_count": receipts.len(),
-                    "recent_receipts": receipts
-                        .into_iter()
-                        .map(publish_receipt_json)
-                        .collect::<Vec<_>>(),
-                }))?
+                serde_json::to_string_pretty(&report_status_json(
+                    config,
+                    &report_name,
+                    &target,
+                    receipts,
+                ))?
             );
             Ok(())
         }
