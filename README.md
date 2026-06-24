@@ -41,7 +41,7 @@ This is an MVP foundation, not a production-ready bot yet. The next important st
 The current project phase is:
 
 - **Done**: core Rust backend boundaries, persistence, per-group config, wx-cli diagnostics/replay, MCP integration, and daily report generation/publishing.
-- **In progress**: command-layer dedup between `main.rs` and MCP tools, real wx-cli sample validation, `QunMind × moonpub` readiness checks, multi-group report verification, and tighter doc consistency.
+- **In progress**: real wx-cli sample validation, `QunMind × moonpub` readiness checks, multi-group report verification, and tighter doc consistency.
 - **Not done yet**: stable real-world normal WeChat group validation, production hardening, and long-term memory / permission / ops capabilities.
 
 Rough progress bars:
@@ -232,6 +232,10 @@ message-pipeline diagnostics stay separate.
 For near-term delivery pressure, a dedicated report-status style view is more
 useful than raw internals: it should answer whether a report target is ready,
 what is blocking it, and whether recent publish receipts exist.
+
+That readiness view is now available in both places: `qunmind report-status`
+for operators and `report_status` for MCP clients, with shared target-selection
+and blocker logic so the CLI and MCP do not drift.
 
 See [docs/multi-platform-publishing.md](docs/multi-platform-publishing.md) for
 the full rationale and the recommended split for WeChat, Douyin, and future

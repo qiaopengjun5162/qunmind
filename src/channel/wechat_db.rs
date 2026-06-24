@@ -77,7 +77,11 @@ pub fn message_db_paths() -> Vec<PathBuf> {
         None => return Vec::new(),
     };
 
-    let mut paths: Vec<PathBuf> = match std::fs::read_dir(&dir) {
+    message_db_paths_in_dir(&dir)
+}
+
+fn message_db_paths_in_dir(dir: &std::path::Path) -> Vec<PathBuf> {
+    let mut paths: Vec<PathBuf> = match std::fs::read_dir(dir) {
         Ok(entries) => entries
             .flatten()
             .filter(|e| {
@@ -1106,9 +1110,35 @@ mod tests {
     }
 
     #[test]
-    fn message_db_paths_returns_vec() {
-        let paths = message_db_paths();
-        assert!(paths.is_empty() || !paths.is_empty());
+    fn message_db_paths_filters_and_sorts_shards() {
+        let dir =
+            std::env::temp_dir().join(format!("qunmind-wechat-db-paths-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+
+        for name in [
+            "message_0.db",
+            "message_12.db",
+            "message_2.db",
+            "message_2.db-wal",
+            "message_7_fts.db",
+            "message_8_resource.db",
+            "message_a.db",
+            "other.db",
+        ] {
+            fs::write(dir.join(name), "").unwrap();
+        }
+
+        let paths = message_db_paths_in_dir(&dir);
+        let names: Vec<String> = paths
+            .iter()
+            .filter_map(|path| path.file_name().and_then(|name| name.to_str()))
+            .map(|name| name.to_string())
+            .collect();
+
+        assert_eq!(names, vec!["message_12.db", "message_2.db", "message_0.db"]);
+
+        fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]

@@ -58,6 +58,8 @@
 ### Done
 
 - **日报就绪状态视图落地** — 新增 `report-status` 顶层命令，直接输出某个日报目标的 `ready`、`blockers` 和 `recent_receipts`。这比把 `doctor`、`publish-history` 和配置手工拼起来更适合临近交付时快速判断“明天能不能用”。
+- **日报就绪状态接入 MCP** — 新增独立 `report_status` MCP tool，让 Agent / 外部系统也能直接读取 `ready`、`blockers` 和最近发布回执，而不用把这类运营状态查询塞进 wx-cli 诊断工具。
+- **日报状态判定去重** — 新增 `src/reporting.rs`，把 `report_name` 选择、日报目标解析、blocker 判定和发布回执 JSON 渲染从 `main.rs` / `src/mcp/tools.rs` 提成共享 helper，避免 CLI 与 MCP 维护两套“明天能不能用”的判断逻辑。
 - **发布历史接入 MCP** — `publish_history` 已作为独立 MCP tool 暴露，沿用与 CLI 相同的 `report_name` 选择规则和结构化 JSON 输出。这样发布状态查询已经同时具备 CLI 与 Agent / 外部工具可调用两条入口，而且不会污染原有 wx-cli 诊断语义。
 - **发布历史 CLI 入口落地** — 新增 `publish-history` 顶层命令，用结构化 JSON 输出最近发布回执。当前策略是：单目标 legacy 日报配置可直接回退到 `daily_report_chat_id`，多目标 `schedule.daily_reports` 配置必须显式传 `--report-name`，避免误查到错误日报目标。
 - **最近发布历史可查询** — `MessageStore` 新增 `recent_publish_receipts` 默认接口，PostgreSQL 可按 `report_name` 读取最近发布回执。现在这条链路已经不只是“写进去”，而是具备了最小的“能查最近几次发布状态”能力，为后续 CLI / MCP / dashboard 暴露状态历史打基础。

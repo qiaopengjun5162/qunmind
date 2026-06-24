@@ -30,7 +30,9 @@
 
 `src/channel/wx_cli.rs` 同时承载 wx-cli / 微信数据库通道的捕获文件读写 helper（例如 capture JSON 读写）和通道侧解析；凡是会被 CLI 与 MCP 复用、但不属于 `diagnostic` 纯逻辑的文件 I/O，优先放这里，避免在 `main.rs` 和 `src/mcp/tools.rs` 各写一份。
 
-`src/mcp/mod.rs` 维护 MCP JSON-RPC 2.0 server，`src/mcp/tools.rs` 维护 7 个 MCP tool 的 inputSchema 定义和 diagnostic 纯函数适配。新增 MCP tool 时优先在 `tools.rs` 补纯函数测试，不要往 `mod.rs` 塞业务逻辑。
+`src/mcp/mod.rs` 维护 MCP JSON-RPC 2.0 server，`src/mcp/tools.rs` 维护 MCP tool 的 inputSchema 定义和 diagnostic / reporting 纯函数适配。新增 MCP tool 时优先在 `tools.rs` 补纯函数测试，不要往 `mod.rs` 塞业务逻辑。
+
+`src/reporting.rs` 维护日报运营状态的共享 helper，例如 `report_name` 解析、`report-status` 目标选择、readiness blocker 判定和发布回执 JSON 渲染。凡是 CLI 与 MCP 都需要复用的日报状态逻辑，优先放这里，不要在 `main.rs` 和 `src/mcp/tools.rs` 各写一套。
 
 `src/source/hn_daily.rs` 抓取 HN Daily 每日 top 10 文章作为日报素材源，HTML 解析逻辑保持无依赖（纯字符串匹配），不需要额外 HTML parser。新增类似轻量抓取来源时参考其模式。
 

@@ -9,6 +9,7 @@ pub mod error;
 pub mod intelligence;
 pub mod mcp;
 pub mod publisher;
+pub mod reporting;
 pub mod research;
 pub mod scheduler;
 pub mod source;
