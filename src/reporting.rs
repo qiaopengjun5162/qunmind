@@ -671,6 +671,39 @@ fn report_status_recommended_tool_calls(status: &str, report_name: &str) -> Vec<
             "tool": "report_status",
             "arguments": base_report_args,
         })],
+        "ready_for_first_publish" => vec![
+            {
+                let mut args = base_report_args.clone();
+                args.insert(
+                    "output".to_string(),
+                    serde_json::Value::String("/tmp/wechat-report.md".to_string()),
+                );
+                serde_json::json!({
+                    "tool": "report_markdown",
+                    "arguments": args,
+                })
+            },
+            {
+                let mut args = base_report_args.clone();
+                args.insert(
+                    "output".to_string(),
+                    serde_json::Value::String("/tmp/wechat-report.md".to_string()),
+                );
+                args.insert("confirm_publish".to_string(), serde_json::Value::Bool(true));
+                serde_json::json!({
+                    "tool": "report_publish",
+                    "arguments": args,
+                })
+            },
+            {
+                let mut args = base_report_args.clone();
+                args.insert("limit".to_string(), serde_json::Value::from(5));
+                serde_json::json!({
+                    "tool": "publish_history",
+                    "arguments": args,
+                })
+            },
+        ],
         "recently_published_with_warnings" => vec![
             serde_json::json!({
                 "tool": "report_recover_automation",
@@ -936,7 +969,33 @@ mod tests {
                 "just report-history config.toml '微信公众号日报'"
             ])
         );
-        assert_eq!(report["recommended_tool_calls"], serde_json::json!([]));
+        assert_eq!(
+            report["recommended_tool_calls"],
+            serde_json::json!([
+                {
+                    "tool": "report_markdown",
+                    "arguments": {
+                        "report_name": "微信公众号日报",
+                        "output": "/tmp/wechat-report.md"
+                    }
+                },
+                {
+                    "tool": "report_publish",
+                    "arguments": {
+                        "report_name": "微信公众号日报",
+                        "output": "/tmp/wechat-report.md",
+                        "confirm_publish": true
+                    }
+                },
+                {
+                    "tool": "publish_history",
+                    "arguments": {
+                        "report_name": "微信公众号日报",
+                        "limit": 5
+                    }
+                }
+            ])
+        );
 
         std::fs::remove_dir_all(&dir).unwrap();
     }
