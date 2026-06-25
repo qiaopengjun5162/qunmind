@@ -296,6 +296,43 @@ async fn run_diagnostic_command(
             );
             Ok(())
         }
+        CliCommand::ReportRecoverAutomation {
+            report_name,
+            headed,
+        } => {
+            let report_target = resolve_manual_daily_report_target(config, &report_name)?;
+            if report_target.output != "wechat" {
+                return Err(QunMindError::Config(format!(
+                    "report-recover-automation 仅支持 output = wechat，当前为 {}",
+                    report_target.output
+                ))
+                .into());
+            }
+
+            let login_output = login_wechat_backend(
+                &report_target.wechat_bin,
+                &report_target.wechat_articles_dir,
+            )?;
+            let configure_output = configure_wechat_backend(
+                &report_target.wechat_bin,
+                &report_target.wechat_articles_dir,
+                headed,
+            )?;
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&serde_json::json!({
+                    "ok": true,
+                    "report_name": report_target.name,
+                    "output": report_target.output,
+                    "wechat_bin": report_target.wechat_bin,
+                    "wechat_articles_dir": report_target.wechat_articles_dir,
+                    "headed": headed,
+                    "login_output": login_output,
+                    "configure_output": configure_output,
+                }))?
+            );
+            Ok(())
+        }
     }
 }
 

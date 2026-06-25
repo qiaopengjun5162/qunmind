@@ -395,8 +395,7 @@ fn report_status_recommended_commands(
 
     if status == "recently_published_with_warnings" {
         return vec![
-            format!("just report-login config.toml {quoted_report}"),
-            format!("just report-configure config.toml {quoted_report}"),
+            format!("just report-recover-automation config.toml {quoted_report}"),
             format!("just report-history config.toml {quoted_report}"),
         ];
     }
@@ -737,8 +736,7 @@ mod tests {
         assert_eq!(
             report["recommended_commands"],
             serde_json::json!([
-                "just report-login config.toml '微信公众号日报'",
-                "just report-configure config.toml '微信公众号日报'",
+                "just report-recover-automation config.toml '微信公众号日报'",
                 "just report-history config.toml '微信公众号日报'"
             ])
         );

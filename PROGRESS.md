@@ -62,11 +62,10 @@
 
 1. `just db-create`
 2. `just report-status config.toml '微信公众号日报'`
-3. 如果回执已显示 `automation_state = "login_required"`，先执行 `just report-login config.toml '微信公众号日报'`
-4. 然后执行 `just report-configure config.toml '微信公众号日报'`
-5. `just report-markdown config.toml '微信公众号日报' '/tmp/wechat-report.md'`
-6. 用户明确批准后，再执行 `just report-publish config.toml '微信公众号日报' '/tmp/wechat-report.md'`
-7. `just report-history config.toml '微信公众号日报'`
+3. 如果回执已显示 `automation_state = "login_required"`，先执行 `just report-recover-automation config.toml '微信公众号日报'`
+4. `just report-markdown config.toml '微信公众号日报' '/tmp/wechat-report.md'`
+5. 用户明确批准后，再执行 `just report-publish config.toml '微信公众号日报' '/tmp/wechat-report.md'`
+6. `just report-history config.toml '微信公众号日报'`
 
 ## 2026-06-24
 
@@ -91,6 +90,7 @@
 - **公众号日报登录入口标准化** — 新增 `qunmind report-login --report-name <name>` 与 `just report-login config.toml '微信公众号日报'`，把之前只存在于说明里的 “`moonpub login`” 收口成项目内标准入口。这样当 `report-status` 或最近回执明确给出 `automation_state = "login_required"` 时，下一步操作已经不需要再手工回忆上游命令格式，而是继续沿 QunMind 自己的日报目标解析与配置边界执行。
 - **公众号日报自动化重试入口标准化** — 现在继续新增 `qunmind report-configure --report-name <name>` 与 `just report-configure config.toml '微信公众号日报'`，把登录后的浏览器自动化重试也收口进项目内流程。这样“草稿已成功，但自动化卡在登录或预览后续步骤”时，恢复动作已经变成 `report-login -> report-configure` 两个标准命令，而不是继续依赖聊天说明。
 - **`report-status` 开始直接给命令提示** — 现在 `report-status` / `report_status` 不只返回 `next_steps` 这类抽象状态词，还会额外输出 `recommended_commands`。例如首次 ready 会直接给 `report-markdown` / `report-publish` / `report-history`，warning 状态会直接给 `report-login` / `report-configure` / `report-history`。这让“看状态 -> 执行下一步”终于不需要再在 README 和聊天记录之间来回翻译。
+- **公众号日报自动化恢复再压成一步** — 现在新增 `qunmind report-recover-automation --report-name <name>` 与 `just report-recover-automation config.toml '微信公众号日报'`，内部顺序就是 `report-login -> report-configure`。这样 warning 状态下的默认恢复动作终于从“两条命令”缩成“一条命令”，`report-status` 的 `recommended_commands` 也会优先推荐这一条。
 
 ### Verified
 

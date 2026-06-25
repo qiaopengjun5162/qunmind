@@ -77,6 +77,16 @@ pub enum CliCommand {
         #[arg(long)]
         headed: bool,
     },
+    /// 顺序执行公众号登录与浏览器自动化重试
+    #[command(name = "report-recover-automation")]
+    ReportRecoverAutomation {
+        /// 日报目标名称；为空时自动复用唯一日报目标
+        #[arg(long, default_value = "")]
+        report_name: String,
+        /// 用有头浏览器调试自动化步骤
+        #[arg(long)]
+        headed: bool,
+    },
 }
 
 #[derive(Debug, Subcommand)]
@@ -676,6 +686,28 @@ mod tests {
                 assert!(headed);
             }
             _ => panic!("report-configure command should parse"),
+        }
+    }
+
+    #[test]
+    fn parses_report_recover_automation_command() {
+        let args = parse_args(&[
+            "qunmind",
+            "report-recover-automation",
+            "--report-name",
+            "技术群日报",
+            "--headed",
+        ]);
+
+        match args.command {
+            Some(CliCommand::ReportRecoverAutomation {
+                report_name,
+                headed,
+            }) => {
+                assert_eq!(report_name, "技术群日报");
+                assert!(headed);
+            }
+            _ => panic!("report-recover-automation command should parse"),
         }
     }
 }
