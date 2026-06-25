@@ -41,10 +41,10 @@ QUNMIND_TEST_DATABASE_URL="postgres://postgres:postgres@localhost:5432/qunmind_t
 - Add or update tests for behavior changes.
 - Keep CLI / MCP safety semantics aligned when changing replay, diagnostics, or report-status behavior; avoid documenting a stricter workflow than the code actually enforces.
 - When changing daily-report readiness semantics, keep hard blockers (for example `moonpub` binary or articles dir) separate from fallback-only warnings (for example missing `public_sources` when a group may be empty).
-- When changing the WeChat public-account RSS report flow, keep the operator-facing rehearsal path (`just db-create` -> `just report-status` -> `just report-login` when login reuse is needed -> `just report-markdown` -> `just report-publish` -> `just report-history`) consistent across examples and docs.
+- When changing the WeChat public-account RSS report flow, keep the operator-facing rehearsal path (`just db-create` -> `just report-status` -> `just report-login` / `just report-configure` when automation reuse is needed -> `just report-markdown` -> `just report-publish` -> `just report-history`) consistent across examples and docs.
 - When changing `src/daily_report/` quality behavior, keep the fallback/enrichment rules covered by tests and document whether the change affects report structure, section selection, or reference-link rendering.
 - Keep `.github/CODEOWNERS` aligned with the real review boundary when adding new top-level areas or changing who should review workflow / release / documentation changes.
-- If docs mention `just report-status`, `just report-login`, `just report-markdown`, `just report-publish`, or `just report-history`, keep the examples aligned with the real positional-argument form used by this repository, for example `just report-status config.toml '微信公众号日报'`.
+- If docs mention `just report-status`, `just report-login`, `just report-configure`, `just report-markdown`, `just report-publish`, or `just report-history`, keep the examples aligned with the real positional-argument form used by this repository, for example `just report-status config.toml '微信公众号日报'`.
 - Run `just clippy` and `just test` before opening a PR.
 - For Docker, Compose, or release workflow changes, make sure the Docker image build passes locally or in CI.
 - Fill out the pull request template with behavior changes, verification, and remaining risks.

@@ -11,7 +11,9 @@ use qunmind::cli::{Args, CliCommand};
 use qunmind::config::{AiProvider, ChannelKind, Config};
 use qunmind::daily_report::DailyReportGenerator;
 use qunmind::error::QunMindError;
-use qunmind::publisher::{PublishTarget, login_wechat_backend, publish_markdown};
+use qunmind::publisher::{
+    PublishTarget, configure_wechat_backend, login_wechat_backend, publish_markdown,
+};
 use qunmind::reporting::{
     ReportContentRequest, effective_publish_history_name, effective_report_status_target,
     generate_group_report_from_store, publish_receipt_automation_state, publish_receipt_json,
@@ -257,6 +259,38 @@ async fn run_diagnostic_command(
                     "output": report_target.output,
                     "wechat_bin": report_target.wechat_bin,
                     "wechat_articles_dir": report_target.wechat_articles_dir,
+                    "raw_output": raw_output,
+                }))?
+            );
+            Ok(())
+        }
+        CliCommand::ReportConfigure {
+            report_name,
+            headed,
+        } => {
+            let report_target = resolve_manual_daily_report_target(config, &report_name)?;
+            if report_target.output != "wechat" {
+                return Err(QunMindError::Config(format!(
+                    "report-configure 仅支持 output = wechat，当前为 {}",
+                    report_target.output
+                ))
+                .into());
+            }
+
+            let raw_output = configure_wechat_backend(
+                &report_target.wechat_bin,
+                &report_target.wechat_articles_dir,
+                headed,
+            )?;
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&serde_json::json!({
+                    "ok": true,
+                    "report_name": report_target.name,
+                    "output": report_target.output,
+                    "wechat_bin": report_target.wechat_bin,
+                    "wechat_articles_dir": report_target.wechat_articles_dir,
+                    "headed": headed,
                     "raw_output": raw_output,
                 }))?
             );

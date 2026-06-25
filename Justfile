@@ -95,6 +95,10 @@ report-status config='config.toml' report='微信公众号日报' limit='5':
 report-login config='config.toml' report='微信公众号日报':
     cargo run -- --config {{config}} report-login --report-name "{{report}}"
 
+# 重试公众号浏览器自动化配置
+report-configure config='config.toml' report='微信公众号日报' headed='false':
+    cargo run -- --config {{config}} report-configure --report-name "{{report}}" {{if headed == "true" { "--headed" } else { "" }}}
+
 # 生成本地日报 markdown（不发布）
 report-markdown config='config.toml' report='微信公众号日报' output='/tmp/wechat-report.md':
     cargo run -- --config {{config}} daily-report --report-name "{{report}}" --output {{output}}

@@ -67,6 +67,16 @@ pub enum CliCommand {
         #[arg(long, default_value = "")]
         report_name: String,
     },
+    /// 重试公众号浏览器自动化配置步骤
+    #[command(name = "report-configure")]
+    ReportConfigure {
+        /// 日报目标名称；为空时自动复用唯一日报目标
+        #[arg(long, default_value = "")]
+        report_name: String,
+        /// 用有头浏览器调试自动化步骤
+        #[arg(long)]
+        headed: bool,
+    },
 }
 
 #[derive(Debug, Subcommand)]
@@ -644,6 +654,28 @@ mod tests {
                 assert_eq!(report_name, "技术群日报");
             }
             _ => panic!("report-login command should parse"),
+        }
+    }
+
+    #[test]
+    fn parses_report_configure_command() {
+        let args = parse_args(&[
+            "qunmind",
+            "report-configure",
+            "--report-name",
+            "技术群日报",
+            "--headed",
+        ]);
+
+        match args.command {
+            Some(CliCommand::ReportConfigure {
+                report_name,
+                headed,
+            }) => {
+                assert_eq!(report_name, "技术群日报");
+                assert!(headed);
+            }
+            _ => panic!("report-configure command should parse"),
         }
     }
 }

@@ -203,6 +203,7 @@ If you already have a WeChat public-account RSS / Atom upstream, the shortest re
 just db-create
 just report-status config.toml '微信公众号日报'
 just report-login config.toml '微信公众号日报'
+just report-configure config.toml '微信公众号日报'
 just report-markdown config.toml '微信公众号日报' '/tmp/wechat-report.md'
 just report-publish config.toml '微信公众号日报' '/tmp/wechat-report.md'
 just report-history config.toml '微信公众号日报'
@@ -210,7 +211,7 @@ just report-history config.toml '微信公众号日报'
 
 Recommended order:
 - confirm `report-status` has empty `blockers` and `missing_publish_env`; if `WECHAT_APPID` or `WECHAT_SECRET` still appears, stop there before any real publish attempt
-- if `report-status` or the latest receipt already shows `automation_state = "login_required"`, run `report-login` first so the next browser-assisted automation attempt can reuse a fresh WeChat backend login
+- if `report-status` or the latest receipt already shows `automation_state = "login_required"`, run `report-login` first so the next browser-assisted automation attempt can reuse a fresh WeChat backend login, then run `report-configure` to retry the browser automation path inside the same project workflow
 - generate local markdown first and verify the RSS-backed article material appears in the report
 - only then run `report-publish` to push the draft through `moonpub`
 
@@ -230,7 +231,7 @@ Recent report-quality hardening also now lives inside `src/daily_report/` instea
 
 The current operational interpretation is:
 - the minimum viable target is complete: generate report -> push draft -> persist receipt -> inspect publish history
-- if a receipt shows `automation_state = "login_required"`, the next operational step is `qunmind report-login --report-name "微信公众号日报"` or `just report-login config.toml '微信公众号日报'`, then retry the browser-assisted configuration path instead of assuming automation never ran
+- if a receipt shows `automation_state = "login_required"`, the next operational step is `qunmind report-login --report-name "微信公众号日报"` or `just report-login config.toml '微信公众号日报'`, followed by `qunmind report-configure --report-name "微信公众号日报"` or `just report-configure config.toml '微信公众号日报'`
 - the remaining risk is no longer "can it publish at all", but rather publish-IP drift, automation warnings, and report quality
 
 Notes:
