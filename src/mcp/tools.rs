@@ -3,10 +3,13 @@ use std::path::PathBuf;
 use crate::channel::wx_cli::{WxCliChannel, write_wx_cli_capture_file};
 use crate::config::Config;
 use crate::diagnostic;
-use crate::publisher::{configure_wechat_backend, login_wechat_backend};
+use crate::publisher::{configure_wechat_backend, login_wechat_backend, publish_markdown};
 use crate::reporting::{
-    effective_publish_history_name, effective_report_status_target, publish_receipt_json,
-    report_status_json, resolve_manual_daily_report_target,
+    build_ai_client, build_message_store, build_public_news_source, effective_publish_history_name,
+    effective_report_status_target, generate_manual_daily_report_markdown,
+    manual_daily_report_publish_target, persist_manual_publish_receipt,
+    publish_receipt_automation_state, publish_receipt_json, report_status_json,
+    resolve_manual_daily_report_target,
 };
 use crate::storage::MessageStore;
 use crate::storage::postgres::PostgresMessageStore;
@@ -106,6 +109,46 @@ pub fn list_tools() -> Vec<Tool> {
                     }
                 },
                 "required": []
+            }),
+        },
+        Tool {
+            name: "report_markdown".into(),
+            description: "Generate one manual daily report markdown file using the configured report target semantics without publishing.".into(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "report_name": {
+                        "type": "string",
+                        "description": "Explicit daily report target name. Required when multiple schedule.daily_reports entries exist."
+                    },
+                    "output": {
+                        "type": "string",
+                        "description": "Path to write the generated markdown file."
+                    }
+                },
+                "required": ["output"]
+            }),
+        },
+        Tool {
+            name: "report_publish".into(),
+            description: "Generate and publish one manual daily report through the configured publisher boundary. Requires explicit confirm_publish=true.".into(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "report_name": {
+                        "type": "string",
+                        "description": "Explicit daily report target name. Required when multiple schedule.daily_reports entries exist."
+                    },
+                    "output": {
+                        "type": "string",
+                        "description": "Path to write the generated markdown file before publish."
+                    },
+                    "confirm_publish": {
+                        "type": "boolean",
+                        "description": "Must be true to allow a real external publish."
+                    }
+                },
+                "required": ["output", "confirm_publish"]
             }),
         },
         Tool {
@@ -265,6 +308,8 @@ pub async fn call_tool(
         "report_login" => tool_report_login(config, arguments),
         "report_configure" => tool_report_configure(config, arguments),
         "report_recover_automation" => tool_report_recover_automation(config, arguments),
+        "report_markdown" => tool_report_markdown(config, arguments).await,
+        "report_publish" => tool_report_publish(config, arguments).await,
         "wxcli_doctor" => tool_doctor(config, arguments),
         "wxcli_capture" => tool_capture(config, config_path, arguments).await,
         "wxcli_test_plan" => tool_test_plan(config, config_path, arguments),
@@ -404,6 +449,93 @@ fn tool_report_recover_automation(
         "headed": headed,
         "login_output": login_output,
         "configure_output": configure_output,
+    }))?)
+}
+
+async fn tool_report_markdown(config: &Config, args: &serde_json::Value) -> anyhow::Result<String> {
+    let report_name = args
+        .get("report_name")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    let output = required_string(args, "output")?;
+    let output_path = PathBuf::from(&output);
+
+    let ai_client = build_ai_client(config)?;
+    let report_target = resolve_manual_daily_report_target(config, report_name)?;
+    let message_store = build_message_store(config).await?;
+    let public_news_source = build_public_news_source(config)?;
+    let markdown = generate_manual_daily_report_markdown(
+        config,
+        &report_target,
+        ai_client,
+        message_store,
+        public_news_source,
+    )
+    .await?;
+    std::fs::write(&output_path, &markdown)
+        .map_err(|err| anyhow::anyhow!("写入日报文件失败: {}", err))?;
+
+    Ok(serde_json::to_string_pretty(&serde_json::json!({
+        "ok": true,
+        "report_name": report_target.name,
+        "output_path": output_path.display().to_string(),
+        "published": false,
+    }))?)
+}
+
+async fn tool_report_publish(config: &Config, args: &serde_json::Value) -> anyhow::Result<String> {
+    let confirm_publish = args
+        .get("confirm_publish")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    if !confirm_publish {
+        anyhow::bail!("report_publish requires confirm_publish=true for a real external publish");
+    }
+
+    let report_name = args
+        .get("report_name")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    let output = required_string(args, "output")?;
+    let output_path = PathBuf::from(&output);
+
+    let ai_client = build_ai_client(config)?;
+    let report_target = resolve_manual_daily_report_target(config, report_name)?;
+    let message_store = build_message_store(config).await?;
+    let public_news_source = build_public_news_source(config)?;
+    let markdown = generate_manual_daily_report_markdown(
+        config,
+        &report_target,
+        ai_client,
+        message_store.clone(),
+        public_news_source,
+    )
+    .await?;
+    std::fs::write(&output_path, &markdown)
+        .map_err(|err| anyhow::anyhow!("写入日报文件失败: {}", err))?;
+
+    let target = manual_daily_report_publish_target(&report_target)?;
+    let publish_receipt = publish_markdown(&markdown, &target)?;
+    let publish_persistence =
+        persist_manual_publish_receipt(Ok(message_store), &report_target.name, &publish_receipt)
+            .await;
+
+    Ok(serde_json::to_string_pretty(&serde_json::json!({
+        "ok": true,
+        "report_name": report_target.name,
+        "output_path": output_path.display().to_string(),
+        "published": true,
+        "publish_receipt_saved": publish_persistence.saved,
+        "publish_receipt_save_error": publish_persistence.save_error,
+        "publish_receipt": {
+            "target": publish_receipt.target,
+            "destination": publish_receipt.destination,
+            "published_at": publish_receipt.published_at,
+            "summary": publish_receipt.summary,
+            "raw_output": publish_receipt.raw_output,
+            "warnings": publish_receipt.warnings,
+            "automation_state": publish_receipt_automation_state(&publish_receipt.warnings),
+        },
     }))?)
 }
 
@@ -612,15 +744,17 @@ mod tests {
     }
 
     #[test]
-    fn list_tools_returns_twelve_tools() {
+    fn list_tools_returns_fourteen_tools() {
         let tools = list_tools();
-        assert_eq!(tools.len(), 12);
+        assert_eq!(tools.len(), 14);
         let names: Vec<&str> = tools.iter().map(|t| t.name.as_str()).collect();
         assert!(names.contains(&"publish_history"));
         assert!(names.contains(&"report_status"));
         assert!(names.contains(&"report_login"));
         assert!(names.contains(&"report_configure"));
         assert!(names.contains(&"report_recover_automation"));
+        assert!(names.contains(&"report_markdown"));
+        assert!(names.contains(&"report_publish"));
         assert!(names.contains(&"wxcli_doctor"));
         assert!(names.contains(&"wxcli_capture"));
         assert!(names.contains(&"wxcli_test_plan"));
@@ -847,6 +981,98 @@ mod tests {
         .unwrap_err();
 
         assert!(err.to_string().contains("moonpub login"));
+    }
+
+    #[tokio::test]
+    async fn tool_report_markdown_requires_output() {
+        let config = config_from(
+            r#"
+            [ai]
+            provider = "hermes"
+
+            [[schedule.daily_reports]]
+            chat_id = "group-1"
+            name = "微信公众号日报"
+            output = "wechat"
+            "#,
+        );
+
+        let err = call_tool(
+            &config,
+            std::path::Path::new("test-config.toml"),
+            "report_markdown",
+            &serde_json::json!({}),
+        )
+        .await
+        .unwrap_err();
+
+        assert!(
+            err.to_string()
+                .contains("Missing required parameter: output")
+        );
+    }
+
+    #[tokio::test]
+    async fn tool_report_publish_requires_explicit_confirm_publish() {
+        let config = config_from(
+            r#"
+            [ai]
+            provider = "hermes"
+
+            [[schedule.daily_reports]]
+            chat_id = "group-1"
+            name = "微信公众号日报"
+            output = "wechat"
+            "#,
+        );
+
+        let err = call_tool(
+            &config,
+            std::path::Path::new("test-config.toml"),
+            "report_publish",
+            &serde_json::json!({
+                "report_name": "微信公众号日报",
+                "output": "/tmp/wechat-report.md",
+                "confirm_publish": false
+            }),
+        )
+        .await
+        .unwrap_err();
+
+        assert!(err.to_string().contains("confirm_publish=true"));
+    }
+
+    #[tokio::test]
+    async fn tool_report_markdown_rejects_ambiguous_multi_target_setup() {
+        let config = config_from(
+            r#"
+            [ai]
+            provider = "hermes"
+
+            [[schedule.daily_reports]]
+            chat_id = "group-1"
+            name = "技术群日报"
+            output = "wechat"
+
+            [[schedule.daily_reports]]
+            chat_id = "group-2"
+            name = "运营日报"
+            output = "wechat"
+            "#,
+        );
+
+        let err = call_tool(
+            &config,
+            std::path::Path::new("test-config.toml"),
+            "report_markdown",
+            &serde_json::json!({
+                "output": "/tmp/ambiguous-report.md"
+            }),
+        )
+        .await
+        .unwrap_err();
+
+        assert!(err.to_string().contains("report_name"));
     }
 
     #[tokio::test]

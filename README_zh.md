@@ -225,6 +225,8 @@ just report-history config.toml '微信公众号日报'
 
 同一套恢复动作现在也已经补到 MCP，不再只有 shell/CLI 能调。也就是说，外部 Agent / MCP 客户端现在可以直接调用 `report_status`、`report_login`、`report_configure` 和 `report_recover_automation`，并且沿用和 CLI 完全一致的日报目标选择语义：只有一个日报目标时自动复用，多个目标时必须显式给 `report_name`。
 
+现在 MCP 也已经能直接走手工日报演练链路：`report_markdown` 会按和 `qunmind daily-report` 一样的“优先群消息和链接情报、群为空时再回退 public_sources”语义生成本地 markdown；`report_publish` 则只有在显式传入 `confirm_publish = true` 时，才会继续触发真实 publisher 边界。
+
 当前这条链路已经完成过三次真实试发验证：
 - `report-status` 可到 `recently_published_with_warnings`
 - `publish-history` 已能查到最近三条成功回执
@@ -251,6 +253,7 @@ just report-history config.toml '微信公众号日报'
 - `wechat_daily_report_public_sources_disabled_for_empty_group_fallback` 只是 warning，表示“如果目标群当天为空，将没有 RSS / 公共来源回退素材”
 - `just db-create` 只负责在默认本地 PostgreSQL 缺库时补建 `qunmind` 数据库，表结构仍由 QunMind 启动时自动初始化
 - `just report-publish` 会触发真实外部发布链路，也可能把日报素材发送到当前配置的 AI / publisher
+- MCP `report_publish` 也保持同样的安全边界，必须显式 `confirm_publish = true`；如果只是想先看稿件，优先用 `report_markdown`
 
 ## 多平台发布边界
 

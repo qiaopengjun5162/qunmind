@@ -220,6 +220,8 @@ For MCP/agent callers, the same payload now also includes `recommended_tool_call
 
 The same recovery flow is now available through MCP as first-class tools, not just shell wrappers. MCP clients can call `report_status`, `report_login`, `report_configure`, and `report_recover_automation` with the same target-selection semantics used by the CLI: one configured target can be auto-reused, while multiple targets still require an explicit `report_name`.
 
+MCP can now also drive the manual report rehearsal path itself. `report_markdown` generates the local markdown file with the same group-message-first and public-source-fallback semantics used by `qunmind daily-report`, while `report_publish` only crosses the real external publisher boundary when the caller passes `confirm_publish = true`.
+
 This path has now been verified with three real draft pushes:
 - `report-status` can advance to `recently_published_with_warnings`
 - `publish-history` now returns the three latest successful receipts
@@ -243,6 +245,7 @@ Notes:
 - `just db-create` only creates the default local PostgreSQL database when it is missing; tables are still created by QunMind at runtime
 - `just report-publish` is a real external publish action and may send stored report material to the configured AI / publisher chain
 - `report-status` now also checks the `moonpub` publish env required by real draft pushes; missing `WECHAT_APPID` or `WECHAT_SECRET` is treated as a blocker before the first external publish attempt
+- MCP `report_publish` keeps the same safety posture and requires explicit `confirm_publish = true`; use `report_markdown` first when you only want a local file for review
 
 Semantics to keep in mind:
 - missing `wechat_bin` / `wechat_articles_dir` is a hard blocker

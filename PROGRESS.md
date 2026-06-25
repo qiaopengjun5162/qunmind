@@ -93,6 +93,7 @@
 - **公众号日报自动化恢复再压成一步** — 现在新增 `qunmind report-recover-automation --report-name <name>` 与 `just report-recover-automation config.toml '微信公众号日报'`，内部顺序就是 `report-login -> report-configure`。这样 warning 状态下的默认恢复动作终于从“两条命令”缩成“一条命令”，`report-status` 的 `recommended_commands` 也会优先推荐这一条。
 - **MCP 侧公众号恢复入口补齐** — 这轮继续把 `report_login`、`report_configure` 和 `report_recover_automation` 补到 `src/mcp/tools.rs`，并复用 `src/reporting.rs` 里的共享日报目标解析。这样现在不只是 CLI 能按项目标准恢复公众号自动化，MCP / 外部 Agent 也能沿同一套 `report_name` 选择、单目标自动复用和 `output = "wechat"` 限制直接调用，不会再出现 CLI 已更新、MCP 还停在旧流程的分叉。
 - **`report-status` 开始给 Agent 结构化下一步建议** — 现在 `report-status` / `report_status` 除了继续返回 `recommended_commands`，还会额外返回 `recommended_tool_calls`。这让 MCP / 外部 Agent 在看到 `recently_published_with_warnings` 或 `automation_state = "login_required"` 时，不需要再从 shell 命令字符串里反推动作，而是可以直接顺着状态结果调用 `report_recover_automation`、`publish_history` 等 tool。
+- **MCP 手工日报闭环入口补齐第一版** — 现在继续新增 `report_markdown` 与 `report_publish`。前者会复用 `qunmind daily-report` 的正式日报目标语义生成本地 markdown；后者则在显式 `confirm_publish = true` 时继续触发真实 publisher，并沿同一条发布回执保存边界把结果返回出来。这样 MCP 侧已经不只是“能看状态、能恢复自动化”，而是开始具备“能按标准流程生成稿件并在获准后真实试发”的完整入口。
 
 ### Verified
 
@@ -144,6 +145,8 @@
 - `cargo nextest run --all-features tool_report_login_returns_bin_not_found_failure`
 - `cargo nextest run --all-features tool_report_configure_returns_bin_not_found_failure`
 - `cargo nextest run --all-features tool_report_recover_automation_returns_login_failure_first`
+- `cargo nextest run --all-features mcp::tools::tests::tool_report_markdown_requires_output mcp::tools::tests::tool_report_publish_requires_explicit_confirm_publish mcp::tools::tests::tool_report_markdown_rejects_ambiguous_multi_target_setup`
+- `cargo nextest run --all-features qunmind::bin/qunmind tests::persist_manual_publish_receipt_saves_receipt_for_report_target qunmind::bin/qunmind tests::manual_daily_report_publish_target_rejects_non_wechat_output qunmind::bin/qunmind tests::manual_daily_report_falls_back_to_public_sources_when_group_is_empty`
 - `cargo nextest run --all-features reporting::tests::report_status_json_marks_blocked_reports_with_actionable_next_steps reporting::tests::report_status_json_keeps_wechat_target_ready_without_public_sources reporting::tests::report_status_json_marks_recently_published_when_receipts_exist reporting::tests::report_status_json_marks_recently_published_with_warnings_when_receipt_has_warning`
 - PR #41 CI：`test = pass`，`docker = pass`
 

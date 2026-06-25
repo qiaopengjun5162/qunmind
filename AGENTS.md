@@ -80,6 +80,8 @@
 
 如果 `report-status` / `report_status` 已经输出 `recommended_tool_calls`，对 MCP / Agent 入口优先直接复用这些结构化动作，而不是再从 `recommended_commands` 里二次解析 shell。命令提示主要给人看，tool 建议主要给 Agent 接下一步，两者都要保持同一语义。
 
+MCP 侧的 `report_markdown` / `report_publish` 也应继续复用 `src/reporting.rs` 里的手工日报共享逻辑，而不是在 `src/mcp/tools.rs` 再拼一份“群消息优先 / public_sources 回退 / 发布回执保存”流程。后续如果手工日报语义再变，CLI 与 MCP 必须一起变。
+
 `channel.kind = "wx_cli"` 时通过 `wx_cli.bin + wx_cli.poll_args` 轮询 JSON 消息，通过 `wx_cli.send_args` 模板发送文本。`ai.provider = "hermes"` 时调用 `[hermes]` 中的 HTTP API，适合先对接爱马仕/小龙虾一类 Agent 平台。
 
 `[schedule] daily_report_chat_id` 是兼容旧配置的单群日报入口；多群日报使用 `[[schedule.daily_reports]]`，每个目标可以覆盖 `cron`、`prompt`、`lookback_hours`、`max_messages`、`max_links`。未覆盖字段继承全局 `[schedule]`。
@@ -89,6 +91,8 @@
 如果微信草稿发布实际还依赖上游 publisher 的运行时环境变量（当前本机 `moonpub` 已确认依赖 `WECHAT_APPID` 与 `WECHAT_SECRET`），`report-status` / `doctor` 也要把这类缺失提前暴露成 blocker，不要让状态页显示 ready、真实试发时才在 publisher stderr 里失败。
 
 如果用户目标是“尽快测试公众号日报发布”，默认优先给出 RSS 上游联调路径，而不是展开按公众号名字抓取的高风控方案。最短可执行路径应围绕 `report-status` -> `daily-report --output` -> `daily-report --publish` -> `publish-history` 展开。
+
+如果通过 MCP 暴露真实发布入口，也要保留和 CLI 一样的显式授权边界：像 `report_publish` 这类会触发真实外部发布的 tool，必须要求 `confirm_publish = true` 之类的明确确认参数，不要让 Agent 仅凭工具名就直接发出去。
 
 如果最近回执或 `report-status` 已给出 `automation_state = "login_required"`，下一步优先使用项目内标准入口 `qunmind report-recover-automation` / `just report-recover-automation` 一次完成 `moonpub` 登录态复用与浏览器自动化重试；只有在需要拆开调试时才分别使用 `report-login` 与 `report-configure`。日报目标选择、`wechat_bin` 和 `wechat_articles_dir` 解析应继续走 QunMind 自己的配置边界。
 

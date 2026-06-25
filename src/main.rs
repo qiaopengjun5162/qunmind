@@ -1,41 +1,35 @@
 use anyhow::Context;
 use clap::Parser;
-use qunmind::ai;
-use qunmind::ai::hermes::HermesClient;
-use qunmind::ai::openai::OpenAiClient;
 use qunmind::bot::handler::BotHandler;
 use qunmind::channel::Channel;
 use qunmind::channel::wecom::WeComChannel;
 use qunmind::channel::wx_cli::WxCliChannel;
 use qunmind::cli::{Args, CliCommand};
-use qunmind::config::{AiProvider, ChannelKind, Config};
-use qunmind::daily_report::DailyReportGenerator;
+use qunmind::config::{ChannelKind, Config};
 use qunmind::error::QunMindError;
-use qunmind::publisher::{
-    PublishTarget, configure_wechat_backend, login_wechat_backend, publish_markdown,
-};
+use qunmind::publisher::{configure_wechat_backend, login_wechat_backend, publish_markdown};
 use qunmind::reporting::{
-    ManualDailyReportTarget, ReportContentRequest, effective_publish_history_name,
-    effective_report_status_target, generate_group_report_from_store,
+    build_ai_client, build_message_store, build_public_news_source, effective_publish_history_name,
+    effective_report_status_target, generate_manual_daily_report_markdown,
+    manual_daily_report_publish_target, persist_manual_publish_receipt,
     publish_receipt_automation_state, publish_receipt_json, report_status_json,
     resolve_manual_daily_report_target,
 };
 use qunmind::scheduler::daily_report::DailyReportScheduler;
-use qunmind::source;
-use qunmind::source::PublicNewsSource;
-use qunmind::storage::MessageStore;
-use qunmind::storage::postgres::PostgresMessageStore;
 use qunmind::wx_cli_commands::run_wx_cli_command;
 use std::path::Path;
 use std::sync::Arc;
 use tracing::{error, info};
 use tracing_subscriber::EnvFilter;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct ManualPublishPersistence {
-    saved: bool,
-    save_error: Option<String>,
-}
+#[cfg(test)]
+use qunmind::ai;
+#[cfg(test)]
+use qunmind::reporting::ManualDailyReportTarget;
+#[cfg(test)]
+use qunmind::source::PublicNewsSource;
+#[cfg(test)]
+use qunmind::storage::MessageStore;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -93,27 +87,6 @@ async fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn build_message_store(config: &Config) -> anyhow::Result<Arc<dyn MessageStore>> {
-    Ok(Arc::new(
-        PostgresMessageStore::connect(&config.storage).await?,
-    ))
-}
-
-fn build_ai_client(config: &Config) -> anyhow::Result<Arc<dyn ai::AiClient>> {
-    Ok(match config.ai.provider {
-        AiProvider::OpenAi => {
-            if config.ai.api_key.is_empty() {
-                return Err(QunMindError::Config(
-                    "ai.provider = \"open_ai\" 时必须配置 ai.api_key".to_string(),
-                )
-                .into());
-            }
-            Arc::new(OpenAiClient::new(&config.ai))
-        }
-        AiProvider::Hermes => Arc::new(HermesClient::new(&config.hermes)?),
-    })
-}
-
 fn build_channel(config: &Config) -> anyhow::Result<Arc<dyn Channel>> {
     Ok(match config.channel.kind {
         ChannelKind::Wecom => {
@@ -128,10 +101,6 @@ fn build_channel(config: &Config) -> anyhow::Result<Arc<dyn Channel>> {
             Arc::new(WxCliChannel::new(&config.wx_cli))
         }
     })
-}
-
-fn build_public_news_source(config: &Config) -> anyhow::Result<Option<Arc<dyn PublicNewsSource>>> {
-    source::registry::build(&config.public_sources).map_err(Into::into)
 }
 
 async fn run_diagnostic_command(
@@ -335,114 +304,6 @@ async fn run_diagnostic_command(
             Ok(())
         }
     }
-}
-
-async fn persist_manual_publish_receipt(
-    store_result: anyhow::Result<Arc<dyn MessageStore>>,
-    report_name: &str,
-    receipt: &qunmind::publisher::PublishReceipt,
-) -> ManualPublishPersistence {
-    if report_name.trim().is_empty() {
-        return ManualPublishPersistence {
-            saved: false,
-            save_error: Some(
-                "manual publish receipt was not saved because report_name is empty".to_string(),
-            ),
-        };
-    }
-
-    let store = match store_result {
-        Ok(store) => store,
-        Err(err) => {
-            error!(report_name = %report_name, error = %err, "手动日报发布成功，但初始化发布回执存储失败");
-            return ManualPublishPersistence {
-                saved: false,
-                save_error: Some(err.to_string()),
-            };
-        }
-    };
-
-    match store.save_publish_receipt(report_name, receipt).await {
-        Ok(()) => ManualPublishPersistence {
-            saved: true,
-            save_error: None,
-        },
-        Err(err) => {
-            error!(report_name = %report_name, error = %err, "手动日报发布成功，但保存发布回执失败");
-            ManualPublishPersistence {
-                saved: false,
-                save_error: Some(err.to_string()),
-            }
-        }
-    }
-}
-
-fn manual_daily_report_publish_target(
-    report_target: &ManualDailyReportTarget,
-) -> anyhow::Result<PublishTarget> {
-    match report_target.output.as_str() {
-        "wechat" => Ok(PublishTarget::WechatDraft {
-            bin: report_target.wechat_bin.clone(),
-            articles_dir: report_target.wechat_articles_dir.clone(),
-        }),
-        other => Err(QunMindError::Config(format!(
-            "daily-report --publish 暂不支持 output = {}",
-            other
-        ))
-        .into()),
-    }
-}
-
-async fn generate_manual_daily_report_markdown(
-    config: &Config,
-    report_target: &ManualDailyReportTarget,
-    ai_client: Arc<dyn ai::AiClient>,
-    message_store: Arc<dyn MessageStore>,
-    public_news_source: Option<Arc<dyn PublicNewsSource>>,
-) -> anyhow::Result<String> {
-    let ai_client_for_fallback = Arc::clone(&ai_client);
-    if let Some(markdown) = generate_group_report_from_store(
-        ai_client,
-        message_store,
-        &ReportContentRequest {
-            chat_id: report_target.chat_id.clone(),
-            prompt: report_target.prompt.clone(),
-            lookback_hours: report_target.lookback_hours,
-            max_messages: report_target.max_messages,
-            max_links: report_target.max_links,
-        },
-    )
-    .await?
-    {
-        return Ok(markdown);
-    }
-
-    let public_news_source = public_news_source.ok_or_else(|| {
-        QunMindError::Config("daily-report 需要启用至少一个 public_sources".to_string())
-    })?;
-
-    generate_manual_public_daily_report(
-        config,
-        report_target,
-        ai_client_for_fallback,
-        public_news_source,
-    )
-    .await
-}
-
-async fn generate_manual_public_daily_report(
-    _config: &Config,
-    report_target: &ManualDailyReportTarget,
-    ai_client: Arc<dyn ai::AiClient>,
-    public_news_source: Arc<dyn PublicNewsSource>,
-) -> anyhow::Result<String> {
-    let generator = DailyReportGenerator::new(
-        ai_client,
-        public_news_source,
-        report_target.daily_quote.clone(),
-    );
-
-    generator.generate().await.map_err(Into::into)
 }
 
 #[cfg(test)]
