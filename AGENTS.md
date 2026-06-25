@@ -78,6 +78,8 @@
 
 如果 `report-status` / `report_status` 已经输出 `recommended_commands`，优先直接沿这些命令提示继续操作，而不是再次手动改写成另一套步骤说明。新增状态字段时也优先保持 CLI 与 MCP 完全一致，避免一个能直接复制执行、另一个只剩抽象状态词。
 
+如果 `report-status` / `report_status` 已经输出 `recommended_tool_calls`，对 MCP / Agent 入口优先直接复用这些结构化动作，而不是再从 `recommended_commands` 里二次解析 shell。命令提示主要给人看，tool 建议主要给 Agent 接下一步，两者都要保持同一语义。
+
 `channel.kind = "wx_cli"` 时通过 `wx_cli.bin + wx_cli.poll_args` 轮询 JSON 消息，通过 `wx_cli.send_args` 模板发送文本。`ai.provider = "hermes"` 时调用 `[hermes]` 中的 HTTP API，适合先对接爱马仕/小龙虾一类 Agent 平台。
 
 `[schedule] daily_report_chat_id` 是兼容旧配置的单群日报入口；多群日报使用 `[[schedule.daily_reports]]`，每个目标可以覆盖 `cron`、`prompt`、`lookback_hours`、`max_messages`、`max_links`。未覆盖字段继承全局 `[schedule]`。

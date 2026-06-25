@@ -46,6 +46,7 @@ QUNMIND_TEST_DATABASE_URL="postgres://postgres:postgres@localhost:5432/qunmind_t
 - Keep `.github/CODEOWNERS` aligned with the real review boundary when adding new top-level areas or changing who should review workflow / release / documentation changes.
 - If docs mention `just report-status`, `just report-login`, `just report-configure`, `just report-markdown`, `just report-publish`, or `just report-history`, keep the examples aligned with the real positional-argument form used by this repository, for example `just report-status config.toml '微信公众号日报'`.
 - If a report recovery workflow is available in CLI, keep the equivalent MCP tool surface aligned as well; report-target selection, single-target auto-reuse, and `output = "wechat"` guards should not drift between the two entry points.
+- If `report-status` returns next-step hints, keep both human-readable shell hints and MCP-usable structured tool hints aligned; agents should not need to reverse-engineer shell strings when a native tool call is available.
 - Run `just clippy` and `just test` before opening a PR.
 - For Docker, Compose, or release workflow changes, make sure the Docker image build passes locally or in CI.
 - Fill out the pull request template with behavior changes, verification, and remaining risks.

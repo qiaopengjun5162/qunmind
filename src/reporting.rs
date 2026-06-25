@@ -277,6 +277,7 @@ pub fn report_status_json(
     let next_steps = report_status_next_steps(status, &blockers);
     let recommended_commands =
         report_status_recommended_commands(status, report_name, &blockers, &missing_publish_env);
+    let recommended_tool_calls = report_status_recommended_tool_calls(status, report_name);
 
     serde_json::json!({
         "ok": true,
@@ -289,6 +290,7 @@ pub fn report_status_json(
         "missing_publish_env": missing_publish_env,
         "next_steps": next_steps,
         "recommended_commands": recommended_commands,
+        "recommended_tool_calls": recommended_tool_calls,
         "recent_receipts_count": receipts.len(),
         "recent_receipts": receipts
             .into_iter()
@@ -501,6 +503,49 @@ fn report_status_recommended_commands(
     vec![format!("just report-history config.toml {quoted_report}")]
 }
 
+fn report_status_recommended_tool_calls(status: &str, report_name: &str) -> Vec<serde_json::Value> {
+    let base_report_args = if report_name.trim().is_empty() {
+        serde_json::Map::new()
+    } else {
+        let mut args = serde_json::Map::new();
+        args.insert(
+            "report_name".to_string(),
+            serde_json::Value::String(report_name.to_string()),
+        );
+        args
+    };
+
+    match status {
+        "blocked" => vec![serde_json::json!({
+            "tool": "report_status",
+            "arguments": base_report_args,
+        })],
+        "recently_published_with_warnings" => vec![
+            serde_json::json!({
+                "tool": "report_recover_automation",
+                "arguments": base_report_args.clone(),
+            }),
+            {
+                let mut args = base_report_args.clone();
+                args.insert("limit".to_string(), serde_json::Value::from(5));
+                serde_json::json!({
+                    "tool": "publish_history",
+                    "arguments": args,
+                })
+            },
+        ],
+        "recently_published" => {
+            let mut args = base_report_args;
+            args.insert("limit".to_string(), serde_json::Value::from(5));
+            vec![serde_json::json!({
+                "tool": "publish_history",
+                "arguments": args,
+            })]
+        }
+        _ => Vec::new(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -692,6 +737,15 @@ mod tests {
                 "export WECHAT_APPID=... WECHAT_SECRET=..."
             ])
         );
+        assert_eq!(
+            report["recommended_tool_calls"],
+            serde_json::json!([{
+                "tool": "report_status",
+                "arguments": {
+                    "report_name": "技术群日报"
+                }
+            }])
+        );
     }
 
     #[test]
@@ -731,6 +785,7 @@ mod tests {
                 "just report-history config.toml '微信公众号日报'"
             ])
         );
+        assert_eq!(report["recommended_tool_calls"], serde_json::json!([]));
 
         std::fs::remove_dir_all(&dir).unwrap();
     }
@@ -781,6 +836,16 @@ mod tests {
         assert_eq!(
             report["next_steps"],
             serde_json::json!(["continue_monitoring_recent_publish_receipts_and_draft_flow"])
+        );
+        assert_eq!(
+            report["recommended_tool_calls"],
+            serde_json::json!([{
+                "tool": "publish_history",
+                "arguments": {
+                    "report_name": "技术群日报",
+                    "limit": 5
+                }
+            }])
         );
 
         std::fs::remove_dir_all(&dir).unwrap();
@@ -836,6 +901,24 @@ mod tests {
             serde_json::json!([
                 "just report-recover-automation config.toml '微信公众号日报'",
                 "just report-history config.toml '微信公众号日报'"
+            ])
+        );
+        assert_eq!(
+            report["recommended_tool_calls"],
+            serde_json::json!([
+                {
+                    "tool": "report_recover_automation",
+                    "arguments": {
+                        "report_name": "微信公众号日报"
+                    }
+                },
+                {
+                    "tool": "publish_history",
+                    "arguments": {
+                        "report_name": "微信公众号日报",
+                        "limit": 5
+                    }
+                }
             ])
         );
 

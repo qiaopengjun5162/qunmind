@@ -216,6 +216,8 @@ Recommended order:
 
 `report-status` now also returns `recommended_commands` in both CLI JSON and MCP output. The intent is simple: once the status view already knows the most likely next commands, operators and agents should be able to copy that list directly instead of translating abstract status words back into shell commands by hand.
 
+For MCP/agent callers, the same payload now also includes `recommended_tool_calls`. This is the structured counterpart to shell commands: when a recent receipt still says `automation_state = "login_required"`, the status response can now directly point an agent to `report_recover_automation` and `publish_history` instead of forcing it to parse shell text first.
+
 The same recovery flow is now available through MCP as first-class tools, not just shell wrappers. MCP clients can call `report_status`, `report_login`, `report_configure`, and `report_recover_automation` with the same target-selection semantics used by the CLI: one configured target can be auto-reused, while multiple targets still require an explicit `report_name`.
 
 This path has now been verified with three real draft pushes:
