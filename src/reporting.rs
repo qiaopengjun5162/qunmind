@@ -322,7 +322,7 @@ fn report_status_next_steps(status: &str, blockers: &[&str]) -> Vec<&'static str
 
     if status == "ready_for_first_publish" {
         return vec![
-            "generate_markdown_and_push_wechat_draft",
+            "generate_markdown_then_push_wechat_draft",
             "rerun_report_status_after_manual_publish_test",
         ];
     }
@@ -330,7 +330,7 @@ fn report_status_next_steps(status: &str, blockers: &[&str]) -> Vec<&'static str
     if status == "recently_published_with_warnings" {
         return vec![
             "review_recent_publish_warnings_and_verify_wechat_draft",
-            "run_moonpub_login_then_retry_browser_automation",
+            "run_report_login_then_report_configure",
             "continue_monitoring_recent_publish_receipts_and_draft_flow",
         ];
     }
@@ -647,7 +647,7 @@ mod tests {
             report["next_steps"],
             serde_json::json!([
                 "review_recent_publish_warnings_and_verify_wechat_draft",
-                "run_moonpub_login_then_retry_browser_automation",
+                "run_report_login_then_report_configure",
                 "continue_monitoring_recent_publish_receipts_and_draft_flow"
             ])
         );
