@@ -69,6 +69,32 @@ pub fn publish_markdown(markdown: &str, target: &PublishTarget) -> Result<Publis
     }
 }
 
+pub fn login_wechat_backend(moonpub_bin: &str, articles_dir: &str) -> Result<String> {
+    if moonpub_bin.trim().is_empty() || articles_dir.trim().is_empty() {
+        return Err(QunMindError::Config(
+            "wechat draft publisher requires both bin and articles_dir".to_string(),
+        ));
+    }
+
+    let output = Command::new(moonpub_bin)
+        .args(["--articles", articles_dir, "login"])
+        .output()
+        .map_err(|err| QunMindError::Channel(format!("启动 moonpub login 失败: {}", err)))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        error!(stderr = %stderr, "moonpub login 失败");
+        return Err(QunMindError::Channel(format!(
+            "moonpub login 失败: {}",
+            stderr
+        )));
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    info!(stdout = %stdout, "moonpub login 成功");
+    Ok(stdout)
+}
+
 fn publish_to_wechat_draft(
     markdown: &str,
     moonpub_bin: &str,
@@ -172,6 +198,19 @@ mod tests {
         );
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("启动 moonpub"));
+    }
+
+    #[test]
+    fn login_errors_when_bin_not_found() {
+        let result = login_wechat_backend("/nonexistent/bin/moonpub", "/tmp");
+
+        assert!(result.is_err());
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("启动 moonpub login")
+        );
     }
 
     #[test]

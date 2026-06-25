@@ -60,6 +60,13 @@ pub enum CliCommand {
         #[arg(long, default_value_t = 5)]
         limit: i64,
     },
+    /// 打开公众号浏览器登录，供后续自动化复用登录态
+    #[command(name = "report-login")]
+    ReportLogin {
+        /// 日报目标名称；为空时自动复用唯一日报目标
+        #[arg(long, default_value = "")]
+        report_name: String,
+    },
 }
 
 #[derive(Debug, Subcommand)]
@@ -625,6 +632,18 @@ mod tests {
                 assert_eq!(limit, 2);
             }
             _ => panic!("report-status command should parse"),
+        }
+    }
+
+    #[test]
+    fn parses_report_login_command() {
+        let args = parse_args(&["qunmind", "report-login", "--report-name", "技术群日报"]);
+
+        match args.command {
+            Some(CliCommand::ReportLogin { report_name }) => {
+                assert_eq!(report_name, "技术群日报");
+            }
+            _ => panic!("report-login command should parse"),
         }
     }
 }

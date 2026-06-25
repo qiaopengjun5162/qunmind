@@ -62,9 +62,10 @@
 
 1. `just db-create`
 2. `just report-status config.toml '微信公众号日报'`
-3. `just report-markdown config.toml '微信公众号日报' '/tmp/wechat-report.md'`
-4. 用户明确批准后，再执行 `just report-publish config.toml '微信公众号日报' '/tmp/wechat-report.md'`
-5. `just report-history config.toml '微信公众号日报'`
+3. 如果回执已显示 `automation_state = "login_required"`，先执行 `just report-login config.toml '微信公众号日报'`
+4. `just report-markdown config.toml '微信公众号日报' '/tmp/wechat-report.md'`
+5. 用户明确批准后，再执行 `just report-publish config.toml '微信公众号日报' '/tmp/wechat-report.md'`
+6. `just report-history config.toml '微信公众号日报'`
 
 ## 2026-06-24
 
@@ -86,6 +87,7 @@
 - **当前剩余问题从“能不能发”切到“发得够不够稳、内容够不够好”** — 这次真实试发前，白名单 IP 先后出现 `1.80.24.32` 和 `1.80.191.76` 两种出口；同时一次手工生成中还出现过 AI JSON 解析失败并退回空报告。现在项目的公众号日报 blocker 已不再是“主链路没打通”，而是“发布出口 IP 可能漂移”和“日报内容质量仍需继续优化”。
 - **日报内容质量兜底收口到 Rust 生成层** — `src/daily_report/` 现在会在 AI JSON 非法、字段过空或板块误分时自动补齐非空内容：包括回填标题/导语/总结、修正被 `codex -> dex` 误伤的 Web3 分类、补全深读摘要、过滤“具体用途待进一步了解”这类低信号评论、限制 AI/Web3/技术/深读条目数，并只保留正文实际用到的参考链接。这样当前日报不会再因为一次 AI 结构化输出失败就退化成近乎空白的草稿。
 - **第三次真实公众号草稿试发成功** — 基于新一轮内容质量收敛后的 `/tmp/wechat-report-preview-v5.md`，`just report-publish config.toml '微信公众号日报' '/tmp/wechat-report-preview-v5.md'` 已于 `2026-06-25T09:31:59.745312+00:00` 成功推送公众号草稿，`publish-history` 返回 `count = 3`。这说明当前不只是“主链路能发”，而是“内容优化后的版本也已经完成真实草稿验证”。
+- **公众号日报登录入口标准化** — 新增 `qunmind report-login --report-name <name>` 与 `just report-login config.toml '微信公众号日报'`，把之前只存在于说明里的 “`moonpub login`” 收口成项目内标准入口。这样当 `report-status` 或最近回执明确给出 `automation_state = "login_required"` 时，下一步操作已经不需要再手工回忆上游命令格式，而是继续沿 QunMind 自己的日报目标解析与配置边界执行。
 
 ### Verified
 
@@ -117,6 +119,8 @@
 - `cargo nextest run --all-features reporting::tests::report_status_json_marks_recently_published_with_warnings_when_receipt_has_warning`
 - `cargo nextest run --all-features reporting::tests::publish_receipt_automation_state_marks_soft_failure_without_login_timeout`
 - `cargo nextest run --all-features persist_manual_publish_receipt_saves_receipt_for_report_target`
+- `cargo nextest run --all-features parses_report_login_command`
+- `cargo nextest run --all-features login_errors_when_bin_not_found`
 - `cargo nextest run --all-features wx_cli_capture_command_writes_polled_messages`
 - `cargo nextest run --all-features wx_cli_send_dry_run_does_not_execute_command`
 - `cargo nextest run --all-features wx_cli_test_plan_input_file_does_not_execute_external_commands`

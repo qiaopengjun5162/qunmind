@@ -11,7 +11,7 @@ use qunmind::cli::{Args, CliCommand};
 use qunmind::config::{AiProvider, ChannelKind, Config};
 use qunmind::daily_report::DailyReportGenerator;
 use qunmind::error::QunMindError;
-use qunmind::publisher::{PublishTarget, publish_markdown};
+use qunmind::publisher::{PublishTarget, login_wechat_backend, publish_markdown};
 use qunmind::reporting::{
     ReportContentRequest, effective_publish_history_name, effective_report_status_target,
     generate_group_report_from_store, publish_receipt_automation_state, publish_receipt_json,
@@ -232,6 +232,33 @@ async fn run_diagnostic_command(
                     &target,
                     receipts,
                 ))?
+            );
+            Ok(())
+        }
+        CliCommand::ReportLogin { report_name } => {
+            let report_target = resolve_manual_daily_report_target(config, &report_name)?;
+            if report_target.output != "wechat" {
+                return Err(QunMindError::Config(format!(
+                    "report-login 仅支持 output = wechat，当前为 {}",
+                    report_target.output
+                ))
+                .into());
+            }
+
+            let raw_output = login_wechat_backend(
+                &report_target.wechat_bin,
+                &report_target.wechat_articles_dir,
+            )?;
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&serde_json::json!({
+                    "ok": true,
+                    "report_name": report_target.name,
+                    "output": report_target.output,
+                    "wechat_bin": report_target.wechat_bin,
+                    "wechat_articles_dir": report_target.wechat_articles_dir,
+                    "raw_output": raw_output,
+                }))?
             );
             Ok(())
         }
@@ -978,6 +1005,28 @@ mod tests {
         };
 
         assert!(err.to_string().contains("暂不支持"));
+    }
+
+    #[test]
+    fn resolve_manual_daily_report_target_accepts_chat_id_alias() {
+        let config = config_from(
+            r#"
+            [[schedule.daily_reports]]
+            chat_id = "group-1"
+            name = "技术群日报"
+            output = "wechat"
+            wechat_bin = "moonpub"
+            wechat_articles_dir = "/tmp/articles"
+            "#,
+        );
+
+        let target = must(
+            resolve_manual_daily_report_target(&config, "group-1"),
+            "manual daily report target by chat_id",
+        );
+
+        assert_eq!(target.name, "技术群日报");
+        assert_eq!(target.chat_id, "group-1");
     }
 
     #[tokio::test]

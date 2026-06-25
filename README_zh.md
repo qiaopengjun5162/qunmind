@@ -207,6 +207,7 @@ QunMind 会在保存文本消息时抽取 `http://` / `https://` 链接，写入
 ```bash
 just db-create
 just report-status config.toml '微信公众号日报'
+just report-login config.toml '微信公众号日报'
 just report-markdown config.toml '微信公众号日报' '/tmp/wechat-report.md'
 just report-publish config.toml '微信公众号日报' '/tmp/wechat-report.md'
 just report-history config.toml '微信公众号日报'
@@ -214,6 +215,7 @@ just report-history config.toml '微信公众号日报'
 
 推荐顺序是：
 - 先确认 `report-status` 里的 `blockers` 和 `missing_publish_env` 已清空；只要还看到 `WECHAT_APPID` / `WECHAT_SECRET`，就先不要继续真实试发
+- 如果 `report-status` 或最近回执已经出现 `automation_state = "login_required"`，先执行 `report-login` 复用一次新的公众号后台登录态，再继续后面的浏览器自动化重试
 - 再生成一版本地 markdown，确认 RSS 上游内容已经进入日报素材
 - 最后再执行 `report-publish` 推到 `moonpub` 的公众号草稿箱
 
@@ -235,7 +237,7 @@ just report-history config.toml '微信公众号日报'
 
 - **最小可用目标已完成**：日报能生成、能推公众号草稿、能保存回执、能查历史
 - **仍需人工关注的点**：微信白名单出口 IP 可能漂移、`moonpub` 仍可能返回自动化 warning、日报内容质量还需要继续打磨
-- **如果回执里看到 `automation_state = "login_required"`**：优先执行 `moonpub login` 复用浏览器登录态，再重试自动化配置，而不是把问题误判成“系统没有走到自动化”
+- **如果回执里看到 `automation_state = "login_required"`**：优先执行 `qunmind report-login --report-name "微信公众号日报"` 或 `just report-login config.toml '微信公众号日报'` 复用浏览器登录态，再重试自动化配置，而不是把问题误判成“系统没有走到自动化”
 
 这里的语义要记清：
 - `wechat_bin` / `wechat_articles_dir` 缺失是硬 blocker
