@@ -91,6 +91,7 @@
 - **公众号日报自动化重试入口标准化** — 现在继续新增 `qunmind report-configure --report-name <name>` 与 `just report-configure config.toml '微信公众号日报'`，把登录后的浏览器自动化重试也收口进项目内流程。这样“草稿已成功，但自动化卡在登录或预览后续步骤”时，恢复动作已经变成 `report-login -> report-configure` 两个标准命令，而不是继续依赖聊天说明。
 - **`report-status` 开始直接给命令提示** — 现在 `report-status` / `report_status` 不只返回 `next_steps` 这类抽象状态词，还会额外输出 `recommended_commands`。例如首次 ready 会直接给 `report-markdown` / `report-publish` / `report-history`，warning 状态会直接给 `report-login` / `report-configure` / `report-history`。这让“看状态 -> 执行下一步”终于不需要再在 README 和聊天记录之间来回翻译。
 - **公众号日报自动化恢复再压成一步** — 现在新增 `qunmind report-recover-automation --report-name <name>` 与 `just report-recover-automation config.toml '微信公众号日报'`，内部顺序就是 `report-login -> report-configure`。这样 warning 状态下的默认恢复动作终于从“两条命令”缩成“一条命令”，`report-status` 的 `recommended_commands` 也会优先推荐这一条。
+- **MCP 侧公众号恢复入口补齐** — 这轮继续把 `report_login`、`report_configure` 和 `report_recover_automation` 补到 `src/mcp/tools.rs`，并复用 `src/reporting.rs` 里的共享日报目标解析。这样现在不只是 CLI 能按项目标准恢复公众号自动化，MCP / 外部 Agent 也能沿同一套 `report_name` 选择、单目标自动复用和 `output = "wechat"` 限制直接调用，不会再出现 CLI 已更新、MCP 还停在旧流程的分叉。
 
 ### Verified
 
@@ -137,6 +138,11 @@
 - `cargo nextest run --all-features tool_send_dry_run_renders_command`
 - `cargo nextest run --all-features tool_doctor_with_input_file`
 - `cargo nextest run --all-features tool_doctor_reports_ok_when_config_is_complete`
+- `cargo nextest run --all-features list_tools_returns_twelve_tools`
+- `cargo nextest run --all-features tool_report_login_rejects_non_wechat_target`
+- `cargo nextest run --all-features tool_report_login_returns_bin_not_found_failure`
+- `cargo nextest run --all-features tool_report_configure_returns_bin_not_found_failure`
+- `cargo nextest run --all-features tool_report_recover_automation_returns_login_failure_first`
 - PR #41 CI：`test = pass`，`docker = pass`
 
 ### Current Readiness

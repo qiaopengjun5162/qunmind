@@ -40,6 +40,8 @@
 
 `src/reporting.rs` 维护日报运营状态的共享 helper，例如 `report_name` 解析、`report-status` 目标选择、readiness blocker 判定和发布回执 JSON 渲染。凡是 CLI 与 MCP 都需要复用的日报状态逻辑，优先放这里，不要在 `main.rs` 和 `src/mcp/tools.rs` 各写一套。
 
+手工日报目标解析（例如单目标自动复用、多目标强制 `report_name`、`chat_id` 别名兼容）也继续收口在 `src/reporting.rs`。凡是 `report-login`、`report-configure`、`report-recover-automation`、手工 `daily-report` 或 MCP 同类入口需要解析日报目标时，优先复用这里，不要在 CLI / MCP / main 再各写一份。
+
 如果定时 `output = "wechat"` 日报与手工 `daily-report` 的内容生成语义发生分叉，优先把“群消息 + 链接情报 -> AI”这段共享逻辑抽到 `src/reporting.rs` 或其他纯 helper 中复用，不要让 scheduler 和 CLI 各自维护一份日报素材选择逻辑。
 
 `qunmind daily-report` 不再只是一条“随便生成一份 markdown”的孤立命令；如果传 `--report-name`，应尽量复用已配置日报目标的 `daily_quote` / `output` / 发布参数，作为手工联调正式日报目标的入口。涉及这条手工链路的行为变更时，同步检查 README / PROGRESS 对“如何手工跑一次日报”的描述是否一致。

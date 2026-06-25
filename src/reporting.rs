@@ -14,6 +14,20 @@ pub struct ReportStatusTarget {
     pub wechat_articles_dir: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ManualDailyReportTarget {
+    pub name: String,
+    pub chat_id: String,
+    pub output: String,
+    pub prompt: String,
+    pub lookback_hours: i64,
+    pub max_messages: i64,
+    pub max_links: i64,
+    pub daily_quote: String,
+    pub wechat_bin: String,
+    pub wechat_articles_dir: String,
+}
+
 pub fn missing_wechat_publish_env_vars(target: &ReportStatusTarget) -> Vec<&'static str> {
     if target.output != "wechat" {
         return Vec::new();
@@ -86,6 +100,90 @@ pub fn effective_report_status_target(
         output: "channel".to_string(),
         wechat_bin: String::new(),
         wechat_articles_dir: String::new(),
+    })
+}
+
+pub fn resolve_manual_daily_report_target(
+    config: &Config,
+    report_name: &str,
+) -> anyhow::Result<ManualDailyReportTarget> {
+    if report_name.trim().is_empty() {
+        if config.schedule.daily_reports.len() == 1 {
+            let report = &config.schedule.daily_reports[0];
+            return Ok(ManualDailyReportTarget {
+                name: report.name.clone(),
+                chat_id: report.chat_id.clone(),
+                output: report.output.clone(),
+                prompt: report
+                    .prompt
+                    .clone()
+                    .unwrap_or_else(|| config.schedule.daily_report_prompt.clone()),
+                lookback_hours: report
+                    .lookback_hours
+                    .unwrap_or(config.schedule.daily_report_lookback_hours),
+                max_messages: report
+                    .max_messages
+                    .unwrap_or(config.schedule.daily_report_max_messages),
+                max_links: report
+                    .max_links
+                    .unwrap_or(config.schedule.daily_report_max_links),
+                daily_quote: report.daily_quote.clone(),
+                wechat_bin: report.wechat_bin.clone(),
+                wechat_articles_dir: report.wechat_articles_dir.clone(),
+            });
+        }
+
+        if config.schedule.daily_reports.len() > 1 {
+            return Err(QunMindError::Config(
+                "daily-report requires explicit report_name when multiple daily report targets exist"
+                    .to_string(),
+            )
+            .into());
+        }
+
+        return Ok(ManualDailyReportTarget {
+            name: String::new(),
+            chat_id: config.schedule.daily_report_chat_id.clone(),
+            output: "markdown".to_string(),
+            prompt: config.schedule.daily_report_prompt.clone(),
+            lookback_hours: config.schedule.daily_report_lookback_hours,
+            max_messages: config.schedule.daily_report_max_messages,
+            max_links: config.schedule.daily_report_max_links,
+            daily_quote: String::new(),
+            wechat_bin: String::new(),
+            wechat_articles_dir: String::new(),
+        });
+    }
+
+    let report = config
+        .schedule
+        .daily_reports
+        .iter()
+        .find(|report| report.name == report_name || report.chat_id == report_name)
+        .ok_or_else(|| {
+            QunMindError::Config(format!("daily-report 找不到日报目标: {}", report_name))
+        })?;
+
+    Ok(ManualDailyReportTarget {
+        name: report.name.clone(),
+        chat_id: report.chat_id.clone(),
+        output: report.output.clone(),
+        prompt: report
+            .prompt
+            .clone()
+            .unwrap_or_else(|| config.schedule.daily_report_prompt.clone()),
+        lookback_hours: report
+            .lookback_hours
+            .unwrap_or(config.schedule.daily_report_lookback_hours),
+        max_messages: report
+            .max_messages
+            .unwrap_or(config.schedule.daily_report_max_messages),
+        max_links: report
+            .max_links
+            .unwrap_or(config.schedule.daily_report_max_links),
+        daily_quote: report.daily_quote.clone(),
+        wechat_bin: report.wechat_bin.clone(),
+        wechat_articles_dir: report.wechat_articles_dir.clone(),
     })
 }
 

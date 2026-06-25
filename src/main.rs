@@ -15,9 +15,10 @@ use qunmind::publisher::{
     PublishTarget, configure_wechat_backend, login_wechat_backend, publish_markdown,
 };
 use qunmind::reporting::{
-    ReportContentRequest, effective_publish_history_name, effective_report_status_target,
-    generate_group_report_from_store, publish_receipt_automation_state, publish_receipt_json,
-    report_status_json,
+    ManualDailyReportTarget, ReportContentRequest, effective_publish_history_name,
+    effective_report_status_target, generate_group_report_from_store,
+    publish_receipt_automation_state, publish_receipt_json, report_status_json,
+    resolve_manual_daily_report_target,
 };
 use qunmind::scheduler::daily_report::DailyReportScheduler;
 use qunmind::source;
@@ -374,104 +375,6 @@ async fn persist_manual_publish_receipt(
             }
         }
     }
-}
-
-#[derive(Debug, Clone)]
-struct ManualDailyReportTarget {
-    name: String,
-    chat_id: String,
-    output: String,
-    prompt: String,
-    lookback_hours: i64,
-    max_messages: i64,
-    max_links: i64,
-    daily_quote: String,
-    wechat_bin: String,
-    wechat_articles_dir: String,
-}
-
-fn resolve_manual_daily_report_target(
-    config: &Config,
-    report_name: &str,
-) -> anyhow::Result<ManualDailyReportTarget> {
-    if report_name.trim().is_empty() {
-        if config.schedule.daily_reports.len() == 1 {
-            let report = &config.schedule.daily_reports[0];
-            return Ok(ManualDailyReportTarget {
-                name: report.name.clone(),
-                chat_id: report.chat_id.clone(),
-                output: report.output.clone(),
-                prompt: report
-                    .prompt
-                    .clone()
-                    .unwrap_or_else(|| config.schedule.daily_report_prompt.clone()),
-                lookback_hours: report
-                    .lookback_hours
-                    .unwrap_or(config.schedule.daily_report_lookback_hours),
-                max_messages: report
-                    .max_messages
-                    .unwrap_or(config.schedule.daily_report_max_messages),
-                max_links: report
-                    .max_links
-                    .unwrap_or(config.schedule.daily_report_max_links),
-                daily_quote: report.daily_quote.clone(),
-                wechat_bin: report.wechat_bin.clone(),
-                wechat_articles_dir: report.wechat_articles_dir.clone(),
-            });
-        }
-
-        if config.schedule.daily_reports.len() > 1 {
-            return Err(QunMindError::Config(
-                "daily-report requires explicit report_name when multiple daily report targets exist"
-                    .to_string(),
-            )
-            .into());
-        }
-
-        return Ok(ManualDailyReportTarget {
-            name: String::new(),
-            chat_id: config.schedule.daily_report_chat_id.clone(),
-            output: "markdown".to_string(),
-            prompt: config.schedule.daily_report_prompt.clone(),
-            lookback_hours: config.schedule.daily_report_lookback_hours,
-            max_messages: config.schedule.daily_report_max_messages,
-            max_links: config.schedule.daily_report_max_links,
-            daily_quote: String::new(),
-            wechat_bin: String::new(),
-            wechat_articles_dir: String::new(),
-        });
-    }
-
-    let report = config
-        .schedule
-        .daily_reports
-        .iter()
-        .find(|report| report.name == report_name || report.chat_id == report_name)
-        .ok_or_else(|| {
-            QunMindError::Config(format!("daily-report 找不到日报目标: {}", report_name))
-        })?;
-
-    Ok(ManualDailyReportTarget {
-        name: report.name.clone(),
-        chat_id: report.chat_id.clone(),
-        output: report.output.clone(),
-        prompt: report
-            .prompt
-            .clone()
-            .unwrap_or_else(|| config.schedule.daily_report_prompt.clone()),
-        lookback_hours: report
-            .lookback_hours
-            .unwrap_or(config.schedule.daily_report_lookback_hours),
-        max_messages: report
-            .max_messages
-            .unwrap_or(config.schedule.daily_report_max_messages),
-        max_links: report
-            .max_links
-            .unwrap_or(config.schedule.daily_report_max_links),
-        daily_quote: report.daily_quote.clone(),
-        wechat_bin: report.wechat_bin.clone(),
-        wechat_articles_dir: report.wechat_articles_dir.clone(),
-    })
 }
 
 fn manual_daily_report_publish_target(

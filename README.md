@@ -216,6 +216,8 @@ Recommended order:
 
 `report-status` now also returns `recommended_commands` in both CLI JSON and MCP output. The intent is simple: once the status view already knows the most likely next commands, operators and agents should be able to copy that list directly instead of translating abstract status words back into shell commands by hand.
 
+The same recovery flow is now available through MCP as first-class tools, not just shell wrappers. MCP clients can call `report_status`, `report_login`, `report_configure`, and `report_recover_automation` with the same target-selection semantics used by the CLI: one configured target can be auto-reused, while multiple targets still require an explicit `report_name`.
+
 This path has now been verified with three real draft pushes:
 - `report-status` can advance to `recently_published_with_warnings`
 - `publish-history` now returns the three latest successful receipts
@@ -298,6 +300,11 @@ recent publish receipts exist.
 That readiness view is now available in both places: `qunmind report-status`
 for operators and `report_status` for MCP clients, with shared target-selection
 and blocker logic so the CLI and MCP do not drift.
+
+The same alignment now extends to automation recovery: `report_login`,
+`report_configure`, and `report_recover_automation` are available in MCP with
+the same `output = "wechat"` guard and report-target resolution rules used by
+the CLI commands.
 
 See [docs/multi-platform-publishing.md](docs/multi-platform-publishing.md) for
 the full rationale and the recommended split for WeChat, Douyin, and future

@@ -3,9 +3,10 @@ use std::path::PathBuf;
 use crate::channel::wx_cli::{WxCliChannel, write_wx_cli_capture_file};
 use crate::config::Config;
 use crate::diagnostic;
+use crate::publisher::{configure_wechat_backend, login_wechat_backend};
 use crate::reporting::{
     effective_publish_history_name, effective_report_status_target, publish_receipt_json,
-    report_status_json,
+    report_status_json, resolve_manual_daily_report_target,
 };
 use crate::storage::MessageStore;
 use crate::storage::postgres::PostgresMessageStore;
@@ -52,6 +53,56 @@ pub fn list_tools() -> Vec<Tool> {
                     "limit": {
                         "type": "integer",
                         "description": "Max recent receipts to return (default: 5)."
+                    }
+                },
+                "required": []
+            }),
+        },
+        Tool {
+            name: "report_login".into(),
+            description: "Reuse moonpub login flow for a WeChat daily report target after a login_required automation warning.".into(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "report_name": {
+                        "type": "string",
+                        "description": "Explicit daily report target name. Required when multiple schedule.daily_reports entries exist."
+                    }
+                },
+                "required": []
+            }),
+        },
+        Tool {
+            name: "report_configure".into(),
+            description: "Retry moonpub configure/browser automation for a WeChat daily report target.".into(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "report_name": {
+                        "type": "string",
+                        "description": "Explicit daily report target name. Required when multiple schedule.daily_reports entries exist."
+                    },
+                    "headed": {
+                        "type": "boolean",
+                        "description": "Run browser automation in headed mode (default: false)."
+                    }
+                },
+                "required": []
+            }),
+        },
+        Tool {
+            name: "report_recover_automation".into(),
+            description: "Run report_login and report_configure in order for a WeChat daily report target.".into(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "report_name": {
+                        "type": "string",
+                        "description": "Explicit daily report target name. Required when multiple schedule.daily_reports entries exist."
+                    },
+                    "headed": {
+                        "type": "boolean",
+                        "description": "Run browser automation in headed mode during configure (default: false)."
                     }
                 },
                 "required": []
@@ -211,6 +262,9 @@ pub async fn call_tool(
     match tool_name {
         "publish_history" => tool_publish_history(config, arguments).await,
         "report_status" => tool_report_status(config, arguments).await,
+        "report_login" => tool_report_login(config, arguments),
+        "report_configure" => tool_report_configure(config, arguments),
+        "report_recover_automation" => tool_report_recover_automation(config, arguments),
         "wxcli_doctor" => tool_doctor(config, arguments),
         "wxcli_capture" => tool_capture(config, config_path, arguments).await,
         "wxcli_test_plan" => tool_test_plan(config, config_path, arguments),
@@ -266,6 +320,91 @@ async fn tool_report_status(config: &Config, args: &serde_json::Value) -> anyhow
         &target,
         receipts,
     ))?)
+}
+
+fn tool_report_login(config: &Config, args: &serde_json::Value) -> anyhow::Result<String> {
+    let report_name = args
+        .get("report_name")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    let report_target = require_wechat_manual_report_target(config, report_name, "report-login")?;
+    let raw_output = login_wechat_backend(
+        &report_target.wechat_bin,
+        &report_target.wechat_articles_dir,
+    )?;
+
+    Ok(serde_json::to_string_pretty(&serde_json::json!({
+        "ok": true,
+        "report_name": report_target.name,
+        "output": report_target.output,
+        "wechat_bin": report_target.wechat_bin,
+        "wechat_articles_dir": report_target.wechat_articles_dir,
+        "raw_output": raw_output,
+    }))?)
+}
+
+fn tool_report_configure(config: &Config, args: &serde_json::Value) -> anyhow::Result<String> {
+    let report_name = args
+        .get("report_name")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    let headed = args
+        .get("headed")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    let report_target =
+        require_wechat_manual_report_target(config, report_name, "report-configure")?;
+    let raw_output = configure_wechat_backend(
+        &report_target.wechat_bin,
+        &report_target.wechat_articles_dir,
+        headed,
+    )?;
+
+    Ok(serde_json::to_string_pretty(&serde_json::json!({
+        "ok": true,
+        "report_name": report_target.name,
+        "output": report_target.output,
+        "wechat_bin": report_target.wechat_bin,
+        "wechat_articles_dir": report_target.wechat_articles_dir,
+        "headed": headed,
+        "raw_output": raw_output,
+    }))?)
+}
+
+fn tool_report_recover_automation(
+    config: &Config,
+    args: &serde_json::Value,
+) -> anyhow::Result<String> {
+    let report_name = args
+        .get("report_name")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    let headed = args
+        .get("headed")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    let report_target =
+        require_wechat_manual_report_target(config, report_name, "report-recover-automation")?;
+    let login_output = login_wechat_backend(
+        &report_target.wechat_bin,
+        &report_target.wechat_articles_dir,
+    )?;
+    let configure_output = configure_wechat_backend(
+        &report_target.wechat_bin,
+        &report_target.wechat_articles_dir,
+        headed,
+    )?;
+
+    Ok(serde_json::to_string_pretty(&serde_json::json!({
+        "ok": true,
+        "report_name": report_target.name,
+        "output": report_target.output,
+        "wechat_bin": report_target.wechat_bin,
+        "wechat_articles_dir": report_target.wechat_articles_dir,
+        "headed": headed,
+        "login_output": login_output,
+        "configure_output": configure_output,
+    }))?)
 }
 
 fn tool_doctor(config: &Config, args: &serde_json::Value) -> anyhow::Result<String> {
@@ -395,6 +534,21 @@ fn required_input_path(args: &serde_json::Value) -> anyhow::Result<PathBuf> {
     Ok(PathBuf::from(input))
 }
 
+fn require_wechat_manual_report_target(
+    config: &Config,
+    report_name: &str,
+    command_name: &str,
+) -> anyhow::Result<crate::reporting::ManualDailyReportTarget> {
+    let report_target = resolve_manual_daily_report_target(config, report_name)?;
+    if report_target.output != "wechat" {
+        anyhow::bail!(
+            "{command_name} 仅支持 output = wechat，当前为 {}",
+            report_target.output
+        );
+    }
+    Ok(report_target)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -458,12 +612,15 @@ mod tests {
     }
 
     #[test]
-    fn list_tools_returns_nine_tools() {
+    fn list_tools_returns_twelve_tools() {
         let tools = list_tools();
-        assert_eq!(tools.len(), 9);
+        assert_eq!(tools.len(), 12);
         let names: Vec<&str> = tools.iter().map(|t| t.name.as_str()).collect();
         assert!(names.contains(&"publish_history"));
         assert!(names.contains(&"report_status"));
+        assert!(names.contains(&"report_login"));
+        assert!(names.contains(&"report_configure"));
+        assert!(names.contains(&"report_recover_automation"));
         assert!(names.contains(&"wxcli_doctor"));
         assert!(names.contains(&"wxcli_capture"));
         assert!(names.contains(&"wxcli_test_plan"));
@@ -592,6 +749,104 @@ mod tests {
         .unwrap_err();
 
         assert!(err.to_string().contains("report_name"));
+    }
+
+    #[tokio::test]
+    async fn tool_report_login_rejects_non_wechat_target() {
+        let config = config_from(
+            r#"
+            [[schedule.daily_reports]]
+            chat_id = "group-1"
+            name = "技术群日报"
+            output = "channel"
+            "#,
+        );
+
+        let err = call_tool(
+            &config,
+            std::path::Path::new("test-config.toml"),
+            "report_login",
+            &serde_json::json!({"report_name": "技术群日报"}),
+        )
+        .await
+        .unwrap_err();
+
+        assert!(err.to_string().contains("仅支持 output = wechat"));
+    }
+
+    #[tokio::test]
+    async fn tool_report_login_returns_bin_not_found_failure() {
+        let config = config_from(
+            r#"
+            [[schedule.daily_reports]]
+            chat_id = "group-1"
+            name = "微信公众号日报"
+            output = "wechat"
+            wechat_bin = "/nonexistent/bin/moonpub"
+            wechat_articles_dir = "/tmp/articles"
+            "#,
+        );
+
+        let err = call_tool(
+            &config,
+            std::path::Path::new("test-config.toml"),
+            "report_login",
+            &serde_json::json!({"report_name": "微信公众号日报"}),
+        )
+        .await
+        .unwrap_err();
+
+        assert!(err.to_string().contains("moonpub login"));
+    }
+
+    #[tokio::test]
+    async fn tool_report_configure_returns_bin_not_found_failure() {
+        let config = config_from(
+            r#"
+            [[schedule.daily_reports]]
+            chat_id = "group-1"
+            name = "微信公众号日报"
+            output = "wechat"
+            wechat_bin = "/nonexistent/bin/moonpub"
+            wechat_articles_dir = "/tmp/articles"
+            "#,
+        );
+
+        let err = call_tool(
+            &config,
+            std::path::Path::new("test-config.toml"),
+            "report_configure",
+            &serde_json::json!({"report_name": "微信公众号日报", "headed": true}),
+        )
+        .await
+        .unwrap_err();
+
+        assert!(err.to_string().contains("moonpub configure"));
+    }
+
+    #[tokio::test]
+    async fn tool_report_recover_automation_returns_login_failure_first() {
+        let config = config_from(
+            r#"
+            [[schedule.daily_reports]]
+            chat_id = "group-1"
+            name = "微信公众号日报"
+            output = "wechat"
+            wechat_bin = "/nonexistent/bin/moonpub"
+            wechat_articles_dir = "/tmp/articles"
+            "#,
+        );
+
+        let err = call_tool(
+            &config,
+            std::path::Path::new("test-config.toml"),
+            "report_recover_automation",
+            &serde_json::json!({"report_name": "微信公众号日报"}),
+        )
+        .await
+        .unwrap_err();
+
+        assert!(err.to_string().contains("moonpub login"));
     }
 
     #[tokio::test]

@@ -221,6 +221,8 @@ just report-history config.toml '微信公众号日报'
 
 现在 `report-status` 也会在 CLI JSON 和 MCP 输出里直接给出 `recommended_commands`。这意味着状态页不再只告诉你“下一步大概是什么”，而是尽量直接列出你接下来最该执行的命令，减少临近交付时再靠人工把状态词翻译回 shell 命令。
 
+同一套恢复动作现在也已经补到 MCP，不再只有 shell/CLI 能调。也就是说，外部 Agent / MCP 客户端现在可以直接调用 `report_status`、`report_login`、`report_configure` 和 `report_recover_automation`，并且沿用和 CLI 完全一致的日报目标选择语义：只有一个日报目标时自动复用，多个目标时必须显式给 `report_name`。
+
 当前这条链路已经完成过三次真实试发验证：
 - `report-status` 可到 `recently_published_with_warnings`
 - `publish-history` 已能查到最近三条成功回执
@@ -272,6 +274,8 @@ just report-history config.toml '微信公众号日报'
 如果是临近交付、只想知道“明天到底能不能用”，那就更适合直接看 `report-status` 这类专用视图：它应该直接告诉你当前 `status`、ready / 不 ready 的 blockers、下一步该做什么，以及最近有没有成功发布记录。
 
 现在这套状态视图已经同时接到 CLI 和 MCP：操作者可以直接跑 `qunmind report-status`，Agent / 外部系统可以调 `report_status`，两边复用同一份目标选择和 blocker 判定逻辑，避免口径漂移。
+
+现在这个对齐范围也已经扩展到自动化恢复动作：`report_login`、`report_configure` 和 `report_recover_automation` 也能从 MCP 直接调用，并保持和 CLI 一样的 `output = "wechat"` 限制与目标解析规则。
 
 完整说明见 [docs/multi-platform-publishing.md](docs/multi-platform-publishing.md)。后续如果要接抖音，优先走官方 API 形态；小红书默认按“手动 / 半自动 / 等官方 API”处理，而不是一开始就把高风控自动化塞进 QunMind。
 
