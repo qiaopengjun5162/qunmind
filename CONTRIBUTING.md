@@ -43,6 +43,7 @@ QUNMIND_TEST_DATABASE_URL="postgres://postgres:postgres@localhost:5432/qunmind_t
 - When changing daily-report readiness semantics, keep hard blockers (for example `moonpub` binary or articles dir) separate from fallback-only warnings (for example missing `public_sources` when a group may be empty).
 - When changing the WeChat public-account RSS report flow, keep the operator-facing rehearsal path (`just db-create` -> `just report-status` -> `just report-markdown` -> `just report-publish` -> `just report-history`) consistent across examples and docs.
 - When changing `src/daily_report/` quality behavior, keep the fallback/enrichment rules covered by tests and document whether the change affects report structure, section selection, or reference-link rendering.
+- Keep `.github/CODEOWNERS` aligned with the real review boundary when adding new top-level areas or changing who should review workflow / release / documentation changes.
 - If docs mention `just report-status`, `just report-markdown`, `just report-publish`, or `just report-history`, keep the examples aligned with the real positional-argument form used by this repository, for example `just report-status config.toml '微信公众号日报'`.
 - Run `just clippy` and `just test` before opening a PR.
 - For Docker, Compose, or release workflow changes, make sure the Docker image build passes locally or in CI.
