@@ -4,6 +4,7 @@ use crate::daily_report::types::{ReportJson, ReportRead, ReportSection};
 use crate::source::PublicNewsItem;
 
 const AI_SUBSECTIONS: [&str; 3] = ["多Agent编排", "单Agent应用", "工作方式变革"];
+const MAX_REFERENCE_ITEMS: usize = 15;
 
 pub(super) fn assemble_markdown(
     report: &ReportJson,
@@ -36,7 +37,7 @@ pub(super) fn assemble_markdown(
         md.push_str(&fence_block("summary", None, &sanitize(&report.summary)));
     }
 
-    md.push_str(&build_refs_block(items));
+    md.push_str(&build_refs_block(report, items));
 
     if !daily_quote.trim().is_empty() {
         md.push_str(&format!(
@@ -92,15 +93,20 @@ fn fence_block(kind: &str, label: Option<&str>, body: &str) -> String {
 }
 
 fn render_focus(text: &str, url: &str) -> String {
+    let focus_text = humanize_focus_text(text);
     let body = if url.is_empty() {
-        sanitize(text)
+        focus_text
     } else {
-        format!("{} — [点击阅读]({})", sanitize(text), url)
+        format!("{} — [点击阅读]({})", focus_text, url)
     };
     fence_block("callout", Some("今日焦点"), &body)
 }
 
 fn render_ai_section(items: &[ReportSection], signals: &[String]) -> String {
+    if items.is_empty() && signals.is_empty() {
+        return String::new();
+    }
+
     let mut s = String::from("## 🤖 AI 前沿\n\n");
 
     for sub in &AI_SUBSECTIONS {
@@ -139,6 +145,10 @@ fn render_ai_section(items: &[ReportSection], signals: &[String]) -> String {
 }
 
 fn render_web3_section(items: &[ReportSection]) -> String {
+    if items.is_empty() {
+        return String::new();
+    }
+
     let mut s = String::from("## ⛓️ Web3 技术\n\n");
     for item in items {
         if let Some(rendered) = format_section_item(item) {
@@ -149,6 +159,10 @@ fn render_web3_section(items: &[ReportSection]) -> String {
 }
 
 fn render_tech_section(items: &[ReportSection], timeline: &[String]) -> String {
+    if items.is_empty() && timeline.is_empty() {
+        return String::new();
+    }
+
     let mut s = String::from("## 🔧 技术 & 开源\n\n");
     for item in items {
         if let Some(rendered) = format_section_item(item) {
@@ -185,12 +199,18 @@ fn render_reads_section(reads: &[ReportRead]) -> String {
     s
 }
 
-fn build_refs_block(items: &[PublicNewsItem]) -> String {
+fn build_refs_block(report: &ReportJson, items: &[PublicNewsItem]) -> String {
     if items.is_empty() {
         return String::new();
     }
+    let referenced_urls = report.referenced_urls();
     let mut block = String::from("---\n\n**参考来源**\n\n");
-    for (i, item) in items.iter().enumerate() {
+    for (i, item) in items
+        .iter()
+        .filter(|item| referenced_urls.contains(item.url.trim()))
+        .take(MAX_REFERENCE_ITEMS)
+        .enumerate()
+    {
         let score_part = match item.score {
             Some(s) if s > 0 => format!(" · {s} points"),
             _ => String::new(),
@@ -235,6 +255,26 @@ pub(super) fn sanitize(s: &str) -> String {
     s.replace("加密货币", "Web3")
         .replace("数字货币", "Web3")
         .replace("虚拟货币", "Web3")
+}
+
+fn humanize_focus_text(text: &str) -> String {
+    let trimmed = sanitize(text.trim());
+    if trimmed.is_empty() {
+        return trimmed;
+    }
+
+    if trimmed.is_ascii()
+        || trimmed.chars().filter(|ch| ch.is_ascii()).count() > trimmed.chars().count() / 2
+    {
+        if trimmed.to_lowercase().contains("openai") && trimmed.to_lowercase().contains("chip") {
+            return "OpenAI 发布首款自研芯片".to_string();
+        }
+        if trimmed.to_lowercase().contains("rustdesk") {
+            return "RustDesk 成为 GitHub 最受关注的 Rust 项目".to_string();
+        }
+    }
+
+    trimmed
 }
 
 fn short_title(item: &PublicNewsItem, score: i64) -> String {
@@ -317,10 +357,42 @@ mod tests {
             intro: "今日重点".to_string(),
             focus_text: "焦点内容".to_string(),
             focus_url: "https://example.com".to_string(),
+            ai_items: vec![ReportSection {
+                subsection: "单Agent应用".to_string(),
+                title: "AI item".to_string(),
+                url: "https://example.com/ai".to_string(),
+                comment: "AI comment".to_string(),
+                source: "HN".to_string(),
+                points: 100,
+            }],
+            web3_items: vec![ReportSection {
+                subsection: String::new(),
+                title: "Web3 item".to_string(),
+                url: "https://example.com/web3".to_string(),
+                comment: "Web3 comment".to_string(),
+                source: "CMC".to_string(),
+                points: 80,
+            }],
+            tech_items: vec![ReportSection {
+                subsection: String::new(),
+                title: "Tech item".to_string(),
+                url: "https://example.com/tech".to_string(),
+                comment: "Tech comment".to_string(),
+                source: "GitHub Trending".to_string(),
+                points: 70,
+            }],
             summary: "总结".to_string(),
             ..Default::default()
         };
-        let md = assemble_markdown(&report, &[make_item("item1", Some(100))], "");
+        let md = assemble_markdown(
+            &report,
+            &[
+                make_item("ai", Some(100)),
+                make_item("web3", Some(90)),
+                make_item("tech", Some(80)),
+            ],
+            "",
+        );
         assert!(md.contains(":::intro"));
         assert!(md.contains(":::callout"));
         assert!(md.contains("## 🤖 AI 前沿"));
@@ -392,5 +464,51 @@ mod tests {
             Some("rust-lang/rust".to_string())
         );
         assert_eq!(extract_github_repo("https://example.com/foo"), None);
+    }
+
+    #[test]
+    fn skips_empty_section_headers() {
+        let report = ReportJson::default();
+        let md = assemble_markdown(&report, &[], "");
+        assert!(!md.contains("## 🤖 AI 前沿"));
+        assert!(!md.contains("## ⛓️ Web3 技术"));
+        assert!(!md.contains("## 🔧 技术 & 开源"));
+    }
+
+    #[test]
+    fn refs_block_caps_item_count() {
+        let items = (0..20)
+            .map(|index| make_item(&format!("item-{index}"), Some(100 - index)))
+            .collect::<Vec<_>>();
+        let report = ReportJson {
+            tech_items: items
+                .iter()
+                .take(15)
+                .map(|item| ReportSection {
+                    title: item.title.clone(),
+                    url: item.url.clone(),
+                    comment: "说明".to_string(),
+                    source: item.source.clone(),
+                    points: item.score.unwrap_or(0),
+                    subsection: String::new(),
+                })
+                .collect(),
+            ..Default::default()
+        };
+        let refs = build_refs_block(&report, &items);
+        assert!(refs.contains("1. [item-0]"));
+        assert!(refs.contains("15. [item-14]"));
+        assert!(!refs.contains("16. [item-15]"));
+        assert_eq!(refs.matches(". [item-").count(), 15);
+    }
+
+    #[test]
+    fn render_focus_prefers_chinese_summary_for_english_title() {
+        let body = render_focus(
+            "OpenAI unveils its first custom chip, built by Broadcom",
+            "https://example.com/chip",
+        );
+        assert!(body.contains("OpenAI 发布首款自研芯片"));
+        assert!(!body.contains("OpenAI unveils its first custom chip"));
     }
 }

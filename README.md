@@ -48,7 +48,7 @@ Rough progress bars:
 
 - Product core loop: `[########--] ~80%`
 - wx-cli diagnostics and replay: `[########--] ~80%`
-- Daily report generation and publishing: `[#########-] ~90%`
+- Daily report generation and publishing: `[#########-] ~92%`
 - Real WeChat validation: `[#####-----] ~50%`
 - Production readiness: `[#####-----] ~50%`
 
@@ -96,6 +96,7 @@ Current working timeline has shifted:
 
 - June 24, 2026: first real public-account draft push succeeded
 - June 25, 2026: second real public-account draft push succeeded and confirmed the minimum viable path
+- June 25, 2026: third real public-account draft push succeeded with the latest content-quality-tuned v5 preview
 - June 25-26, 2026: internal gray rollout and repeated rehearsals are realistic
 - it is still not recommended to describe the path as fully unattended stable production yet
 
@@ -211,11 +212,18 @@ Recommended order:
 - generate local markdown first and verify the RSS-backed article material appears in the report
 - only then run `report-publish` to push the draft through `moonpub`
 
-This path has now been verified with two real draft pushes:
+This path has now been verified with three real draft pushes:
 - `report-status` can advance to `recently_published_with_warnings`
-- `publish-history` now returns the two latest successful receipts
+- `publish-history` now returns the three latest successful receipts
 - even when `moonpub` reports `automation: login timeout: QR code not scanned within 120s`, that warning did not block either draft from reaching the WeChat draft box
 - these post-publish automation hints are now surfaced as structured `warnings` in receipt JSON instead of living only inside `raw_output`
+
+Recent report-quality hardening also now lives inside `src/daily_report/` instead of being left to manual retries:
+- invalid or sparse AI JSON falls back to non-empty sections instead of near-empty output
+- obvious misclassification is rebalanced, such as `openai/codex` no longer being pulled into Web3 just because `codex` contains `dex`
+- low-signal comments are filtered or rewritten from source summaries
+- empty section headers are suppressed
+- the reference block is capped and restricted to URLs actually used in the rendered body
 
 The current operational interpretation is:
 - the minimum viable target is complete: generate report -> push draft -> persist receipt -> inspect publish history

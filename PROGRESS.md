@@ -20,7 +20,7 @@
 
 - 产品主链路：`[########--] ~80%`
 - wx-cli 诊断与重放：`[#########-] ~85%`
-- 日报生成与发布：`[#########-] ~90%`
+- 日报生成与发布：`[#########-] ~92%`
 - 真实微信联调验证：`[#####-----] ~50%`
 - 生产可用度：`[#####-----] ~50%`
 
@@ -45,7 +45,7 @@
    用脱敏后的 capture fixture 验证 poll / dry-run / handle-once / send 的实际行为，而不是只停留在合成样本；继续把“必须唯一选中一条消息才能离线重放”的安全约束固化进去。
 
 3. **`QunMind × moonpub` 联调固化**  
-   把微信公众号日报依赖前置检查、联调清单、warning 语义和上线前提写实，避免“代码能调起 moonpub”被误判为“日报已经完全稳定上线”。
+   把微信公众号日报依赖前置检查、联调清单、warning 语义和上线前提写实，继续盯住白名单 IP、草稿箱复核与内容质量，避免“代码能调起 moonpub”被误判为“日报已经完全稳定上线”。
 
 4. **对外描述统一**  
    README / README_zh / PROGRESS 持续保持同一口径，让“当前做到哪、下一步做什么”始终可直接引用。
@@ -83,6 +83,8 @@
 - **`mcp/tools.rs` 开始复用 wx-cli 共享 helper** — 这轮继续把 MCP 侧的 `test-plan`、`send` 和 `doctor` 命令胶水往 `src/wx_cli_runtime.rs` 收口，先让 CLI / MCP 共享 test-plan 渲染、send dry-run JSON 和 doctor 报告组装，减少两边各自拼装同一份 wx-cli 输出的重复。
 - **第二次真实公众号草稿试发成功** — 在补齐新的微信白名单 IP 后，`daily-report --publish` 于 `2026-06-25T08:12:42.890589+00:00` 再次成功推送公众号草稿，`publish-history` 已能返回最近两条成功回执。这说明“生成日报 -> 推送草稿 -> 保存发布回执 -> 查询发布历史”这条最小可用链路已经完成至少两次真实验证，不再只是单次偶发成功。
 - **当前剩余问题从“能不能发”切到“发得够不够稳、内容够不够好”** — 这次真实试发前，白名单 IP 先后出现 `1.80.24.32` 和 `1.80.191.76` 两种出口；同时一次手工生成中还出现过 AI JSON 解析失败并退回空报告。现在项目的公众号日报 blocker 已不再是“主链路没打通”，而是“发布出口 IP 可能漂移”和“日报内容质量仍需继续优化”。
+- **日报内容质量兜底收口到 Rust 生成层** — `src/daily_report/` 现在会在 AI JSON 非法、字段过空或板块误分时自动补齐非空内容：包括回填标题/导语/总结、修正被 `codex -> dex` 误伤的 Web3 分类、补全深读摘要、过滤“具体用途待进一步了解”这类低信号评论、限制 AI/Web3/技术/深读条目数，并只保留正文实际用到的参考链接。这样当前日报不会再因为一次 AI 结构化输出失败就退化成近乎空白的草稿。
+- **第三次真实公众号草稿试发成功** — 基于新一轮内容质量收敛后的 `/tmp/wechat-report-preview-v5.md`，`just report-publish config.toml '微信公众号日报' '/tmp/wechat-report-preview-v5.md'` 已于 `2026-06-25T09:31:59.745312+00:00` 成功推送公众号草稿，`publish-history` 返回 `count = 3`。这说明当前不只是“主链路能发”，而是“内容优化后的版本也已经完成真实草稿验证”。
 
 ### Verified
 
@@ -99,6 +101,16 @@
 - `WECHAT_APPID=... WECHAT_SECRET=... just report-markdown config.toml '微信公众号日报' '/tmp/wechat-report.md'`：返回本地 markdown 文件，证明“群消息/RSS -> 日报正文”链路仍可继续生成稿件
 - `WECHAT_APPID=... WECHAT_SECRET=... just report-publish config.toml '微信公众号日报' '/tmp/wechat-report.md'`：于 `2026-06-25T08:12:42.890589+00:00` 返回 `published = true`，`publish_receipt_saved = true`
 - `WECHAT_APPID=... WECHAT_SECRET=... just report-history config.toml '微信公众号日报'`：返回 `count = 2`
+- `cargo nextest run --all-features daily_report::tests::generate_falls_back_to_non_empty_sections_when_ai_json_is_invalid`
+- `cargo nextest run --all-features daily_report::tests::generate_rebalances_misclassified_sections_and_fills_missing_read_summaries`
+- `cargo nextest run --all-features daily_report::tests::generate_filters_low_signal_items_and_limits_section_sizes`
+- `cargo nextest run --all-features daily_report::tests::generate_limits_reference_block_to_used_urls`
+- `cargo nextest run --all-features daily_report::render::tests::skips_empty_section_headers`
+- `cargo nextest run --all-features daily_report::render::tests::refs_block_caps_item_count`
+- `cargo nextest run --all-features daily_report::render::tests::render_focus_prefers_chinese_summary_for_english_title`
+- `cargo clippy --all-targets --all-features --tests --benches -- -D warnings`
+- `WECHAT_APPID=... WECHAT_SECRET=... just report-publish config.toml '微信公众号日报' '/tmp/wechat-report-preview-v5.md'`：于 `2026-06-25T09:31:59.745312+00:00` 返回 `published = true`，`publish_receipt_saved = true`
+- `just report-history config.toml '微信公众号日报'`：返回 `count = 3`
 - `cargo nextest run --all-features publisher::tests::extract_publish_warnings_reads_automation_lines`
 - `cargo nextest run --all-features reporting::tests::publish_receipt_json_extracts_warning_lines_from_raw_output`
 - `cargo nextest run --all-features reporting::tests::report_status_json_marks_recently_published_with_warnings_when_receipt_has_warning`
@@ -120,6 +132,7 @@
 现在更准确的公众号日报状态应该表述为：
 
 - **最小可用目标已完成**：可生成日报、推送到公众号草稿箱、保存回执、查询最近历史
+- **最新优化版已真实试发**：内容质量兜底后的 v5 预览稿已进入公众号草稿箱
 - **当前建议用法**：人工盯一眼草稿箱，再决定是否正式发布
 - **还未完全稳定的点**：
   - 微信白名单 IP 可能漂移
