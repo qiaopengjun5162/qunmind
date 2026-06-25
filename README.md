@@ -215,6 +215,8 @@ Recommended order:
 - generate local markdown first and verify the RSS-backed article material appears in the report
 - only then run `report-publish` to push the draft through `moonpub`
 
+`report-status` now also returns `recommended_commands` in both CLI JSON and MCP output. The intent is simple: once the status view already knows the most likely next commands, operators and agents should be able to copy that list directly instead of translating abstract status words back into shell commands by hand.
+
 This path has now been verified with three real draft pushes:
 - `report-status` can advance to `recently_published_with_warnings`
 - `publish-history` now returns the three latest successful receipts

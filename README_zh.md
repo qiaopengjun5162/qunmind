@@ -220,6 +220,8 @@ just report-history config.toml '微信公众号日报'
 - 再生成一版本地 markdown，确认 RSS 上游内容已经进入日报素材
 - 最后再执行 `report-publish` 推到 `moonpub` 的公众号草稿箱
 
+现在 `report-status` 也会在 CLI JSON 和 MCP 输出里直接给出 `recommended_commands`。这意味着状态页不再只告诉你“下一步大概是什么”，而是尽量直接列出你接下来最该执行的命令，减少临近交付时再靠人工把状态词翻译回 shell 命令。
+
 当前这条链路已经完成过三次真实试发验证：
 - `report-status` 可到 `recently_published_with_warnings`
 - `publish-history` 已能查到最近三条成功回执

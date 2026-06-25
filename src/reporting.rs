@@ -177,6 +177,8 @@ pub fn report_status_json(
         "recently_published"
     };
     let next_steps = report_status_next_steps(status, &blockers);
+    let recommended_commands =
+        report_status_recommended_commands(status, report_name, &blockers, &missing_publish_env);
 
     serde_json::json!({
         "ok": true,
@@ -188,6 +190,7 @@ pub fn report_status_json(
         "blockers": blockers,
         "missing_publish_env": missing_publish_env,
         "next_steps": next_steps,
+        "recommended_commands": recommended_commands,
         "recent_receipts_count": receipts.len(),
         "recent_receipts": receipts
             .into_iter()
@@ -336,6 +339,69 @@ fn report_status_next_steps(status: &str, blockers: &[&str]) -> Vec<&'static str
     }
 
     vec!["continue_monitoring_recent_publish_receipts_and_draft_flow"]
+}
+
+fn report_status_recommended_commands(
+    status: &str,
+    report_name: &str,
+    blockers: &[&str],
+    missing_publish_env: &[&str],
+) -> Vec<String> {
+    let report = if report_name.trim().is_empty() {
+        "REPORT_NAME".to_string()
+    } else {
+        report_name.to_string()
+    };
+    let quoted_report = format!("'{}'", report.replace('\'', "\\'"));
+
+    if status == "blocked" {
+        let mut commands = vec![format!("just report-status config.toml {quoted_report}")];
+        if blockers
+            .iter()
+            .any(|blocker| blocker.starts_with("wechat_daily_report_bin"))
+        {
+            commands.push("which moonpub".to_string());
+        }
+        if blockers.contains(&"wechat_daily_report_articles_dir_empty")
+            || blockers.contains(&"wechat_daily_report_articles_dir_not_dir")
+        {
+            commands.push("ls -la /path/to/moonpub/articles".to_string());
+        }
+        if !missing_publish_env.is_empty() {
+            commands.push(
+                format!(
+                    "export {}=... {}",
+                    missing_publish_env[0],
+                    missing_publish_env
+                        .get(1)
+                        .map(|name| format!("{name}=..."))
+                        .unwrap_or_default()
+                        .trim()
+                )
+                .trim()
+                .to_string(),
+            );
+        }
+        return commands;
+    }
+
+    if status == "ready_for_first_publish" {
+        return vec![
+            format!("just report-markdown config.toml {quoted_report} '/tmp/wechat-report.md'"),
+            format!("just report-publish config.toml {quoted_report} '/tmp/wechat-report.md'"),
+            format!("just report-history config.toml {quoted_report}"),
+        ];
+    }
+
+    if status == "recently_published_with_warnings" {
+        return vec![
+            format!("just report-login config.toml {quoted_report}"),
+            format!("just report-configure config.toml {quoted_report}"),
+            format!("just report-history config.toml {quoted_report}"),
+        ];
+    }
+
+    vec![format!("just report-history config.toml {quoted_report}")]
 }
 
 #[cfg(test)]
@@ -520,6 +586,15 @@ mod tests {
                 "export_wechat_publish_env_then_rerun_report_status"
             ])
         );
+        assert_eq!(
+            report["recommended_commands"],
+            serde_json::json!([
+                "just report-status config.toml '技术群日报'",
+                "which moonpub",
+                "ls -la /path/to/moonpub/articles",
+                "export WECHAT_APPID=... WECHAT_SECRET=..."
+            ])
+        );
     }
 
     #[test]
@@ -551,6 +626,14 @@ mod tests {
         assert_eq!(report["ready"], true);
         assert_eq!(report["status"], "ready_for_first_publish");
         assert_eq!(report["missing_publish_env"], serde_json::json!([]));
+        assert_eq!(
+            report["recommended_commands"],
+            serde_json::json!([
+                "just report-markdown config.toml '微信公众号日报' '/tmp/wechat-report.md'",
+                "just report-publish config.toml '微信公众号日报' '/tmp/wechat-report.md'",
+                "just report-history config.toml '微信公众号日报'"
+            ])
+        );
 
         std::fs::remove_dir_all(&dir).unwrap();
     }
@@ -649,6 +732,14 @@ mod tests {
                 "review_recent_publish_warnings_and_verify_wechat_draft",
                 "run_report_login_then_report_configure",
                 "continue_monitoring_recent_publish_receipts_and_draft_flow"
+            ])
+        );
+        assert_eq!(
+            report["recommended_commands"],
+            serde_json::json!([
+                "just report-login config.toml '微信公众号日报'",
+                "just report-configure config.toml '微信公众号日报'",
+                "just report-history config.toml '微信公众号日报'"
             ])
         );
 
