@@ -116,6 +116,7 @@ pub fn report_status_blockers(_config: &Config, target: &ReportStatusTarget) -> 
 
 pub fn publish_receipt_json(receipt: StoredPublishReceipt) -> serde_json::Value {
     let warnings = publish_receipt_warnings(&receipt.raw_output);
+    let automation_state = publish_receipt_automation_state(&warnings);
     serde_json::json!({
         "report_name": receipt.report_name,
         "target": receipt.target,
@@ -124,6 +125,7 @@ pub fn publish_receipt_json(receipt: StoredPublishReceipt) -> serde_json::Value 
         "summary": receipt.summary,
         "raw_output": receipt.raw_output,
         "warnings": warnings,
+        "automation_state": automation_state,
     })
 }
 
@@ -134,6 +136,23 @@ pub fn publish_receipt_warnings(raw_output: &str) -> Vec<String> {
         .filter(|line| line.starts_with("⚠ "))
         .map(|line| line.trim_start_matches("⚠ ").trim().to_string())
         .collect()
+}
+
+pub fn publish_receipt_automation_state(warnings: &[String]) -> &'static str {
+    if warnings.iter().any(|warning| {
+        warning.contains("login timeout")
+            || warning.contains("QR code not scanned")
+            || warning.contains("draft list did not render")
+    }) {
+        "login_required"
+    } else if warnings
+        .iter()
+        .any(|warning| warning.starts_with("automation:"))
+    {
+        "soft_failed"
+    } else {
+        "ok"
+    }
 }
 
 pub fn report_status_json(
@@ -311,6 +330,7 @@ fn report_status_next_steps(status: &str, blockers: &[&str]) -> Vec<&'static str
     if status == "recently_published_with_warnings" {
         return vec![
             "review_recent_publish_warnings_and_verify_wechat_draft",
+            "run_moonpub_login_then_retry_browser_automation",
             "continue_monitoring_recent_publish_receipts_and_draft_flow",
         ];
     }
@@ -627,8 +647,14 @@ mod tests {
             report["next_steps"],
             serde_json::json!([
                 "review_recent_publish_warnings_and_verify_wechat_draft",
+                "run_moonpub_login_then_retry_browser_automation",
                 "continue_monitoring_recent_publish_receipts_and_draft_flow"
             ])
+        );
+
+        assert_eq!(
+            report["recent_receipts"][0]["automation_state"],
+            "login_required"
         );
 
         std::fs::remove_dir_all(&dir).unwrap();
@@ -673,6 +699,14 @@ mod tests {
             json["warnings"],
             serde_json::json!(["automation: login timeout: QR code not scanned within 120s"])
         );
+        assert_eq!(json["automation_state"], "login_required");
+    }
+
+    #[test]
+    fn publish_receipt_automation_state_marks_soft_failure_without_login_timeout() {
+        let warnings = vec!["automation: preview step not found".to_string()];
+
+        assert_eq!(publish_receipt_automation_state(&warnings), "soft_failed");
     }
 
     impl Drop for EnvVarGuard {

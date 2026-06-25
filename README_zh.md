@@ -222,6 +222,7 @@ just report-history config.toml '微信公众号日报'
 - `publish-history` 已能查到最近三条成功回执
 - `moonpub` 原始输出里即使带 `automation: login timeout: QR code not scanned within 120s`，也没有阻止草稿成功推入公众号草稿箱
 - 现在这类成功后的自动化提示也会作为结构化 `warnings` 出现在发布回执 JSON 里，不必再手工翻 `raw_output`
+- 现在回执和 `report-status` 还会把这类 warning 进一步标记成 `automation_state = "login_required"`，语义不是“完全没走自动化”，而是“草稿已推成功，但浏览器自动化没真正进入后续预览/配置步骤”
 
 日报内容质量这轮也已经补了一层 Rust 侧兜底，而不是只靠多试几次模型输出：
 - AI JSON 非法或字段太空时，会自动补齐非空板块，避免退化成接近空白的草稿
@@ -234,6 +235,7 @@ just report-history config.toml '微信公众号日报'
 
 - **最小可用目标已完成**：日报能生成、能推公众号草稿、能保存回执、能查历史
 - **仍需人工关注的点**：微信白名单出口 IP 可能漂移、`moonpub` 仍可能返回自动化 warning、日报内容质量还需要继续打磨
+- **如果回执里看到 `automation_state = "login_required"`**：优先执行 `moonpub login` 复用浏览器登录态，再重试自动化配置，而不是把问题误判成“系统没有走到自动化”
 
 这里的语义要记清：
 - `wechat_bin` / `wechat_articles_dir` 缺失是硬 blocker

@@ -217,6 +217,7 @@ This path has now been verified with three real draft pushes:
 - `publish-history` now returns the three latest successful receipts
 - even when `moonpub` reports `automation: login timeout: QR code not scanned within 120s`, that warning did not block either draft from reaching the WeChat draft box
 - these post-publish automation hints are now surfaced as structured `warnings` in receipt JSON instead of living only inside `raw_output`
+- receipt JSON and `report-status` now also classify that warning as `automation_state = "login_required"`, which means the draft push succeeded but the browser automation path did not get past login into the preview/configuration steps
 
 Recent report-quality hardening also now lives inside `src/daily_report/` instead of being left to manual retries:
 - invalid or sparse AI JSON falls back to non-empty sections instead of near-empty output
@@ -227,6 +228,7 @@ Recent report-quality hardening also now lives inside `src/daily_report/` instea
 
 The current operational interpretation is:
 - the minimum viable target is complete: generate report -> push draft -> persist receipt -> inspect publish history
+- if a receipt shows `automation_state = "login_required"`, the next operational step is `moonpub login`, then retry the browser-assisted configuration path instead of assuming automation never ran
 - the remaining risk is no longer "can it publish at all", but rather publish-IP drift, automation warnings, and report quality
 
 Notes:

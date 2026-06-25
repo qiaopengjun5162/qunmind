@@ -14,7 +14,8 @@ use qunmind::error::QunMindError;
 use qunmind::publisher::{PublishTarget, publish_markdown};
 use qunmind::reporting::{
     ReportContentRequest, effective_publish_history_name, effective_report_status_target,
-    generate_group_report_from_store, publish_receipt_json, report_status_json,
+    generate_group_report_from_store, publish_receipt_automation_state, publish_receipt_json,
+    report_status_json,
 };
 use qunmind::scheduler::daily_report::DailyReportScheduler;
 use qunmind::source;
@@ -190,6 +191,7 @@ async fn run_diagnostic_command(
                         "summary": receipt.summary,
                         "raw_output": receipt.raw_output,
                         "warnings": receipt.warnings,
+                        "automation_state": publish_receipt_automation_state(&receipt.warnings),
                     })),
                 }))?
             );
