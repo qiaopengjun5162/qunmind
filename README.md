@@ -36,25 +36,25 @@ The project currently supports:
 
 ## Status
 
-This is an MVP foundation, not a production-ready bot yet. The next important step is real wx-cli group testing and turning the `QunMind × moonpub` report path into something diagnosable before runtime, not only after a failed scheduled job.
+This is still an MVP foundation, not a fully production-ready bot yet. The basic WeChat public-account daily-report path has now been verified end-to-end into the draft box, and the next important step is real wx-cli group testing plus turning the `QunMind × moonpub` report path from "can publish a real draft" into something more stable, higher quality, and easier to diagnose before runtime.
 
 The current project phase is:
 
-- **Done**: core Rust backend boundaries, persistence, per-group config, wx-cli diagnostics/replay, MCP integration, and daily report generation/publishing.
-- **In progress**: real wx-cli sample validation, `QunMind × moonpub` readiness checks, multi-group report verification, and tighter doc consistency.
+- **Done**: core Rust backend boundaries, persistence, per-group config, wx-cli diagnostics/replay, MCP integration, daily report generation/publishing, and the minimum viable WeChat draft-publish loop.
+- **In progress**: real wx-cli sample validation, `QunMind × moonpub` stability checks, multi-group report verification, report quality improvements, and tighter doc consistency.
 - **Not done yet**: stable real-world normal WeChat group validation, production hardening, and long-term memory / permission / ops capabilities.
 
 Rough progress bars:
 
 - Product core loop: `[########--] ~80%`
 - wx-cli diagnostics and replay: `[########--] ~80%`
-- Daily report generation and publishing: `[#######---] ~75%`
-- Real WeChat validation: `[###-------] ~30%`
-- Production readiness: `[###-------] ~35%`
+- Daily report generation and publishing: `[#########-] ~90%`
+- Real WeChat validation: `[#####-----] ~50%`
+- Production readiness: `[#####-----] ~50%`
 
 One-sentence external summary:
 
-> QunMind already has the backend skeleton, diagnostics, and report pipeline for a WeChat AI group hub, and is now moving from MVP feature completeness to real-environment validation and stable demos.
+> QunMind already has the backend skeleton, diagnostics, and report pipeline for a WeChat AI group hub, and the minimum public-account report-to-draft path is now verified in a real environment. The project is now moving from MVP completeness toward more stable real-environment validation and repeatable demos.
 
 ## Roadmap
 
@@ -68,7 +68,7 @@ Next small goals:
 
 1. Keep shrinking `main.rs` and `src/mcp/tools.rs` by removing command-layer duplication.
 2. Expand the sanitized wx-cli fixture set so poll / dry-run / handle-once / send are exercised against more realistic samples.
-3. Surface `moonpub` and `public_sources` prerequisites before a WeChat daily-report target is treated as ready.
+3. Surface `moonpub`, `public_sources`, and publish-IP prerequisites before a WeChat daily-report target is treated as ready.
 4. Verify multi-group persona, context, and `schedule.daily_reports` combinations in practice.
 5. Keep README / PROGRESS / AGENTS aligned so project status is reusable for internal and external communication.
 
@@ -92,12 +92,12 @@ That lets us surface the main blockers earlier:
 - no enabled `public_sources`
 - a configured WeChat report target that still cannot generate source material or hand off to `moonpub`
 
-Current working timeline:
+Current working timeline has shifted:
 
-- June 23, 2026: local integration and config completion can start
-- June 24, 2026: first real draft-generation test is realistic
-- June 25-26, 2026: internal gray rollout is realistic if draft generation stays stable
-- not recommended to promise stable launch before June 27, 2026
+- June 24, 2026: first real public-account draft push succeeded
+- June 25, 2026: second real public-account draft push succeeded and confirmed the minimum viable path
+- June 25-26, 2026: internal gray rollout and repeated rehearsals are realistic
+- it is still not recommended to describe the path as fully unattended stable production yet
 
 ## Quick Start
 
@@ -200,10 +200,10 @@ If you already have a WeChat public-account RSS / Atom upstream, the shortest re
 
 ```bash
 just db-create
-just report-status report="微信公众号日报"
-just report-markdown report="微信公众号日报" output="/tmp/wechat-report.md"
-just report-publish report="微信公众号日报" output="/tmp/wechat-report.md"
-just report-history report="微信公众号日报"
+just report-status config.toml '微信公众号日报'
+just report-markdown config.toml '微信公众号日报' '/tmp/wechat-report.md'
+just report-publish config.toml '微信公众号日报' '/tmp/wechat-report.md'
+just report-history config.toml '微信公众号日报'
 ```
 
 Recommended order:
@@ -211,11 +211,15 @@ Recommended order:
 - generate local markdown first and verify the RSS-backed article material appears in the report
 - only then run `report-publish` to push the draft through `moonpub`
 
-This path has now been verified with one real draft push:
-- `report-status` can advance to `recently_published`, and will now escalate to `recently_published_with_warnings` when the latest successful receipt still contains automation follow-up signals
-- `publish-history` now returns the first successful receipt
-- even when `moonpub` reports `automation: login timeout: QR code not scanned within 120s`, that warning did not block this draft from reaching the WeChat draft box
+This path has now been verified with two real draft pushes:
+- `report-status` can advance to `recently_published_with_warnings`
+- `publish-history` now returns the two latest successful receipts
+- even when `moonpub` reports `automation: login timeout: QR code not scanned within 120s`, that warning did not block either draft from reaching the WeChat draft box
 - these post-publish automation hints are now surfaced as structured `warnings` in receipt JSON instead of living only inside `raw_output`
+
+The current operational interpretation is:
+- the minimum viable target is complete: generate report -> push draft -> persist receipt -> inspect publish history
+- the remaining risk is no longer "can it publish at all", but rather publish-IP drift, automation warnings, and report quality
 
 Notes:
 - `just db-create` only creates the default local PostgreSQL database when it is missing; tables are still created by QunMind at runtime

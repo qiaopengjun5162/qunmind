@@ -56,6 +56,8 @@
 
 `src/publisher.rs` 是日报发布边界。`QunMind` 负责“生成什么、何时发、目标是否 ready”；平台侧项目或适配器负责“按平台规则怎么发”。当前只落地了 `PublishTarget::WechatDraft`，通过本地 `moonpub` 推公众号草稿。后续即使接抖音、小红书，也优先新增 publisher target 或独立发布子系统，不把平台鉴权、素材渲染和风控逻辑塞回 scheduler。
 
+截至 `2026-06-25`，`微信公众号日报` 的最小可用链路已经完成两次真实验证：`daily-report --publish` 可成功推送到公众号草稿箱，`publish-history` 可查到最新回执，回执 warning 会继续保留为结构化字段。后续再回答“现在能不能用”时，不要再把它描述成“还没打通”，而要准确说成“最小可用链路已打通，但仍有白名单 IP 漂移、自动化 warning 和内容质量问题需要继续收敛”。
+
 发布适配器成功后优先返回结构化 `PublishReceipt`（目标、目的地、时间、摘要、原始输出），不要只在 scheduler 里打印一句成功日志。这样后续补持久化、失败重试或多平台对账时不用重新拆接口。
 
 如果发布成功但状态记录失败，行为优先级应该是“保留成功发布事实，同时明确记录回执保存失败”，不要因为回执落库失败就把外部发布结果误报成整体失败。
@@ -100,10 +102,10 @@
 - `just test`：使用 `cargo nextest run --all-features`
 - `just check-all`：完整检查
 - `just db-create`：在默认本地 PostgreSQL 缺库时补建 `qunmind`
-- `just report-status report="微信公众号日报"`：查看公众号日报 readiness
-- `just report-markdown report="微信公众号日报" output="/tmp/wechat-report.md"`：只生成本地日报 markdown，不触发发布
-- `just report-publish report="微信公众号日报" output="/tmp/wechat-report.md"`：沿正式 publisher 边界真实推送日报
-- `just report-history report="微信公众号日报"`：查看最近发布回执
+- `just report-status config.toml '微信公众号日报'`：查看公众号日报 readiness
+- `just report-markdown config.toml '微信公众号日报' '/tmp/wechat-report.md'`：只生成本地日报 markdown，不触发发布
+- `just report-publish config.toml '微信公众号日报' '/tmp/wechat-report.md'`：沿正式 publisher 边界真实推送日报
+- `just report-history config.toml '微信公众号日报'`：查看最近发布回执
 - `just run`：运行本地服务
 - `just docker-build`：构建本地 Docker 镜像 `qunmind:local`
 - `just compose-config`：检查 Docker Compose 最终配置

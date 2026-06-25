@@ -28,25 +28,25 @@
 
 ## 当前状态
 
-项目处在 MVP 基础阶段，还不是生产可用版本。下一步重点是真实 wx-cli 群聊联调，以及把 `QunMind × moonpub` 微信公众号日报链路补到“可提前发现阻塞、可灰度试跑”的状态。
+项目处在 MVP 基础阶段，还不是完全生产可用版本。当前“最基本的微信公众号日报”已经真实打通到公众号草稿箱；下一步重点是真实 wx-cli 群聊联调，以及把 `QunMind × moonpub` 微信公众号日报链路从“能真实推草稿”继续补到“内容更稳、状态更清晰、可持续灰度试跑”的状态。
 
 当前阶段可以概括为：
 
-- **已经完成**：核心 Rust 骨架、消息持久化、群级配置、wx-cli 诊断/重放、MCP 接入、日报生成与发布主链路。
-- **正在补强**：真实 wx-cli 样本验证、`QunMind × moonpub` 联调 readiness、多群日报配置实测、文档口径统一。
+- **已经完成**：核心 Rust 骨架、消息持久化、群级配置、wx-cli 诊断/重放、MCP 接入、日报生成与发布主链路，以及公众号日报最小可用草稿推送闭环。
+- **正在补强**：真实 wx-cli 样本验证、`QunMind × moonpub` 联调稳定性、多群日报配置实测、日报内容质量和文档口径统一。
 - **还没完成**：真实普通微信群稳定联调、生产级部署验证、长期记忆/权限/运维能力。
 
 粗粒度进度条：
 
 - 产品主链路：`[########--] ~80%`
 - wx-cli 诊断与重放：`[########--] ~80%`
-- 日报生成与发布：`[#######---] ~75%`
-- 真实微信联调验证：`[###-------] ~30%`
-- 生产可用度：`[###-------] ~35%`
+- 日报生成与发布：`[#########-] ~90%`
+- 真实微信联调验证：`[#####-----] ~50%`
+- 生产可用度：`[#####-----] ~50%`
 
 如果要对外一句话介绍当前项目位置，可以用：
 
-> QunMind 已完成微信群 AI 中枢的后端骨架、诊断链路和日报能力，当前正在从 MVP 功能可用阶段，推进到真实微信环境可验证、可稳定演示的阶段。
+> QunMind 已完成微信群 AI 中枢的后端骨架、诊断链路和日报能力，其中“公众号日报 -> 草稿箱”最小链路已经真实打通；当前正在从 MVP 功能可用阶段，推进到真实微信环境更稳定、内容质量更高、可持续演示的阶段。
 
 ## 路线图
 
@@ -60,7 +60,7 @@
 
 1. 继续拆薄 `main.rs` 和 `src/mcp/tools.rs`，减少命令层重复。
 2. 扩充已建立的脱敏 wx-cli fixture，继续验证 poll / dry-run / handle-once / send。
-3. 把微信公众号日报的 `moonpub` / `public_sources` 依赖前置暴露，减少“定时任务跑到一半才发现缺配置”。
+3. 把微信公众号日报的 `moonpub` / `public_sources` / 白名单前置依赖继续暴露，减少“定时任务跑到一半才发现缺配置或 IP 漂移”。
 4. 实测多群 persona、群级 context 和 `schedule.daily_reports` 组合行为。
 5. 持续同步 README / PROGRESS / AGENTS，让项目进度对内对外都清楚。
 
@@ -84,12 +84,12 @@
 - `public_sources` 一个都没启用
 - 配了微信公众号日报目标，但实际还没满足生成素材和推草稿的前提
 
-当前更可信的时间判断：
+当前更可信的时间判断已经更新为：
 
-- `2026-06-23`：可以开始本地联调和配置补齐
-- `2026-06-24`：可以做第一次真实日报草稿生成测试
-- `2026-06-25` 到 `2026-06-26`：可以做内部灰度
-- 不建议承诺正式稳定上线早于 `2026-06-27`
+- `2026-06-24`：第一次真实公众号草稿试发成功
+- `2026-06-25`：第二次真实公众号草稿试发成功，最小可用链路确认打通
+- `2026-06-25` 到 `2026-06-26`：适合做内部灰度和连续试发
+- 不建议把“已经能推草稿”直接表述成“完全无人值守稳定上线”
 
 ## 快速开始
 
@@ -205,10 +205,10 @@ QunMind 会在保存文本消息时抽取 `http://` / `https://` 链接，写入
 
 ```bash
 just db-create
-just report-status report="微信公众号日报"
-just report-markdown report="微信公众号日报" output="/tmp/wechat-report.md"
-just report-publish report="微信公众号日报" output="/tmp/wechat-report.md"
-just report-history report="微信公众号日报"
+just report-status config.toml '微信公众号日报'
+just report-markdown config.toml '微信公众号日报' '/tmp/wechat-report.md'
+just report-publish config.toml '微信公众号日报' '/tmp/wechat-report.md'
+just report-history config.toml '微信公众号日报'
 ```
 
 推荐顺序是：
@@ -216,11 +216,16 @@ just report-history report="微信公众号日报"
 - 再生成一版本地 markdown，确认 RSS 上游内容已经进入日报素材
 - 最后再执行 `report-publish` 推到 `moonpub` 的公众号草稿箱
 
-当前这条链路已经完成过一次真实试发验证：
-- `report-status` 可到 `recently_published`；若最近成功回执里带自动化提示，则会进一步显示为 `recently_published_with_warnings`
-- `publish-history` 已能查到首条成功回执
-- `moonpub` 原始输出里即使带 `automation: login timeout: QR code not scanned within 120s`，本次也没有阻止草稿成功推入公众号草稿箱
+当前这条链路已经完成过两次真实试发验证：
+- `report-status` 可到 `recently_published_with_warnings`
+- `publish-history` 已能查到最近两条成功回执
+- `moonpub` 原始输出里即使带 `automation: login timeout: QR code not scanned within 120s`，也没有阻止草稿成功推入公众号草稿箱
 - 现在这类成功后的自动化提示也会作为结构化 `warnings` 出现在发布回执 JSON 里，不必再手工翻 `raw_output`
+
+这意味着当前最准确的状态是：
+
+- **最小可用目标已完成**：日报能生成、能推公众号草稿、能保存回执、能查历史
+- **仍需人工关注的点**：微信白名单出口 IP 可能漂移、`moonpub` 仍可能返回自动化 warning、日报内容质量还需要继续打磨
 
 这里的语义要记清：
 - `wechat_bin` / `wechat_articles_dir` 缺失是硬 blocker

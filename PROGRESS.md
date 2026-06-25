@@ -14,15 +14,15 @@
 
 ### Current Phase
 
-当前处于：**MVP 骨架完成，正在从“功能存在”走向“真实可验证、可对外介绍”**
+当前处于：**MVP 骨架完成，公众号日报最小可用链路已真实打通，正在从“功能存在”走向“真实可验证、可对外介绍”**
 
 粗粒度进度条：
 
 - 产品主链路：`[########--] ~80%`
 - wx-cli 诊断与重放：`[#########-] ~85%`
-- 日报生成与发布：`[#######---] ~75%`
-- 真实微信联调验证：`[###-------] ~30%`
-- 生产可用度：`[###-------] ~35%`
+- 日报生成与发布：`[#########-] ~90%`
+- 真实微信联调验证：`[#####-----] ~50%`
+- 生产可用度：`[#####-----] ~50%`
 
 这里的百分比是工程判断，不是精确度量。含义是：
 
@@ -32,7 +32,7 @@
 当前已进入一个更具体的子阶段：
 
 - **wx-cli 命令编排层第二轮收口进行中**
-- **公众号日报试发链路已经真实打通**
+- **公众号日报最小可用目标已经真实打通**
 
 ### Small Goals
 
@@ -45,7 +45,7 @@
    用脱敏后的 capture fixture 验证 poll / dry-run / handle-once / send 的实际行为，而不是只停留在合成样本；继续把“必须唯一选中一条消息才能离线重放”的安全约束固化进去。
 
 3. **`QunMind × moonpub` 联调固化**  
-   把微信公众号日报依赖前置检查、联调清单和上线前提写实，避免“代码能调起 moonpub”被误判为“日报已经可上线”。
+   把微信公众号日报依赖前置检查、联调清单、warning 语义和上线前提写实，避免“代码能调起 moonpub”被误判为“日报已经完全稳定上线”。
 
 4. **对外描述统一**  
    README / README_zh / PROGRESS 持续保持同一口径，让“当前做到哪、下一步做什么”始终可直接引用。
@@ -61,10 +61,10 @@
 如果目标切到“明天能不能把公众号日报草稿推出来”，当前最短操作路径已经收口成：
 
 1. `just db-create`
-2. `just report-status report="微信公众号日报"`
-3. `just report-markdown report="微信公众号日报" output="/tmp/wechat-report.md"`
-4. 用户明确批准后，再执行 `just report-publish report="微信公众号日报" output="/tmp/wechat-report.md"`
-5. `just report-history report="微信公众号日报"`
+2. `just report-status config.toml '微信公众号日报'`
+3. `just report-markdown config.toml '微信公众号日报' '/tmp/wechat-report.md'`
+4. 用户明确批准后，再执行 `just report-publish config.toml '微信公众号日报' '/tmp/wechat-report.md'`
+5. `just report-history config.toml '微信公众号日报'`
 
 ## 2026-06-24
 
@@ -81,6 +81,8 @@
 - **发布 warning 结构化** — `PublishReceipt`、`report-status`、`publish-history` 和手工 `daily-report --publish` 的 JSON 现在会显式输出 `warnings`。像这次 `moonpub` 的 `automation: login timeout` 不再只藏在 `raw_output` 里，后续判断“这次是完全干净成功”还是“成功但仍需人工盯一下自动化”会更直接。
 - **发布 warning 升级为状态信号** — `report-status` 现在不再把“最近成功但有自动化 warning”的情况和普通 `recently_published` 混在一起。只要最近成功回执里仍有结构化 `warnings`，状态就会直接升级成 `recently_published_with_warnings`，并给出“人工复核草稿 + 继续监控回执”的下一步动作。
 - **`mcp/tools.rs` 开始复用 wx-cli 共享 helper** — 这轮继续把 MCP 侧的 `test-plan`、`send` 和 `doctor` 命令胶水往 `src/wx_cli_runtime.rs` 收口，先让 CLI / MCP 共享 test-plan 渲染、send dry-run JSON 和 doctor 报告组装，减少两边各自拼装同一份 wx-cli 输出的重复。
+- **第二次真实公众号草稿试发成功** — 在补齐新的微信白名单 IP 后，`daily-report --publish` 于 `2026-06-25T08:12:42.890589+00:00` 再次成功推送公众号草稿，`publish-history` 已能返回最近两条成功回执。这说明“生成日报 -> 推送草稿 -> 保存发布回执 -> 查询发布历史”这条最小可用链路已经完成至少两次真实验证，不再只是单次偶发成功。
+- **当前剩余问题从“能不能发”切到“发得够不够稳、内容够不够好”** — 这次真实试发前，白名单 IP 先后出现 `1.80.24.32` 和 `1.80.191.76` 两种出口；同时一次手工生成中还出现过 AI JSON 解析失败并退回空报告。现在项目的公众号日报 blocker 已不再是“主链路没打通”，而是“发布出口 IP 可能漂移”和“日报内容质量仍需继续优化”。
 
 ### Verified
 
@@ -94,6 +96,9 @@
 - `WECHAT_APPID=... WECHAT_SECRET=... cargo run -- --config config.toml daily-report --report-name "微信公众号日报" --output /tmp/wechat-report.md --publish`：返回 `published = true`，`publish_receipt_saved = true`
 - `WECHAT_APPID=... WECHAT_SECRET=... cargo run -- --config config.toml publish-history --report-name "微信公众号日报" --limit 5`：返回 `count = 1`
 - `WECHAT_APPID=... WECHAT_SECRET=... cargo run -- --config config.toml report-status --report-name "微信公众号日报" --limit 5`：返回 `status = "recently_published"`，`recent_receipts_count = 1`
+- `WECHAT_APPID=... WECHAT_SECRET=... just report-markdown config.toml '微信公众号日报' '/tmp/wechat-report.md'`：返回本地 markdown 文件，证明“群消息/RSS -> 日报正文”链路仍可继续生成稿件
+- `WECHAT_APPID=... WECHAT_SECRET=... just report-publish config.toml '微信公众号日报' '/tmp/wechat-report.md'`：于 `2026-06-25T08:12:42.890589+00:00` 返回 `published = true`，`publish_receipt_saved = true`
+- `WECHAT_APPID=... WECHAT_SECRET=... just report-history config.toml '微信公众号日报'`：返回 `count = 2`
 - `cargo nextest run --all-features publisher::tests::extract_publish_warnings_reads_automation_lines`
 - `cargo nextest run --all-features reporting::tests::publish_receipt_json_extracts_warning_lines_from_raw_output`
 - `cargo nextest run --all-features reporting::tests::report_status_json_marks_recently_published_with_warnings_when_receipt_has_warning`
@@ -109,6 +114,17 @@
 - `cargo nextest run --all-features tool_doctor_with_input_file`
 - `cargo nextest run --all-features tool_doctor_reports_ok_when_config_is_complete`
 - PR #41 CI：`test = pass`，`docker = pass`
+
+### Current Readiness
+
+现在更准确的公众号日报状态应该表述为：
+
+- **最小可用目标已完成**：可生成日报、推送到公众号草稿箱、保存回执、查询最近历史
+- **当前建议用法**：人工盯一眼草稿箱，再决定是否正式发布
+- **还未完全稳定的点**：
+  - 微信白名单 IP 可能漂移
+  - `moonpub` 仍可能返回 `automation: login timeout` warning
+  - 日报内容质量和结构仍需继续优化，不能把“能发出来”直接等同于“内容已达标”
 
 ## 2026-06-23
 
