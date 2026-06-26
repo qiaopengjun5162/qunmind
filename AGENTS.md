@@ -111,7 +111,7 @@ MCP 侧的 `report_markdown` / `report_publish` 也应继续复用 `src/reportin
 
 如果只是补齐默认本地日报试发环境，优先使用 `just db-create` 创建缺失的 `qunmind` 数据库，再跑 `just report-status` / `just report-markdown`；不要把这条入口泛化成修改任意生产数据库的通用脚本。
 
-部署工程化已包含 `Dockerfile`、`docker-compose.yml`、`config.docker.example.toml` 和 `DEPLOYMENT.md`。Compose 默认启动 QunMind + PostgreSQL，并把本地 `config.toml` 只读挂载到 `/app/config.toml`；不要把 `config.toml` 复制进镜像或提交到仓库。Docker/Compose 更适合企业微信内部群、日报和 PG 持久化；普通微信 wx-cli 通道通常依赖宿主机 WeChat session 和宿主 CLI/daemon，容器化前必须先确认 socket、HTTP endpoint 或二进制挂载方案，不要默认认为容器能访问本机微信数据。
+部署工程化已包含 `Dockerfile`、`docker-compose.yml`、`config.docker.example.toml` 和 `DEPLOYMENT.md`。Compose 默认启动 QunMind + PostgreSQL，并把本地 `config.toml` 只读挂载到 `/app/config.toml`；不要把 `config.toml` 复制进镜像或提交到仓库。Docker build 阶段必须复制 `docs/assets/wechat/`，因为 `src/publisher.rs` 通过 `include_bytes!` 编译期嵌入公众号固定封面；如果新增类似编译期资产，也要同步 Dockerfile。Docker/Compose 更适合企业微信内部群、日报和 PG 持久化；普通微信 wx-cli 通道通常依赖宿主机 WeChat session 和宿主 CLI/daemon，容器化前必须先确认 socket、HTTP endpoint 或二进制挂载方案，不要默认认为容器能访问本机微信数据。
 
 重要边界：企业微信智能机器人只能按企业微信内部群通道使用，不要假定它可以进入企业微信外部群/客户群。外部群和普通微信群需要单独评估客户群 API、会话内容存档、客户端采集、托管微信号或其他非智能机器人入口。
 
