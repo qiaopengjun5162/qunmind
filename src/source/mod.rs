@@ -9,6 +9,7 @@ pub mod hacker_news;
 pub mod hn_daily;
 pub mod registry;
 pub mod slerf_blog;
+pub mod web3_media;
 pub mod wechat_rss;
 
 use async_trait::async_trait;
@@ -118,6 +119,9 @@ fn is_curated_source_url(url: &str) -> bool {
         || url.contains("arxiv.org")
         || url.contains("ethresear.ch")
         || url.contains("mp.weixin.qq.com")
+        || url.contains("thedefiant.io")
+        || url.contains("cointelegraph.com")
+        || url.contains("cryptoslate.com")
 }
 
 #[cfg(test)]

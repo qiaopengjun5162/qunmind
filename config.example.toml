@@ -129,6 +129,14 @@ topic_keywords = [
   "zero knowledge",
   "zero-knowledge",
 ]
+web3_media_enabled = false
+web3_media_max_items = 10
+web3_media_timeout_secs = 15
+web3_media_urls = [
+  "https://cryptoslate.com/feed/",
+  "https://thedefiant.io/feed",
+  "https://cointelegraph.com/rss",
+]
 wechat_rss_enabled = true
 wechat_rss_max_items = 10
 wechat_rss_timeout_secs = 10

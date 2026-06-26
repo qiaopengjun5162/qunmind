@@ -51,22 +51,18 @@ pub(super) fn assemble_markdown(
 
 fn compute_title_digest(report: &ReportJson, items: &[PublicNewsItem]) -> (String, String) {
     let title = if !report.title_hint.trim().is_empty() {
-        truncate_str(report.title_hint.trim(), 60)
+        truncate_str(report.title_hint.trim(), 64)
     } else if let Some(first) = items.first() {
         truncate_str(&short_title(first, first.score.unwrap_or(0)), 50)
     } else {
         "今日科技信号".to_string()
     };
 
-    let digest = if !report.intro.trim().is_empty() {
-        let first_sentence = report
-            .intro
-            .split(['。', '，', '\n'])
-            .next()
-            .unwrap_or(&report.intro)
-            .trim()
-            .to_string();
-        truncate_str(&first_sentence, 80)
+    // digest 优先用 focus_text，它比 intro 第一句更具体。
+    let digest = if !report.focus_text.trim().is_empty() {
+        truncate_str(&sanitize(&report.focus_text), 80)
+    } else if !report.intro.trim().is_empty() {
+        truncate_str(&sanitize(&report.intro), 80)
     } else if items.len() >= 2 {
         format!(
             "{title}。{}",
@@ -124,19 +120,30 @@ fn render_ai_section(items: &[ReportSection], signals: &[String]) -> String {
             }
         }
     }
-    for item in items {
-        if !AI_SUBSECTIONS
-            .iter()
-            .any(|sub| item.subsection.contains(sub))
-            && let Some(rendered) = format_section_item(item)
-        {
-            s.push_str(&rendered);
-        }
+    let uncategorized: Vec<_> = items
+        .iter()
+        .filter(|item| {
+            !AI_SUBSECTIONS
+                .iter()
+                .any(|sub| item.subsection.contains(sub))
+        })
+        .collect();
+    let other_ai: String = uncategorized
+        .iter()
+        .filter_map(|item| format_section_item(item))
+        .collect();
+    if !other_ai.is_empty() {
+        s.push_str("**其他 AI 动态**\n\n");
+        s.push_str(&other_ai);
     }
 
     if !signals.is_empty() {
         s.push_str(":::steps\n");
         for (i, sig) in signals.iter().enumerate() {
+            let sig = sig.trim();
+            if sig.is_empty() {
+                continue;
+            }
             s.push_str(&format!("{}. {}\n", i + 1, sanitize(sig)));
         }
         s.push_str(":::\n\n");
@@ -191,9 +198,15 @@ fn render_reads_section(reads: &[ReportRead]) -> String {
                 read.url
             ));
         }
-        // 空摘要时不渲染空 blockquote
-        if !read.summary.is_empty() {
-            s.push_str(&format!("> {}\n\n", sanitize(&read.summary)));
+        let summary = read.summary.trim();
+        // 过滤掉套话和空摘要，只保留有实质内容的描述。
+        if !summary.is_empty()
+            && summary.chars().count() >= 20
+            && !summary.contains("这篇材料围绕")
+            && !summary.contains("这篇文章讲了")
+            && !summary.contains("核心信息")
+        {
+            s.push_str(&format!("> {}\n\n", sanitize(summary)));
         }
     }
     s
@@ -423,12 +436,12 @@ mod tests {
             reads: vec![ReportRead {
                 title: "深度文章".to_string(),
                 url: "https://example.com/a".to_string(),
-                summary: "这篇文章讲了核心论点，读者可以获得深度理解".to_string(),
+                summary: "Google DeepMind 团队提出了一种新的强化学习框架，无需真实标签即可提升 LLM 的推理能力，实验显示在数学推理任务上取得显著进展".to_string(),
             }],
             ..Default::default()
         };
         let md = assemble_markdown(&report, &[], "");
-        assert!(md.contains("> 这篇文章讲了核心论点"));
+        assert!(md.contains("> Google DeepMind 团队提出了一种新的强化学习框架"));
     }
 
     #[test]

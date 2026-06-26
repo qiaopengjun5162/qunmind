@@ -266,6 +266,14 @@ pub struct PublicSourcesConfig {
     pub wechat_rss_max_items: usize,
     #[serde(default = "default_wechat_rss_timeout_secs")]
     pub wechat_rss_timeout_secs: u64,
+    #[serde(default)]
+    pub web3_media_enabled: bool,
+    #[serde(default = "default_web3_media_urls")]
+    pub web3_media_urls: Vec<String>,
+    #[serde(default = "default_web3_media_max_items")]
+    pub web3_media_max_items: usize,
+    #[serde(default = "default_web3_media_timeout_secs")]
+    pub web3_media_timeout_secs: u64,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -516,6 +524,22 @@ fn default_wechat_rss_timeout_secs() -> u64 {
     10
 }
 
+fn default_web3_media_urls() -> Vec<String> {
+    vec![
+        "https://cryptoslate.com/feed/".to_string(),
+        "https://thedefiant.io/feed".to_string(),
+        "https://cointelegraph.com/rss".to_string(),
+    ]
+}
+
+fn default_web3_media_max_items() -> usize {
+    10
+}
+
+fn default_web3_media_timeout_secs() -> u64 {
+    15
+}
+
 fn default_bot_context_messages() -> usize {
     8
 }
@@ -638,6 +662,10 @@ impl Default for PublicSourcesConfig {
             wechat_rss_urls: default_wechat_rss_urls(),
             wechat_rss_max_items: default_wechat_rss_max_items(),
             wechat_rss_timeout_secs: default_wechat_rss_timeout_secs(),
+            web3_media_enabled: false,
+            web3_media_urls: default_web3_media_urls(),
+            web3_media_max_items: default_web3_media_max_items(),
+            web3_media_timeout_secs: default_web3_media_timeout_secs(),
         }
     }
 }
