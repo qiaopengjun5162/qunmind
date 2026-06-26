@@ -89,7 +89,7 @@
 - **当前剩余问题从“能不能发”切到“发得够不够稳、内容够不够好”** — 这次真实试发前，白名单 IP 先后出现 `1.80.24.32` 和 `1.80.191.76` 两种出口；同时一次手工生成中还出现过 AI JSON 解析失败并退回空报告。现在项目的公众号日报 blocker 已不再是“主链路没打通”，而是“发布出口 IP 可能漂移”和“日报内容质量仍需继续优化”。
 - **日报内容质量兜底收口到 Rust 生成层** — `src/daily_report/` 现在会在 AI JSON 非法、字段过空或板块误分时自动补齐非空内容：包括回填标题/导语/总结、修正被 `codex -> dex` 误伤的 Web3 分类、补全深读摘要、过滤“具体用途待进一步了解”这类低信号评论、限制 AI/Web3/技术/深读条目数，并只保留正文实际用到的参考链接。这样当前日报不会再因为一次 AI 结构化输出失败就退化成近乎空白的草稿。
 - **Web3 主线前置** — 当公共素材里 Web3 信号足够强时，`src/daily_report/` 现在不再只把 Web3 塞进单独小节，而会优先把标题、导语、焦点和总结一起拉回 Web3 主线，避免“文中明明有 Web3，第一眼看上去却像 GitHub 榜单”的错位观感。
-- **公众号日报封面回退到 `moonpub` 默认生成** — 撤回了本地自定义封面注入链路，CLI `daily-report`、MCP `report_markdown/report_publish` 和 `publish_markdown(...)` 重新统一为只输出正文 markdown，再交给 `moonpub --render` 按平台默认逻辑生成封面。这样当前优化重点重新集中到内容质量，而不是本地图片资产。
+- **公众号日报接入个人号固定封面** — 面向个人公众号 `寻月隐君`，新增固定 `AI · Web3 最新日报` 封面 PNG。`publish_markdown(...)` 的 WeChat publisher 边界会在临时稿件同目录写出随稿件命名的封面文件，并向交给 `moonpub --render` 的临时 markdown 注入相对 `cover:`，避免继续复用 `moonpub-data` 里的旧 `thumb_media_id`。
 - **公众号日报标题改为半固定** — 为了让草稿箱里更容易直接识别“最新一条”，微信公众号日报的 frontmatter `title` 现在固定为 `AI · Web3 最新日报｜YYYY-MM-DD`。当天变化的 Web3 / AI 主线继续保留在 `digest`、`intro` 和 `今日焦点`，不再让标题随公共素材主线大幅波动。
 - **修复同日试发复用旧稿问题** — `src/publisher.rs` 现在不再把公众号日报临时文件固定写成 `daily-YYYY-MM-DD.md`，而是改成带 UTC 时分秒的唯一文件名。根因是 `moonpub push --render` 在同 slug 的 `.draft.json` 已存在时会复用旧渲染产物，导致“22:27 新发布”表面成功，但实际推到草稿箱的还是 21:53 的旧内容。
 - **AI / Web3 误分进一步收敛** — `src/daily_report/` 现在不再把短词 `"ai"` 当作无边界子串匹配，避免 `chain`、`Defiant`、`onchain` 一类 Web3 文本被误拉进 `AI 前沿`；当 AI / Web3 板块冲突时，也会优先把条目纠正回 Web3 或技术板块。
@@ -135,6 +135,12 @@
 - `cargo nextest run --all-features reporting::tests::publish_receipt_json_extracts_warning_lines_from_raw_output`
 - `cargo nextest run --all-features reporting::tests::report_status_json_marks_recently_published_with_warnings_when_receipt_has_warning`
 - `cargo nextest run --all-features reporting::tests::publish_receipt_automation_state_marks_soft_failure_without_login_timeout`
+- `cargo test publisher::tests::wechat`：3 个 publisher 封面与 slug 相关测试通过，覆盖唯一临时稿名、固定封面注入和 frontmatter 幂等
+- `cargo fmt --check`
+- `cargo clippy --all-targets --all-features --tests --benches -- -D warnings`
+- `cargo nextest run --all-features`：314 passed, 2 skipped
+- `cargo run -- --config config.toml daily-report --report-name '微信公众号日报' --output /tmp/wechat-report-cover-v1.md --publish`：于 `2026-06-26T15:14:33.195230+00:00` 返回 `published = true`、`publish_receipt_saved = true`、`automation_state = "ok"`，`raw_output` 包含 `images: 1 uploaded to WeChat CDN`，确认固定封面已通过 `cover:` 进入真实公众号草稿发布链路
+- `just report-history config.toml '微信公众号日报'`：最新回执为 `2026-06-26T15:14:33.195230+00:00`，`automation_state = "ok"`，`warnings = []`
 - `cargo nextest run --all-features persist_manual_publish_receipt_saves_receipt_for_report_target`
 - `cargo nextest run --all-features parses_report_login_command`
 - `cargo nextest run --all-features login_errors_when_bin_not_found`

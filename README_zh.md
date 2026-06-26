@@ -25,7 +25,7 @@
 - 基于最近已保存群消息和链接情报生成日报。
 - 多群日报目标配置，可按群覆盖 cron、prompt、回看窗口、消息数量和链接数量。
 - 群消息为空时可选使用 Hacker News、CoinMarketCap、CoinGecko、DeFi Llama、Dune、GitHub Trending、Slerf Blog 生成公共信息参考日报。
-- 基于公共素材生成的公众号日报当前继续交给 `moonpub --render` 默认生成封面，`QunMind` 侧优先聚焦内容质量与板块归类。
+- 微信公众号日报发布前会注入固定个人号封面：栏目是 `AI · Web3 最新日报`，署名是 `寻月隐君`，最终仍由 `moonpub --render` 负责渲染和上传。
 - 微信公众号日报标题当前固定为 `AI · Web3 最新日报｜YYYY-MM-DD`，当天主线放在 `digest`、导语和焦点模块里，方便在草稿箱中快速辨认最新一条。
 - 同一天内多次手工试发公众号日报时，QunMind 现在会为每次发布生成唯一临时稿件名，避免 `moonpub` 复用旧 `draft.json` 后出现“时间更新了，但正文还是上一版”的错觉。
 
@@ -78,7 +78,7 @@
 `QunMind` 当前的微信公众号日报不是独立闭环，而是依赖本地 `moonpub`：
 
 - 调用路径：`moonpub --articles <dir> push <temp_markdown_file> --render`
-- 在写入/发布前，QunMind 当前只负责准备正文 markdown；封面继续由 `moonpub --render` 默认生成，避免本地自定义封面和平台侧渲染规则分叉
+- 在真实发布前，QunMind 会把固定个人号封面 PNG 写到本次临时稿件同目录，并向临时 markdown frontmatter 注入相对 `cover:`；`moonpub --render` 继续负责按平台规则渲染正文、上传封面并推送草稿
 - 当前上游状态：本地 `moonpub` 已是 Beta / early adopter ready，更适合“生成草稿并人工复核”，还不适合承诺完全无人值守发布
 - `wx-cli doctor` 现在会把 `output = "wechat"` 的日报目标额外标记 `config_ready` 和 `dependency_blockers`，并进一步检查 `moonpub` 在本机是否可找到、`wechat_articles_dir` 是否真的是目录
 
@@ -93,6 +93,7 @@
 - `2026-06-24`：第一次真实公众号草稿试发成功
 - `2026-06-25`：第二次真实公众号草稿试发成功，最小可用链路确认打通
 - `2026-06-25`：基于内容质量优化后的 v5 预览稿完成第三次真实公众号草稿试发
+- `2026-06-26`：为个人公众号 `寻月隐君` 接入固定 `AI · Web3 最新日报` 封面
 - `2026-06-25` 到 `2026-06-26`：适合做内部灰度和连续试发
 - 不建议把“已经能推草稿”直接表述成“完全无人值守稳定上线”
 

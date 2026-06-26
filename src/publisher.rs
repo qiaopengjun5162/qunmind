@@ -61,6 +61,10 @@ impl Drop for TempFileGuard {
     }
 }
 
+const WECHAT_DAILY_COVER_BASENAME: &str = "ai-web3-daily-cover-900x500";
+const WECHAT_DAILY_COVER_BYTES: &[u8] =
+    include_bytes!("../docs/assets/wechat/ai-web3-daily-cover-900x500.png");
+
 pub fn publish_markdown(markdown: &str, target: &PublishTarget) -> Result<PublishReceipt> {
     match target {
         PublishTarget::WechatDraft { bin, articles_dir } => {
@@ -182,9 +186,11 @@ fn publish_to_wechat_draft(
     let now = chrono::Utc::now();
     let filename = build_wechat_daily_temp_filename(now);
     let path = dir.join(&filename);
+    let (markdown, cover_path) = prepare_wechat_markdown_with_cover(markdown, &path)?;
     std::fs::write(&path, markdown).map_err(QunMindError::Io)?;
 
     let _guard = TempFileGuard(path.clone());
+    let _cover_guard = TempFileGuard(cover_path);
 
     info!(
         path = %path.display(),
@@ -243,6 +249,75 @@ fn extract_publish_warnings(raw_output: &str) -> Vec<String> {
 
 fn build_wechat_daily_temp_filename(now: chrono::DateTime<chrono::Utc>) -> String {
     format!("daily-{}.md", now.format("%Y-%m-%d-%H-%M-%S"))
+}
+
+fn prepare_wechat_markdown_with_cover(
+    markdown: &str,
+    markdown_path: &std::path::Path,
+) -> Result<(String, PathBuf)> {
+    let dir = markdown_path.parent().ok_or_else(|| {
+        QunMindError::Config("wechat draft markdown path has no parent".to_string())
+    })?;
+    let cover_filename = wechat_daily_cover_filename(markdown_path)?;
+    let cover_path = dir.join(&cover_filename);
+    std::fs::write(&cover_path, WECHAT_DAILY_COVER_BYTES).map_err(QunMindError::Io)?;
+
+    Ok((
+        inject_wechat_frontmatter_fields(markdown, &cover_filename),
+        cover_path,
+    ))
+}
+
+fn wechat_daily_cover_filename(markdown_path: &std::path::Path) -> Result<String> {
+    let stem = markdown_path
+        .file_stem()
+        .and_then(|name| name.to_str())
+        .ok_or_else(|| {
+            QunMindError::Config("wechat draft markdown path has no valid file stem".to_string())
+        })?;
+    Ok(format!("{stem}.{WECHAT_DAILY_COVER_BASENAME}.png"))
+}
+
+fn inject_wechat_frontmatter_fields(markdown: &str, cover_filename: &str) -> String {
+    let cover_line = format!("cover: ./{cover_filename}");
+    let author_line = "wechat_author: 寻月隐君";
+
+    if !markdown.starts_with("---\n") {
+        return format!("---\n{cover_line}\n{author_line}\n---\n\n{markdown}");
+    }
+
+    let body_start = "---\n".len();
+    let rest = &markdown[body_start..];
+    let Some(close_offset) = rest.find("\n---") else {
+        return format!("---\n{cover_line}\n{author_line}\n---\n\n{markdown}");
+    };
+
+    let frontmatter = &rest[..close_offset];
+    let tail = &rest[close_offset + 1..];
+    let mut fields = frontmatter.to_string();
+
+    if !frontmatter
+        .lines()
+        .any(|line| line.trim_start().starts_with("cover:"))
+    {
+        if !fields.ends_with('\n') && !fields.is_empty() {
+            fields.push('\n');
+        }
+        fields.push_str(&cover_line);
+        fields.push('\n');
+    }
+    if !frontmatter
+        .lines()
+        .any(|line| line.trim_start().starts_with("wechat_author:"))
+    {
+        if !fields.ends_with('\n') && !fields.is_empty() {
+            fields.push('\n');
+        }
+        fields.push_str(author_line);
+        fields.push('\n');
+    }
+
+    format!("---\n{fields}{tail}")
 }
 
 #[cfg(test)]
@@ -365,6 +440,42 @@ mod tests {
             warnings,
             vec!["automation: login timeout: QR code not scanned within 120s"]
         );
+    }
+
+    #[test]
+    fn wechat_publish_preparation_injects_personal_account_cover() {
+        let dir = std::env::temp_dir().join(format!(
+            "qunmind-cover-test-{}",
+            chrono::Utc::now().timestamp_nanos_opt().unwrap_or_default()
+        ));
+        std::fs::create_dir_all(&dir).expect("create temp cover test dir");
+        let markdown_path = dir.join("daily.md");
+        let markdown =
+            "---\ntitle: \"AI · Web3 最新日报｜2026-06-26\"\ndigest: \"今日信号\"\n---\n\n正文";
+
+        let (prepared, cover_path) = prepare_wechat_markdown_with_cover(markdown, &markdown_path)
+            .expect("prepare markdown cover");
+
+        assert!(prepared.contains("cover: ./daily.ai-web3-daily-cover-900x500.png"));
+        assert!(prepared.contains("wechat_author"));
+        assert_eq!(
+            cover_path,
+            dir.join("daily.ai-web3-daily-cover-900x500.png")
+        );
+        assert!(cover_path.is_file());
+
+        std::fs::remove_dir_all(&dir).expect("remove temp cover test dir");
+    }
+
+    #[test]
+    fn wechat_frontmatter_cover_injection_is_idempotent() {
+        let markdown = "---\ntitle: \"AI · Web3 最新日报｜2026-06-26\"\ncover: ./custom.png\nwechat_author: 寻月隐君\n---\n\n正文";
+
+        let prepared = inject_wechat_frontmatter_fields(markdown, "daily.cover.png");
+
+        assert_eq!(prepared.matches("cover:").count(), 1);
+        assert!(prepared.contains("cover: ./custom.png"));
+        assert_eq!(prepared.matches("wechat_author:").count(), 1);
     }
 
     #[test]

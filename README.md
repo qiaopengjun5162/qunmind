@@ -33,6 +33,7 @@ The project currently supports:
 - Daily reports generated from recently stored group messages and link intelligence.
 - Per-group daily report targets with optional cron, prompt, lookback, message, and link overrides.
 - Optional Hacker News, CoinMarketCap, CoinGecko, DeFi Llama, Dune, GitHub Trending, and Slerf Blog fallback reports when a report group has no messages.
+- WeChat public-account report drafts use a fixed personal-account cover for the `AI · Web3 最新日报` column, branded as `寻月隐君`, while `moonpub` still owns final rendering and upload.
 
 ## Status
 
@@ -83,7 +84,7 @@ Immediate next step:
 The WeChat public-account report path currently depends on local `moonpub`, not on a standalone internal publisher:
 
 - Call path: `moonpub --articles <dir> push <temp_markdown_file> --render`
-- QunMind currently hands the final markdown to `moonpub --render` and lets `moonpub` generate the cover with its default rendering path; report-quality work is focused on content structure and section accuracy rather than local cover injection
+- Before handing markdown to `moonpub --render`, QunMind writes a per-draft local cover PNG and injects a relative `cover:` frontmatter field so the public-account draft uses the fixed `AI · Web3 最新日报` cover for the personal account `寻月隐君`
 - Upstream state: local `moonpub` is currently Beta / early adopter ready, better suited for draft generation plus manual review than for promising unattended publishing
 - `wx-cli doctor` now marks `output = "wechat"` report targets with `config_ready` and `dependency_blockers`, including whether `moonpub` is actually resolvable on this machine and whether `wechat_articles_dir` is a real directory
 
@@ -98,6 +99,7 @@ Current working timeline has shifted:
 - June 24, 2026: first real public-account draft push succeeded
 - June 25, 2026: second real public-account draft push succeeded and confirmed the minimum viable path
 - June 25, 2026: third real public-account draft push succeeded with the latest content-quality-tuned v5 preview
+- June 26, 2026: a fixed personal-account cover was added for `AI · Web3 最新日报`
 - June 25-26, 2026: internal gray rollout and repeated rehearsals are realistic
 - it is still not recommended to describe the path as fully unattended stable production yet
 
