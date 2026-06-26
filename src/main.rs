@@ -11,9 +11,9 @@ use qunmind::publisher::{configure_wechat_backend, login_wechat_backend, publish
 use qunmind::reporting::{
     build_ai_client, build_message_store, build_public_news_source, effective_publish_history_name,
     effective_report_status_target, generate_manual_daily_report_markdown,
-    manual_daily_report_publish_target, persist_manual_publish_receipt,
-    publish_receipt_automation_state, publish_receipt_json, report_status_json,
-    resolve_manual_daily_report_target,
+    manual_daily_report_publish_target, manual_publish_response_json,
+    persist_manual_publish_receipt, publish_receipt_automation_state, publish_receipt_json,
+    report_status_json, resolve_manual_daily_report_target,
 };
 use qunmind::scheduler::daily_report::DailyReportScheduler;
 use qunmind::wx_cli_commands::run_wx_cli_command;
@@ -149,23 +149,37 @@ async fn run_diagnostic_command(
             };
             println!(
                 "{}",
-                serde_json::to_string_pretty(&serde_json::json!({
-                    "ok": true,
-                    "report_name": report_target.name,
-                    "output_path": output.display().to_string(),
-                    "published": publish_receipt.is_some(),
-                    "publish_receipt_saved": publish_persistence.as_ref().is_some_and(|result| result.saved),
-                    "publish_receipt_save_error": publish_persistence.and_then(|result| result.save_error),
-                    "publish_receipt": publish_receipt.map(|receipt| serde_json::json!({
-                        "target": receipt.target,
-                        "destination": receipt.destination,
-                        "published_at": receipt.published_at,
-                        "summary": receipt.summary,
-                        "raw_output": receipt.raw_output,
-                        "warnings": receipt.warnings,
-                        "automation_state": publish_receipt_automation_state(&receipt.warnings),
-                    })),
-                }))?
+                serde_json::to_string_pretty(&match (publish_receipt, publish_persistence) {
+                    (Some(receipt), Some(persistence)) => manual_publish_response_json(
+                        &report_target.name,
+                        &output,
+                        &persistence,
+                        &receipt,
+                    ),
+                    (None, _) => serde_json::json!({
+                        "ok": true,
+                        "report_name": report_target.name,
+                        "output_path": output.display().to_string(),
+                        "published": false,
+                    }),
+                    (Some(receipt), None) => serde_json::json!({
+                        "ok": true,
+                        "report_name": report_target.name,
+                        "output_path": output.display().to_string(),
+                        "published": true,
+                        "publish_receipt_saved": false,
+                        "publish_receipt_save_error": "manual publish persistence result missing",
+                        "publish_receipt": {
+                            "target": receipt.target,
+                            "destination": receipt.destination,
+                            "published_at": receipt.published_at,
+                            "summary": receipt.summary,
+                            "raw_output": receipt.raw_output,
+                            "warnings": receipt.warnings,
+                            "automation_state": publish_receipt_automation_state(&receipt.warnings),
+                        },
+                    }),
+                })?
             );
             Ok(())
         }

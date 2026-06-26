@@ -227,6 +227,8 @@ just report-history config.toml '微信公众号日报'
 
 现在 MCP 也已经能直接走手工日报演练链路：`report_markdown` 会按和 `qunmind daily-report` 一样的“优先群消息和链接情报、群为空时再回退 public_sources”语义生成本地 markdown；`report_publish` 则只有在显式传入 `confirm_publish = true` 时，才会继续触发真实 publisher 边界。
 
+现在手工发布结果本身也会带下一步建议。也就是说，不管是 CLI 的 `daily-report --publish`，还是 MCP 的 `report_publish`，成功后的 JSON 都不再只停在 `published = true`，还会继续给出 `follow_up_status`，以及和 `report-status` 同语义的 `recommended_commands` / `recommended_tool_calls`，方便立刻判断下一步只是去看 `publish_history`，还是应该先走 `report_recover_automation`。
+
 当前这条链路已经完成过三次真实试发验证：
 - `report-status` 可到 `recently_published_with_warnings`
 - `publish-history` 已能查到最近三条成功回执

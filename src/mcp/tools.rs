@@ -7,8 +7,8 @@ use crate::publisher::{configure_wechat_backend, login_wechat_backend, publish_m
 use crate::reporting::{
     build_ai_client, build_message_store, build_public_news_source, effective_publish_history_name,
     effective_report_status_target, generate_manual_daily_report_markdown,
-    manual_daily_report_publish_target, persist_manual_publish_receipt,
-    publish_receipt_automation_state, publish_receipt_json, report_status_json,
+    manual_daily_report_publish_target, manual_publish_response_json,
+    persist_manual_publish_receipt, publish_receipt_json, report_status_json,
     resolve_manual_daily_report_target,
 };
 use crate::storage::MessageStore;
@@ -520,23 +520,14 @@ async fn tool_report_publish(config: &Config, args: &serde_json::Value) -> anyho
         persist_manual_publish_receipt(Ok(message_store), &report_target.name, &publish_receipt)
             .await;
 
-    Ok(serde_json::to_string_pretty(&serde_json::json!({
-        "ok": true,
-        "report_name": report_target.name,
-        "output_path": output_path.display().to_string(),
-        "published": true,
-        "publish_receipt_saved": publish_persistence.saved,
-        "publish_receipt_save_error": publish_persistence.save_error,
-        "publish_receipt": {
-            "target": publish_receipt.target,
-            "destination": publish_receipt.destination,
-            "published_at": publish_receipt.published_at,
-            "summary": publish_receipt.summary,
-            "raw_output": publish_receipt.raw_output,
-            "warnings": publish_receipt.warnings,
-            "automation_state": publish_receipt_automation_state(&publish_receipt.warnings),
-        },
-    }))?)
+    Ok(serde_json::to_string_pretty(
+        &manual_publish_response_json(
+            &report_target.name,
+            &output_path,
+            &publish_persistence,
+            &publish_receipt,
+        ),
+    )?)
 }
 
 fn tool_doctor(config: &Config, args: &serde_json::Value) -> anyhow::Result<String> {

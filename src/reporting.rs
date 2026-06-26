@@ -404,6 +404,52 @@ pub async fn persist_manual_publish_receipt(
     }
 }
 
+pub fn manual_publish_response_json(
+    report_name: &str,
+    output_path: &Path,
+    publish_persistence: &ManualPublishPersistence,
+    publish_receipt: &PublishReceipt,
+) -> serde_json::Value {
+    let automation_state = publish_receipt_automation_state(&publish_receipt.warnings);
+    let follow_up_status = if publish_receipt.warnings.is_empty() {
+        "recently_published"
+    } else {
+        "recently_published_with_warnings"
+    };
+    let blockers: [&str; 0] = [];
+    let missing_publish_env: [&str; 0] = [];
+
+    serde_json::json!({
+        "ok": true,
+        "report_name": report_name,
+        "output_path": output_path.display().to_string(),
+        "published": true,
+        "publish_receipt_saved": publish_persistence.saved,
+        "publish_receipt_save_error": publish_persistence.save_error,
+        "publish_receipt": {
+            "target": publish_receipt.target,
+            "destination": publish_receipt.destination,
+            "published_at": publish_receipt.published_at,
+            "summary": publish_receipt.summary,
+            "raw_output": publish_receipt.raw_output,
+            "warnings": publish_receipt.warnings,
+            "automation_state": automation_state,
+        },
+        "follow_up_status": follow_up_status,
+        "next_steps": report_status_next_steps(follow_up_status, &blockers),
+        "recommended_commands": report_status_recommended_commands(
+            follow_up_status,
+            report_name,
+            &blockers,
+            &missing_publish_env,
+        ),
+        "recommended_tool_calls": report_status_recommended_tool_calls(
+            follow_up_status,
+            report_name,
+        ),
+    })
+}
+
 pub async fn generate_manual_daily_report_markdown(
     _config: &Config,
     report_target: &ManualDailyReportTarget,
@@ -1187,6 +1233,102 @@ mod tests {
         let warnings = vec!["automation: preview step not found".to_string()];
 
         assert_eq!(publish_receipt_automation_state(&warnings), "soft_failed");
+    }
+
+    #[test]
+    fn manual_publish_response_json_recommends_history_for_clean_publish() {
+        let receipt = PublishReceipt {
+            target: "wechat_draft".to_string(),
+            destination: "/tmp/articles".to_string(),
+            published_at: "2026-06-26T10:00:00+00:00".to_string(),
+            summary: "moonpub draft push completed".to_string(),
+            raw_output: "ok".to_string(),
+            warnings: Vec::new(),
+        };
+        let persistence = ManualPublishPersistence {
+            saved: true,
+            save_error: None,
+        };
+
+        let json = manual_publish_response_json(
+            "微信公众号日报",
+            Path::new("/tmp/wechat-report.md"),
+            &persistence,
+            &receipt,
+        );
+
+        assert_eq!(json["follow_up_status"], "recently_published");
+        assert_eq!(
+            json["recommended_commands"],
+            serde_json::json!(["just report-history config.toml '微信公众号日报'"])
+        );
+        assert_eq!(
+            json["recommended_tool_calls"],
+            serde_json::json!([{
+                "tool": "publish_history",
+                "arguments": {
+                    "report_name": "微信公众号日报",
+                    "limit": 5
+                }
+            }])
+        );
+    }
+
+    #[test]
+    fn manual_publish_response_json_recommends_recovery_for_warning_publish() {
+        let receipt = PublishReceipt {
+            target: "wechat_draft".to_string(),
+            destination: "/tmp/articles".to_string(),
+            published_at: "2026-06-26T10:00:00+00:00".to_string(),
+            summary: "moonpub draft push completed with warnings".to_string(),
+            raw_output: "pushed\n  ⚠ automation: login timeout: QR code not scanned within 120s\n"
+                .to_string(),
+            warnings: vec![
+                "automation: login timeout: QR code not scanned within 120s".to_string(),
+            ],
+        };
+        let persistence = ManualPublishPersistence {
+            saved: true,
+            save_error: None,
+        };
+
+        let json = manual_publish_response_json(
+            "微信公众号日报",
+            Path::new("/tmp/wechat-report.md"),
+            &persistence,
+            &receipt,
+        );
+
+        assert_eq!(json["follow_up_status"], "recently_published_with_warnings");
+        assert_eq!(
+            json["recommended_commands"],
+            serde_json::json!([
+                "just report-recover-automation config.toml '微信公众号日报'",
+                "just report-history config.toml '微信公众号日报'"
+            ])
+        );
+        assert_eq!(
+            json["recommended_tool_calls"],
+            serde_json::json!([
+                {
+                    "tool": "report_recover_automation",
+                    "arguments": {
+                        "report_name": "微信公众号日报"
+                    }
+                },
+                {
+                    "tool": "publish_history",
+                    "arguments": {
+                        "report_name": "微信公众号日报",
+                        "limit": 5
+                    }
+                }
+            ])
+        );
+        assert_eq!(
+            json["publish_receipt"]["automation_state"],
+            "login_required"
+        );
     }
 
     impl Drop for EnvVarGuard {

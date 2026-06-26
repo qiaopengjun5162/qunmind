@@ -222,6 +222,8 @@ The same recovery flow is now available through MCP as first-class tools, not ju
 
 MCP can now also drive the manual report rehearsal path itself. `report_markdown` generates the local markdown file with the same group-message-first and public-source-fallback semantics used by `qunmind daily-report`, while `report_publish` only crosses the real external publisher boundary when the caller passes `confirm_publish = true`.
 
+Manual publish results now also carry their own follow-up hints. After a successful `daily-report --publish` or MCP `report_publish`, the JSON response no longer stops at "published = true": it also includes `follow_up_status`, plus the same `recommended_commands` and `recommended_tool_calls` pattern used by `report-status`, so operators and agents can immediately tell whether the next step is just `publish_history` or a recovery flow such as `report_recover_automation`.
+
 This path has now been verified with three real draft pushes:
 - `report-status` can advance to `recently_published_with_warnings`
 - `publish-history` now returns the three latest successful receipts
