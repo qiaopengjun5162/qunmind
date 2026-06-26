@@ -257,6 +257,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[ignore = "real network smoke test"]
     async fn fetches_real_web3_feeds() {
         let config = PublicSourcesConfig {
             web3_media_enabled: true,

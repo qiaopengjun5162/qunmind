@@ -85,6 +85,7 @@
 - **`mcp/tools.rs` 开始复用 wx-cli 共享 helper** — 这轮继续把 MCP 侧的 `test-plan`、`send` 和 `doctor` 命令胶水往 `src/wx_cli_runtime.rs` 收口，先让 CLI / MCP 共享 test-plan 渲染、send dry-run JSON 和 doctor 报告组装，减少两边各自拼装同一份 wx-cli 输出的重复。
 - **第二次真实公众号草稿试发成功** — 在补齐新的微信白名单 IP 后，`daily-report --publish` 于 `2026-06-25T08:12:42.890589+00:00` 再次成功推送公众号草稿，`publish-history` 已能返回最近两条成功回执。这说明“生成日报 -> 推送草稿 -> 保存发布回执 -> 查询发布历史”这条最小可用链路已经完成至少两次真实验证，不再只是单次偶发成功。
 - **cron 时区语义补档** — 现已明确记录 scheduler 按 `chrono::Utc` 解释 `schedule.daily_report_cron` 与 `schedule.daily_reports[].cron`。配置示例中的“北京时间早上 9 点”改为 `0 0 1 * * *`，公众号日报示例中的“北京时间早上 8 点”改为 `0 0 0 * * *`，避免把 UTC 表达误配成本地时间。
+- **默认测试路径去抖动** — `src/source/web3_media.rs` 的真实外网 RSS smoke test 现在改为默认 `#[ignore]`。原因不是功能撤回，而是避免 `cargo nextest run --all-features` 和 GitHub Actions 因第三方站点瞬时波动误红；默认 CI 继续覆盖解析与聚合逻辑，真实联通性留给显式人工验证。
 - **当前剩余问题从“能不能发”切到“发得够不够稳、内容够不够好”** — 这次真实试发前，白名单 IP 先后出现 `1.80.24.32` 和 `1.80.191.76` 两种出口；同时一次手工生成中还出现过 AI JSON 解析失败并退回空报告。现在项目的公众号日报 blocker 已不再是“主链路没打通”，而是“发布出口 IP 可能漂移”和“日报内容质量仍需继续优化”。
 - **日报内容质量兜底收口到 Rust 生成层** — `src/daily_report/` 现在会在 AI JSON 非法、字段过空或板块误分时自动补齐非空内容：包括回填标题/导语/总结、修正被 `codex -> dex` 误伤的 Web3 分类、补全深读摘要、过滤“具体用途待进一步了解”这类低信号评论、限制 AI/Web3/技术/深读条目数，并只保留正文实际用到的参考链接。这样当前日报不会再因为一次 AI 结构化输出失败就退化成近乎空白的草稿。
 - **第三次真实公众号草稿试发成功** — 基于新一轮内容质量收敛后的 `/tmp/wechat-report-preview-v5.md`，`just report-publish config.toml '微信公众号日报' '/tmp/wechat-report-preview-v5.md'` 已于 `2026-06-25T09:31:59.745312+00:00` 成功推送公众号草稿，`publish-history` 返回 `count = 3`。这说明当前不只是“主链路能发”，而是“内容优化后的版本也已经完成真实草稿验证”。

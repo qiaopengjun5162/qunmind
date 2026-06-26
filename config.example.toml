@@ -31,7 +31,8 @@ mention_names = []   # wx-cli 群机器人建议配置为 ["@AI助手"]；留空
 
 [schedule]
 daily_report_chat_id = ""                    # 目标群的 chat_id
-daily_report_cron = "0 0 1 * * *"            # UTC 01:00 = 北京时间 09:00
+# Cron is interpreted in UTC. UTC 01:00 = Beijing 09:00.
+daily_report_cron = "0 0 1 * * *"
 daily_report_lookback_hours = 24             # 日报读取最近多少小时的已保存群消息
 daily_report_max_links = 20                  # 日报最多纳入多少条去重链接
 daily_report_max_messages = 200              # 日报最多纳入多少条消息
@@ -39,7 +40,8 @@ daily_report_prompt = "请根据今天的对话生成一份简洁的日报摘要
 
 [[schedule.daily_reports]]
 chat_id = "group-chat-id-1"
-cron = "0 0 1 * * *"                         # UTC 01:00 = 北京时间 09:00
+# Cron is interpreted in UTC. UTC 01:00 = Beijing 09:00.
+cron = "0 0 1 * * *"
 enabled = true
 lookback_hours = 24
 max_links = 20
@@ -55,7 +57,8 @@ name = "投研群日报"
 # 微信公众号 RSS 日报 (需要 moonpub 已配置；目标群为空时可回退到 wechat_rss/public_sources)
 # [[schedule.daily_reports]]
 # chat_id = ""
-# cron = "0 0 0 * * *"                      # UTC 00:00 = 北京时间 08:00
+# UTC 00:00 = Beijing 08:00.
+# cron = "0 0 0 * * *"
 # daily_quote = ""   # 可选: 日报底部每日一句
 # enabled = true
 # name = "微信公众号日报"
