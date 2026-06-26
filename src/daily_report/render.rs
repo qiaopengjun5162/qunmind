@@ -50,13 +50,7 @@ pub(super) fn assemble_markdown(
 }
 
 fn compute_title_digest(report: &ReportJson, items: &[PublicNewsItem]) -> (String, String) {
-    let title = if !report.title_hint.trim().is_empty() {
-        truncate_str(report.title_hint.trim(), 64)
-    } else if let Some(first) = items.first() {
-        truncate_str(&short_title(first, first.score.unwrap_or(0)), 50)
-    } else {
-        "今日科技信号".to_string()
-    };
+    let title = format!("微信公众号日报｜{}", Utc::now().format("%Y-%m-%d"));
 
     // digest 优先用 focus_text，它比 intro 第一句更具体。
     let digest = if !report.focus_text.trim().is_empty() {
@@ -521,5 +515,19 @@ mod tests {
     #[test]
     fn truncate_str_counts_characters_instead_of_bytes() {
         assert_eq!(truncate_str("中文标题需要稳定截断", 8), "中文标题需...");
+    }
+
+    #[test]
+    fn compute_title_digest_uses_fixed_daily_title() {
+        let report = ReportJson {
+            title_hint: "会被忽略的动态标题".to_string(),
+            focus_text: "USDT 接入巴西支付轨".to_string(),
+            ..Default::default()
+        };
+
+        let (title, digest) = compute_title_digest(&report, &[make_item("web3", Some(90))]);
+
+        assert!(title.starts_with("微信公众号日报｜"));
+        assert_eq!(digest, "USDT 接入巴西支付轨");
     }
 }
