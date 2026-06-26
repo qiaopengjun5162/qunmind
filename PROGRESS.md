@@ -145,6 +145,7 @@
 - `gh pr checks 44 --watch=false`：`test` 通过，`docker` 因 Dockerfile 未复制编译期封面资产失败，错误为 `couldn't read src/../docs/assets/wechat/ai-web3-daily-cover-900x500.png`
 - `docker compose config`：通过
 - `docker build --tag qunmind:local .`：本机未启动 OrbStack Docker daemon，无法本地完成镜像构建；本次 Dockerfile 修复需继续由 GitHub Actions docker job 复跑确认
+- `gh pr checks 44 --watch=false`：修复后新一轮 CI 全绿，`test` pass，`docker` pass
 - `cargo nextest run --all-features persist_manual_publish_receipt_saves_receipt_for_report_target`
 - `cargo nextest run --all-features parses_report_login_command`
 - `cargo nextest run --all-features login_errors_when_bin_not_found`
