@@ -183,6 +183,8 @@ These sources are filtered toward programming technology, Rust, Web3, crypto, AI
 
 The legacy `[schedule] daily_report_chat_id` config still works for one report group. For multiple groups, add `[[schedule.daily_reports]]` entries. Each entry can override `cron`, `prompt`, `lookback_hours`, `max_messages`, and `max_links`; missing fields inherit the global `[schedule]` defaults.
 
+One scheduling detail is easy to miss: cron evaluation currently uses `chrono::Utc`, not the host's local timezone. So a target meant for Beijing `08:00` should use `cron = "0 0 0 * * *"`. Writing `cron = "0 0 8 * * *"` would fire at Beijing `16:00`.
+
 ## Link Intelligence
 
 QunMind extracts `http://` / `https://` links from incoming text messages and stores them in PostgreSQL `message_links`. Daily reports include recent deduplicated links up to `schedule.daily_report_max_links`, so article, tool, and repository resources stay visible instead of being buried in chat text.

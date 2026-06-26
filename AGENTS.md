@@ -188,6 +188,7 @@ MCP 侧的 `report_markdown` / `report_publish` 也应继续复用 `src/reportin
 - 新增投研工具时优先维护 `research::tools` 里的目录、分类和自动化标记；可自动化的市场数据/链上/安全来源再逐步落成 Rust connector。
 - 新增 AI / Agent 学习资料时优先维护 `research::learning` 里的目录、分类、格式、URL 和学习路径；只有会影响运行时能力的内容再落到 `AiClient`、prompt 或 connector。
 - 新增日报能力时优先保持 `ScheduleConfig` 旧字段兼容；多目标行为放进 `schedule.daily_reports`，不要把群日报配置混进 `groups` 的机器人回复 persona 配置。
+- `schedule.daily_report_cron` 和 `schedule.daily_reports[].cron` 当前都按 `chrono::Utc` 解释，不按宿主机本地时区解释；文档、示例和对用户的说明必须显式写清楚 UTC 与北京时间换算，避免把 `0 0 8 * * *` 误说成“北京时间早上 8 点”。
 - Rust 代码不要使用会 panic 的直接解包调用。生产错误用 `thiserror` 的 `QunMindError` 或 `anyhow` 传播；测试断言也用显式 `match` / 测试 helper，避免把 panic 解包调用重新加回来。
 - 源码注释和 Rust doc comment 优先使用英文；注释应解释业务边界、兼容原因、失败策略或安全约束，不要只复述代码动作。
 - 新增 wx-cli 诊断行为时优先放在 `diagnostic` 模块并补纯函数测试，避免 `main.rs` 重新膨胀成业务逻辑集中点。

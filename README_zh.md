@@ -174,6 +174,8 @@ topic_keywords = ["rust", "web3", "ai", "llm", "agent", "zkp", "solana", "ethere
 
 旧的 `[schedule] daily_report_chat_id` 单群配置仍然可用。需要多个群分别发日报时，使用 `[[schedule.daily_reports]]` 配置多个目标；每个目标可以单独覆盖 `cron`、`prompt`、`lookback_hours`、`max_messages` 和 `max_links`，未填写的字段继承全局 `[schedule]` 默认值。
 
+这里要特别注意：scheduler 当前按 `chrono::Utc` 解释 cron，不按机器本地时区解释。也就是说，想要北京时间早上 `08:00` 自动发，配置应写成 `cron = "0 0 0 * * *"`；如果写 `cron = "0 0 8 * * *"`，实际会在北京时间 `16:00` 触发。
+
 ## 链接情报
 
 QunMind 会在保存文本消息时抽取 `http://` / `https://` 链接，写入 PostgreSQL 的 `message_links` 表。日报会按 `schedule.daily_report_max_links` 纳入最近去重链接，帮助模型区分普通聊天内容和文章、工具、仓库等可追踪资源。
