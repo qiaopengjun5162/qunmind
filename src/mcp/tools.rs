@@ -1034,6 +1034,64 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn tool_report_publish_returns_follow_up_actions_for_warning_receipt() {
+        let report_target = crate::reporting::ManualDailyReportTarget {
+            name: "微信公众号日报".to_string(),
+            chat_id: "group-1".to_string(),
+            output: "wechat".to_string(),
+            prompt: "请生成日报".to_string(),
+            lookback_hours: 24,
+            max_messages: 100,
+            max_links: 20,
+            daily_quote: String::new(),
+            wechat_bin: "/bin/echo".to_string(),
+            wechat_articles_dir: "/tmp/articles".to_string(),
+        };
+        let receipt = crate::publisher::PublishReceipt {
+            target: "wechat_draft".to_string(),
+            destination: "/tmp/articles".to_string(),
+            published_at: "2026-06-26T10:00:00+00:00".to_string(),
+            summary: "moonpub draft push completed with warnings".to_string(),
+            raw_output: "pushed\n  ⚠ automation: login timeout: QR code not scanned within 120s\n"
+                .to_string(),
+            warnings: vec![
+                "automation: login timeout: QR code not scanned within 120s".to_string(),
+            ],
+        };
+        let persistence = crate::reporting::ManualPublishPersistence {
+            saved: true,
+            save_error: None,
+        };
+
+        let json = crate::reporting::manual_publish_response_json(
+            &report_target.name,
+            std::path::Path::new("/tmp/wechat-report.md"),
+            &persistence,
+            &receipt,
+        );
+
+        assert_eq!(json["follow_up_status"], "recently_published_with_warnings");
+        assert_eq!(
+            json["recommended_tool_calls"],
+            serde_json::json!([
+                {
+                    "tool": "report_recover_automation",
+                    "arguments": {
+                        "report_name": "微信公众号日报"
+                    }
+                },
+                {
+                    "tool": "publish_history",
+                    "arguments": {
+                        "report_name": "微信公众号日报",
+                        "limit": 5
+                    }
+                }
+            ])
+        );
+    }
+
+    #[tokio::test]
     async fn tool_report_markdown_rejects_ambiguous_multi_target_setup() {
         let config = config_from(
             r#"
