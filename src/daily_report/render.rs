@@ -318,23 +318,16 @@ fn extract_github_repo(url: &str) -> Option<String> {
     Some(format!("{owner}/{repo}"))
 }
 
-fn truncate_str(s: &str, max_bytes: usize) -> String {
+fn truncate_str(s: &str, max_chars: usize) -> String {
     let trimmed = s.trim();
-    if trimmed.len() <= max_bytes {
+    let chars = trimmed.chars().collect::<Vec<_>>();
+    if chars.len() <= max_chars {
         return trimmed.to_string();
     }
-    let mut end = 0;
-    for (i, c) in trimmed.char_indices() {
-        if i + c.len_utf8() > max_bytes.saturating_sub(3) {
-            break;
-        }
-        end = i + c.len_utf8();
-    }
-    if end == 0 {
-        trimmed[..max_bytes.saturating_sub(3)].to_string() + "..."
-    } else {
-        format!("{}...", &trimmed[..end])
-    }
+    chars[..max_chars.saturating_sub(3)]
+        .iter()
+        .collect::<String>()
+        + "..."
 }
 
 #[cfg(test)]
@@ -523,5 +516,10 @@ mod tests {
         );
         assert!(body.contains("OpenAI 发布首款自研芯片"));
         assert!(!body.contains("OpenAI unveils its first custom chip"));
+    }
+
+    #[test]
+    fn truncate_str_counts_characters_instead_of_bytes() {
+        assert_eq!(truncate_str("中文标题需要稳定截断", 8), "中文标题需...");
     }
 }

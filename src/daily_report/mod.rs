@@ -13,6 +13,7 @@ use crate::source::{PublicNewsItem, PublicNewsSource};
 use parser::parse_report_json;
 use prompt::build_json_prompt;
 use render::assemble_markdown;
+use render::sanitize;
 
 const MAX_REPORT_ITEMS: usize = 25;
 const MAX_AI_ITEMS: usize = 4;
@@ -112,12 +113,68 @@ fn enrich_report(mut report: ReportJson, items: &[PublicNewsItem]) -> ReportJson
         report.summary = fallback_summary(items);
     }
 
+    promote_web3_focus(&mut report, items);
     polish_sections(&mut report, items);
 
     report
 }
 
+fn promote_web3_focus(report: &mut ReportJson, items: &[PublicNewsItem]) {
+    if !should_prioritize_web3(report, items) {
+        return;
+    }
+
+    let Some(primary) = report
+        .web3_items
+        .first()
+        .cloned()
+        .or_else(|| fallback_web3_items(items).into_iter().next())
+    else {
+        return;
+    };
+
+    report.title_hint = compact_title(
+        &format!(
+            "{}，{}",
+            primary_web3_title(&primary),
+            web3_title_tail(items)
+        ),
+        64,
+    );
+
+    let primary_comment = best_section_comment(&primary, items);
+    report.focus_text = primary_comment.clone();
+    report.focus_url = primary.url.clone();
+
+    let followup = report
+        .web3_items
+        .get(1)
+        .map(|item| best_section_comment(item, items))
+        .unwrap_or_else(|| "链上资金、协议与机构动作同步升温。".to_string());
+    report.intro = format!(
+        "今天的公共素材主线集中在 Web3。{}；{}",
+        primary_comment, followup
+    );
+    report.summary = fallback_web3_summary(report, items);
+}
+
 fn rebalance_sections(report: &mut ReportJson, items: &[PublicNewsItem]) {
+    let mut retained_ai = Vec::new();
+    let mut moved_ai_to_web3 = Vec::new();
+    let mut moved_ai_to_tech = Vec::new();
+
+    for item in report.ai_items.drain(..) {
+        if is_ai_section_item(&item, items) {
+            retained_ai.push(item);
+        } else if is_web3_section_item(&item, items) {
+            moved_ai_to_web3.push(item);
+        } else {
+            moved_ai_to_tech.push(item);
+        }
+    }
+
+    report.ai_items = retained_ai;
+
     let mut retained_web3 = Vec::new();
     let mut moved_to_tech = Vec::new();
 
@@ -130,7 +187,9 @@ fn rebalance_sections(report: &mut ReportJson, items: &[PublicNewsItem]) {
     }
 
     report.web3_items = retained_web3;
+    report.web3_items.extend(moved_ai_to_web3);
     report.tech_items.extend(moved_to_tech);
+    report.tech_items.extend(moved_ai_to_tech);
 
     dedup_sections(&mut report.ai_items);
     dedup_sections(&mut report.web3_items);
@@ -304,6 +363,34 @@ fn fallback_summary(items: &[PublicNewsItem]) -> String {
     )
 }
 
+fn fallback_web3_summary(report: &ReportJson, items: &[PublicNewsItem]) -> String {
+    let mut topics = report
+        .web3_items
+        .iter()
+        .take(3)
+        .map(|item| summary_topic(&best_section_comment(item, items), 32))
+        .collect::<Vec<_>>();
+
+    if topics.is_empty() {
+        topics = fallback_web3_items(items)
+            .into_iter()
+            .take(3)
+            .map(|item| summary_topic(&best_section_comment(&item, items), 32))
+            .collect();
+    }
+
+    let joined = if topics.is_empty() {
+        "机构入场、协议治理与链上数据".to_string()
+    } else {
+        topics.join("；")
+    };
+
+    format!(
+        "今天公开素材的主线是 Web3：{}。AI 和开源项目继续提供辅助观察，但头部信号已经明显转向链上协议、RWA 与资金/治理相关动态。",
+        joined
+    )
+}
+
 fn is_preferred_read_item(item: &PublicNewsItem) -> bool {
     let source = item.source.to_lowercase();
     if source.contains("hacker news") {
@@ -388,6 +475,7 @@ fn comment_is_low_signal(comment: &str) -> bool {
         || normalized.contains("具体用途待进一步了解")
         || normalized.contains("具体功能待观察")
         || normalized.contains("具体用途待观察")
+        || comment_needs_upgrade(normalized)
 }
 
 fn dedup_sections(items: &mut Vec<ReportSection>) {
@@ -410,11 +498,23 @@ fn polish_section_items(section_items: &mut Vec<ReportSection>, items: &[PublicN
     section_items.retain(|section| is_high_signal_section_item(section, items));
 
     for section in section_items.iter_mut() {
-        if comment_is_low_signal(&section.comment)
-            && let Some(item) = items.iter().find(|item| item.url == section.url)
-        {
-            section.comment = fallback_comment(item);
+        if let Some(item) = items.iter().find(|item| item.url == section.url) {
+            if comment_needs_upgrade(&section.comment)
+                && let Some(summary) = item.summary.as_deref()
+            {
+                let summary = clean_summary(summary);
+                if !summary.is_empty() && !comment_needs_upgrade(&summary) {
+                    section.comment = summary;
+                    continue;
+                }
+            }
+
+            if comment_is_low_signal(&section.comment) {
+                section.comment = fallback_comment(item);
+            }
         }
+
+        section.comment = best_section_comment(section, items);
     }
 }
 
@@ -495,10 +595,65 @@ fn is_web3_section_item(item: &ReportSection, source_items: &[PublicNewsItem]) -
         .is_some_and(is_web3_item)
 }
 
+fn is_ai_section_item(item: &ReportSection, source_items: &[PublicNewsItem]) -> bool {
+    if is_web3_section_item(item, source_items) {
+        return false;
+    }
+
+    if contains_any_text(
+        &format!("{} {} {}", item.title, item.comment, item.source).to_lowercase(),
+        &[
+            "openai",
+            "anthropic",
+            "claude",
+            "qwen",
+            "glm",
+            "deepseek",
+            "llm",
+            "agent",
+            "multi-agent",
+            "multi agent",
+            "model",
+            "inference",
+            "gpu",
+            "chip",
+            "arxiv",
+            "reasoning",
+            "multimodal",
+            "prompt",
+            "assistant",
+        ],
+    ) {
+        return true;
+    }
+
+    source_items
+        .iter()
+        .find(|source_item| source_item.url == item.url)
+        .is_some_and(is_ai_item)
+}
+
 fn clean_summary(summary: &str) -> String {
     let trimmed = summary.trim().replace('\n', " ");
     let compact = trimmed.split_whitespace().collect::<Vec<_>>().join(" ");
-    compact_title(&compact, 120)
+    natural_excerpt(&compact, 120)
+}
+
+fn best_section_comment(section: &ReportSection, items: &[PublicNewsItem]) -> String {
+    if !comment_needs_upgrade(&section.comment) {
+        return sanitize(section.comment.trim());
+    }
+
+    if let Some(item) = items.iter().find(|item| item.url == section.url)
+        && let Some(summary) = item.summary.as_deref()
+    {
+        let summary = clean_summary(summary);
+        if !summary.is_empty() && !comment_needs_upgrade(&summary) {
+            return sanitize(&summary);
+        }
+    }
+
+    sanitize(section.comment.trim())
 }
 
 fn theme_label(item: &PublicNewsItem) -> String {
@@ -533,10 +688,13 @@ fn infer_ai_subsection(item: &PublicNewsItem) -> &'static str {
 }
 
 fn is_ai_item(item: &PublicNewsItem) -> bool {
+    if is_web3_item(item) {
+        return false;
+    }
+
     contains_any(
         item,
         &[
-            "ai",
             "llm",
             "agent",
             "model",
@@ -623,6 +781,74 @@ fn is_web3_item(item: &PublicNewsItem) -> bool {
     )
 }
 
+fn should_prioritize_web3(report: &ReportJson, items: &[PublicNewsItem]) -> bool {
+    let source_web3 = items.iter().filter(|item| is_web3_item(item)).count();
+    let rendered_web3 = report.web3_items.len();
+
+    source_web3 >= 3 && rendered_web3 >= 2
+}
+
+fn web3_title_tail(items: &[PublicNewsItem]) -> String {
+    if items
+        .iter()
+        .any(|item| contains_any(item, &["tokenization", "rwa"]))
+    {
+        "代币化与链上资金主线".to_string()
+    } else if items.iter().any(|item| {
+        contains_any(
+            item,
+            &["regulator", "licensing", "alert list", "mas", "asic"],
+        )
+    }) {
+        "监管与市场结构升温".to_string()
+    } else if items
+        .iter()
+        .any(|item| contains_any(item, &["aave", "defi"]))
+    {
+        "DeFi 与机构动作升温".to_string()
+    } else {
+        "Web3 主线升温".to_string()
+    }
+}
+
+fn primary_web3_title(section: &ReportSection) -> String {
+    let comment = section.comment.trim();
+    let title = section.title.trim();
+
+    let lower = format!("{title} {comment}").to_lowercase();
+    if lower.contains("hyperliquid") && (comment.contains("警示") || lower.contains("alert list"))
+    {
+        return "Hyperliquid 遭监管警示".to_string();
+    }
+    if lower.contains("base") && (comment.contains("恢复") || lower.contains("outage")) {
+        return "Base 故障后恢复出块".to_string();
+    }
+    if lower.contains("aave") {
+        return "Aave 回应治理传闻".to_string();
+    }
+    if lower.contains("solana") {
+        return "Solana 链上活跃度升温".to_string();
+    }
+    if lower.contains("usdt") && lower.contains("brazil") {
+        return "USDT 接入巴西支付轨".to_string();
+    }
+    if lower.contains("bond fund") || lower.contains("ownership record") {
+        return "英国债券基金登记上链".to_string();
+    }
+    if lower.contains("invesco") && comment.contains("代币化") {
+        return "Invesco 押注代币化基金".to_string();
+    }
+    if lower.contains("story") || lower.contains("data foundation") {
+        return "Story 转向 AI 数据市场".to_string();
+    }
+
+    comment
+        .split(['，', '。', '；'])
+        .find(|part| !part.trim().is_empty())
+        .map(|part| compact_title(part.trim(), 20))
+        .unwrap_or_else(|| compact_title(title, 20))
+}
+
 fn contains_any(item: &PublicNewsItem, keywords: &[&str]) -> bool {
     let haystack = format!(
         "{} {} {} {} {}",
@@ -638,7 +864,9 @@ fn contains_any(item: &PublicNewsItem, keywords: &[&str]) -> bool {
 }
 
 fn contains_any_text(haystack: &str, keywords: &[&str]) -> bool {
-    keywords.iter().any(|keyword| haystack.contains(keyword))
+    keywords
+        .iter()
+        .any(|keyword| text_contains_keyword(haystack, keyword))
 }
 
 fn compact_title(value: &str, max_chars: usize) -> String {
@@ -652,6 +880,72 @@ fn compact_title(value: &str, max_chars: usize) -> String {
         .take(max_chars.saturating_sub(3))
         .collect::<String>()
         + "..."
+}
+
+fn summary_topic(value: &str, max_chars: usize) -> String {
+    let normalized = natural_excerpt(&sanitize(value.trim()), max_chars);
+    if normalized.is_empty() {
+        compact_title(value.trim(), max_chars)
+    } else {
+        normalized
+    }
+}
+
+fn comment_needs_upgrade(comment: &str) -> bool {
+    let trimmed = comment.trim();
+    (trimmed.starts_with("讨论了") || trimmed.starts_with("介绍了"))
+        && (trimmed.ends_with("的情况。")
+            || trimmed.ends_with("这一情况。")
+            || trimmed.ends_with("相关情况。")
+            || trimmed.ends_with("的话题。"))
+}
+
+fn natural_excerpt(value: &str, max_chars: usize) -> String {
+    let trimmed = value.trim();
+    if trimmed.chars().count() <= max_chars {
+        return trimmed.to_string();
+    }
+
+    let chars = trimmed.chars().collect::<Vec<_>>();
+    let separators = ['。', '；', '，', '：', ':', '.', '!', '！', '?', '？'];
+    for index in (0..max_chars.min(chars.len())).rev() {
+        if separators.contains(&chars[index]) && index >= max_chars / 3 {
+            let excerpt = chars[..index].iter().collect::<String>().trim().to_string();
+            if !excerpt.is_empty() {
+                return excerpt;
+            }
+        }
+    }
+
+    let candidate = chars[..max_chars.min(chars.len())]
+        .iter()
+        .collect::<String>();
+    candidate.trim().to_string()
+}
+
+fn text_contains_keyword(haystack: &str, keyword: &str) -> bool {
+    if keyword.contains(' ') || keyword.contains('-') || keyword.len() > 3 {
+        return haystack.contains(keyword);
+    }
+
+    let mut start = 0;
+    while let Some(offset) = haystack[start..].find(keyword) {
+        let index = start + offset;
+        let end = index + keyword.len();
+        let left_ok = haystack[..index]
+            .chars()
+            .next_back()
+            .is_none_or(|ch| !ch.is_ascii_alphanumeric());
+        let right_ok = haystack[end..]
+            .chars()
+            .next()
+            .is_none_or(|ch| !ch.is_ascii_alphanumeric());
+        if left_ok && right_ok {
+            return true;
+        }
+        start = end;
+    }
+    false
 }
 
 #[cfg(test)]
@@ -835,6 +1129,124 @@ mod tests {
         assert!(report.contains("## 📚 推荐深读"));
         assert!(report.contains("OpenAI Codex"));
         assert!(report.contains("rustdesk/rustdesk"));
+    }
+
+    #[tokio::test]
+    async fn generate_promotes_web3_focus_when_web3_items_dominate() {
+        let json = r#"{
+            "title_hint":"RustDesk、Bun登GitHub榜首",
+            "intro":"GitHub Trending 今天依然活跃。",
+            "focus_text":"RustDesk 成为 GitHub 最热项目",
+            "focus_url":"https://github.com/rustdesk/rustdesk",
+            "ai_items":[],
+            "ai_signals":[],
+            "web3_items":[
+                {
+                    "title":"Aave denies discounted token sale",
+                    "url":"https://example.com/aave",
+                    "comment":"Aave 回应治理与收入安排相关报道",
+                    "source":"The Defiant",
+                    "points":120
+                },
+                {
+                    "title":"Invesco files tokenized fund",
+                    "url":"https://example.com/invesco",
+                    "comment":"Invesco 申请代币化货币市场基金",
+                    "source":"The Defiant",
+                    "points":118
+                },
+                {
+                    "title":"Story pivots to AI data",
+                    "url":"https://example.com/story",
+                    "comment":"Story 更名 DATA Foundation，聚焦 AI 数据市场",
+                    "source":"The Defiant",
+                    "points":116
+                }
+            ],
+            "tech_items":[
+                {
+                    "title":"rustdesk / rustdesk",
+                    "url":"https://github.com/rustdesk/rustdesk",
+                    "comment":"RustDesk 保持高热度",
+                    "source":"GitHub Trending",
+                    "points":90
+                }
+            ],
+            "tech_timeline":[],
+            "reads":[],
+            "summary":"今天公开素材主要来自 GitHub Trending。"
+        }"#;
+        let generator = DailyReportGenerator::new(
+            Arc::new(FakeAi::new(vec![json.to_string()])),
+            Arc::new(FakeNewsSource {
+                items: vec![
+                    PublicNewsItem {
+                        source: "The Defiant".to_string(),
+                        title: "Aave denies discounted token sale".to_string(),
+                        url: "https://example.com/aave".to_string(),
+                        summary: Some(
+                            "Aave 回应与协议收入安排相关报道，强调收入继续流向持有者。".to_string(),
+                        ),
+                        author: None,
+                        published_at: None,
+                        score: Some(120),
+                        comments: None,
+                        ai_score: None,
+                        category: Some("web3".to_string()),
+                    },
+                    PublicNewsItem {
+                        source: "The Defiant".to_string(),
+                        title: "Invesco files tokenized fund".to_string(),
+                        url: "https://example.com/invesco".to_string(),
+                        summary: Some(
+                            "Invesco 申请推出基于链上 rails 的代币化货币基金。".to_string(),
+                        ),
+                        author: None,
+                        published_at: None,
+                        score: Some(118),
+                        comments: None,
+                        ai_score: None,
+                        category: Some("web3".to_string()),
+                    },
+                    PublicNewsItem {
+                        source: "The Defiant".to_string(),
+                        title: "Story pivots to AI data".to_string(),
+                        url: "https://example.com/story".to_string(),
+                        summary: Some(
+                            "Story 更名为 DATA Foundation，并转向 AI 训练数据市场。".to_string(),
+                        ),
+                        author: None,
+                        published_at: None,
+                        score: Some(116),
+                        comments: None,
+                        ai_score: None,
+                        category: Some("web3".to_string()),
+                    },
+                    PublicNewsItem {
+                        source: "GitHub Trending".to_string(),
+                        title: "rustdesk / rustdesk".to_string(),
+                        url: "https://github.com/rustdesk/rustdesk".to_string(),
+                        summary: Some("RustDesk 保持高热度。".to_string()),
+                        author: None,
+                        published_at: None,
+                        score: Some(90),
+                        comments: None,
+                        ai_score: None,
+                        category: None,
+                    },
+                ],
+            }),
+            String::new(),
+        );
+
+        let report = generator.generate().await.expect("report");
+        assert!(report.contains("Aave") || report.contains("Invesco") || report.contains("Story"));
+        assert!(report.contains("## ⛓️ Web3 技术"));
+        assert!(report.contains("代币化") || report.contains("Aave") || report.contains("Web3"));
+        assert!(
+            !report.contains("digest: \"RustDesk、Bun登GitHub榜首\""),
+            "web3-heavy days should not keep a pure GitHub-Trending title"
+        );
     }
 
     #[tokio::test]
@@ -1098,5 +1510,199 @@ mod tests {
         assert!(refs.contains("https://example.com/tech1"));
         assert!(refs.contains("https://example.com/read1"));
         assert!(!refs.contains("https://example.com/unused"));
+    }
+
+    #[tokio::test]
+    async fn generate_moves_web3_items_out_of_ai_section() {
+        let json = r#"{
+            "title_hint":"测试日报",
+            "intro":"今天多条链上协议动态被讨论",
+            "focus_text":"Pump.fun 母公司 Baton Corporation 招募首席法务官",
+            "focus_url":"https://example.com/pumpfun",
+            "ai_items":[
+                {
+                    "subsection":"工作方式变革",
+                    "title":"Pump.fun parent Baton hires chief legal officer",
+                    "url":"https://example.com/pumpfun",
+                    "comment":"Pump.fun 母公司 Baton Corporation 招募首席法务官，继续补齐合规团队。",
+                    "source":"The Defiant",
+                    "points":101
+                }
+            ],
+            "ai_signals":[],
+            "web3_items":[],
+            "tech_items":[
+                {
+                    "title":"OpenAI Codex",
+                    "url":"https://github.com/openai/codex",
+                    "comment":"OpenAI 的代码模型项目继续保持热度",
+                    "source":"GitHub Trending",
+                    "points":90
+                }
+            ],
+            "tech_timeline":[],
+            "reads":[],
+            "summary":"今天技术动态较多。"
+        }"#;
+        let generator = DailyReportGenerator::new(
+            Arc::new(FakeAi::new(vec![json.to_string()])),
+            Arc::new(FakeNewsSource {
+                items: vec![
+                    PublicNewsItem {
+                        source: "The Defiant".to_string(),
+                        title: "Pump.fun parent Baton hires chief legal officer".to_string(),
+                        url: "https://example.com/pumpfun".to_string(),
+                        summary: Some(
+                            "Pump.fun 母公司 Baton Corporation 招募首席法务官，继续补齐合规与机构沟通能力。".to_string(),
+                        ),
+                        author: None,
+                        published_at: None,
+                        score: Some(101),
+                        comments: None,
+                        ai_score: None,
+                        category: Some("web3".to_string()),
+                    },
+                    PublicNewsItem {
+                        source: "GitHub Trending".to_string(),
+                        title: "OpenAI Codex".to_string(),
+                        url: "https://github.com/openai/codex".to_string(),
+                        summary: Some("OpenAI 的代码模型项目继续保持热度。".to_string()),
+                        author: None,
+                        published_at: None,
+                        score: Some(90),
+                        comments: None,
+                        ai_score: None,
+                        category: None,
+                    },
+                ],
+            }),
+            String::new(),
+        );
+
+        let report = generator.generate().await.expect("report");
+        let ai_section = report
+            .split("## 🤖 AI 前沿")
+            .nth(1)
+            .and_then(|rest| rest.split("## ").next())
+            .unwrap_or("");
+        let web3_section = report
+            .split("## ⛓️ Web3 技术")
+            .nth(1)
+            .and_then(|rest| rest.split("## ").next())
+            .unwrap_or("");
+
+        assert!(!ai_section.contains("Pump.fun"));
+        assert!(web3_section.contains("Pump.fun"));
+    }
+
+    #[test]
+    fn ai_detection_does_not_treat_chain_as_ai_keyword_hit() {
+        let item = PublicNewsItem {
+            source: "The Defiant".to_string(),
+            title: "Onchain treasury activity remains active".to_string(),
+            url: "https://example.com/onchain".to_string(),
+            summary: Some("链上 treasury 与协议动态仍在持续。".to_string()),
+            author: None,
+            published_at: None,
+            score: Some(88),
+            comments: None,
+            ai_score: None,
+            category: Some("web3".to_string()),
+        };
+
+        assert!(!is_ai_item(&item));
+    }
+
+    #[test]
+    fn natural_excerpt_prefers_sentence_boundaries_over_ellipsis() {
+        let text = "Aave创始人回应Kraken收购传闻，澄清当前并不存在折价卖币安排，协议收入仍按既有路线分配。";
+        assert_eq!(natural_excerpt(text, 24), "Aave创始人回应Kraken收购传闻");
+    }
+
+    #[tokio::test]
+    async fn generate_prefers_source_summary_for_generic_web3_comment() {
+        let json = r#"{
+            "title_hint":"测试日报",
+            "intro":"今天有多条 Web3 动态",
+            "focus_text":"讨论了Solana生态链桥净流入排名第三的情况。",
+            "focus_url":"https://example.com/solana",
+            "ai_items":[],
+            "ai_signals":[],
+            "web3_items":[
+                {
+                    "title":"A ‘Solana Summer’ could lead the next altcoin rebound if Bitcoin holds the line",
+                    "url":"https://example.com/solana",
+                    "comment":"讨论了Solana生态链桥净流入排名第三的情况。",
+                    "source":"CryptoSlate",
+                    "points":120
+                },
+                {
+                    "title":"USDT gets a Brazil payment route",
+                    "url":"https://example.com/usdt",
+                    "comment":"讨论了USDT进入巴西支付场景的情况。",
+                    "source":"CryptoSlate",
+                    "points":118
+                },
+                {
+                    "title":"UK bond fund ownership records move onto Ethereum and Solana",
+                    "url":"https://example.com/bonds",
+                    "comment":"介绍了英国债券基金登记迁移上链的情况。",
+                    "source":"CryptoSlate",
+                    "points":116
+                }
+            ],
+            "tech_items":[],
+            "tech_timeline":[],
+            "reads":[],
+            "summary":"今天以 Web3 为主。"
+        }"#;
+        let generator = DailyReportGenerator::new(
+            Arc::new(FakeAi::new(vec![json.to_string()])),
+            Arc::new(FakeNewsSource {
+                items: vec![
+                    PublicNewsItem {
+                        source: "CryptoSlate".to_string(),
+                        title: "A ‘Solana Summer’ could lead the next altcoin rebound if Bitcoin holds the line".to_string(),
+                        url: "https://example.com/solana".to_string(),
+                        summary: Some("Solana 生态链桥净流入升至第三位，链上活跃度与资金关注度同步回升。".to_string()),
+                        author: None,
+                        published_at: None,
+                        score: Some(120),
+                        comments: None,
+                        ai_score: None,
+                        category: Some("web3".to_string()),
+                    },
+                    PublicNewsItem {
+                        source: "CryptoSlate".to_string(),
+                        title: "USDT gets a Brazil payment route".to_string(),
+                        url: "https://example.com/usdt".to_string(),
+                        summary: Some("USDT 在巴西接入本地支付轨，让稳定币支付直接嵌入现有用户路径。".to_string()),
+                        author: None,
+                        published_at: None,
+                        score: Some(118),
+                        comments: None,
+                        ai_score: None,
+                        category: Some("web3".to_string()),
+                    },
+                    PublicNewsItem {
+                        source: "CryptoSlate".to_string(),
+                        title: "UK bond fund ownership records move onto Ethereum and Solana".to_string(),
+                        url: "https://example.com/bonds".to_string(),
+                        summary: Some("英国债券基金所有权记录迁移到以太坊与 Solana，RWA 基础设施继续向全天候可访问推进。".to_string()),
+                        author: None,
+                        published_at: None,
+                        score: Some(116),
+                        comments: None,
+                        ai_score: None,
+                        category: Some("web3".to_string()),
+                    },
+                ],
+            }),
+            String::new(),
+        );
+
+        let report = generator.generate().await.expect("report");
+        assert!(report.contains("Solana 生态链桥净流入升至第三位"));
+        assert!(!report.contains("讨论了Solana生态链桥净流入排名第三的情况"));
     }
 }

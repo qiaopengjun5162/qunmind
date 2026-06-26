@@ -25,6 +25,7 @@
 - 基于最近已保存群消息和链接情报生成日报。
 - 多群日报目标配置，可按群覆盖 cron、prompt、回看窗口、消息数量和链接数量。
 - 群消息为空时可选使用 Hacker News、CoinMarketCap、CoinGecko、DeFi Llama、Dune、GitHub Trending、Slerf Blog 生成公共信息参考日报。
+- 基于公共素材生成的公众号日报当前继续交给 `moonpub --render` 默认生成封面，`QunMind` 侧优先聚焦内容质量与板块归类。
 
 ## 当前状态
 
@@ -75,6 +76,7 @@
 `QunMind` 当前的微信公众号日报不是独立闭环，而是依赖本地 `moonpub`：
 
 - 调用路径：`moonpub --articles <dir> push <temp_markdown_file> --render`
+- 在写入/发布前，QunMind 当前只负责准备正文 markdown；封面继续由 `moonpub --render` 默认生成，避免本地自定义封面和平台侧渲染规则分叉
 - 当前上游状态：本地 `moonpub` 已是 Beta / early adopter ready，更适合“生成草稿并人工复核”，还不适合承诺完全无人值守发布
 - `wx-cli doctor` 现在会把 `output = "wechat"` 的日报目标额外标记 `config_ready` 和 `dependency_blockers`，并进一步检查 `moonpub` 在本机是否可找到、`wechat_articles_dir` 是否真的是目录
 

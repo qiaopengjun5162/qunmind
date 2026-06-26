@@ -83,6 +83,7 @@ Immediate next step:
 The WeChat public-account report path currently depends on local `moonpub`, not on a standalone internal publisher:
 
 - Call path: `moonpub --articles <dir> push <temp_markdown_file> --render`
+- QunMind currently hands the final markdown to `moonpub --render` and lets `moonpub` generate the cover with its default rendering path; report-quality work is focused on content structure and section accuracy rather than local cover injection
 - Upstream state: local `moonpub` is currently Beta / early adopter ready, better suited for draft generation plus manual review than for promising unattended publishing
 - `wx-cli doctor` now marks `output = "wechat"` report targets with `config_ready` and `dependency_blockers`, including whether `moonpub` is actually resolvable on this machine and whether `wechat_articles_dir` is a real directory
 

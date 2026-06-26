@@ -88,6 +88,11 @@
 - **默认测试路径去抖动** — `src/source/web3_media.rs` 的真实外网 RSS smoke test 现在改为默认 `#[ignore]`。原因不是功能撤回，而是避免 `cargo nextest run --all-features` 和 GitHub Actions 因第三方站点瞬时波动误红；默认 CI 继续覆盖解析与聚合逻辑，真实联通性留给显式人工验证。
 - **当前剩余问题从“能不能发”切到“发得够不够稳、内容够不够好”** — 这次真实试发前，白名单 IP 先后出现 `1.80.24.32` 和 `1.80.191.76` 两种出口；同时一次手工生成中还出现过 AI JSON 解析失败并退回空报告。现在项目的公众号日报 blocker 已不再是“主链路没打通”，而是“发布出口 IP 可能漂移”和“日报内容质量仍需继续优化”。
 - **日报内容质量兜底收口到 Rust 生成层** — `src/daily_report/` 现在会在 AI JSON 非法、字段过空或板块误分时自动补齐非空内容：包括回填标题/导语/总结、修正被 `codex -> dex` 误伤的 Web3 分类、补全深读摘要、过滤“具体用途待进一步了解”这类低信号评论、限制 AI/Web3/技术/深读条目数，并只保留正文实际用到的参考链接。这样当前日报不会再因为一次 AI 结构化输出失败就退化成近乎空白的草稿。
+- **Web3 主线前置** — 当公共素材里 Web3 信号足够强时，`src/daily_report/` 现在不再只把 Web3 塞进单独小节，而会优先把标题、导语、焦点和总结一起拉回 Web3 主线，避免“文中明明有 Web3，第一眼看上去却像 GitHub 榜单”的错位观感。
+- **公众号日报封面回退到 `moonpub` 默认生成** — 撤回了本地自定义封面注入链路，CLI `daily-report`、MCP `report_markdown/report_publish` 和 `publish_markdown(...)` 重新统一为只输出正文 markdown，再交给 `moonpub --render` 按平台默认逻辑生成封面。这样当前优化重点重新集中到内容质量，而不是本地图片资产。
+- **AI / Web3 误分进一步收敛** — `src/daily_report/` 现在不再把短词 `"ai"` 当作无边界子串匹配，避免 `chain`、`Defiant`、`onchain` 一类 Web3 文本被误拉进 `AI 前沿`；当 AI / Web3 板块冲突时，也会优先把条目纠正回 Web3 或技术板块。
+- **中文摘要收敛改为按句意截断** — Web3 主线总结和引用摘要现在优先在中文标点边界截断，尽量避免 `Aave创始人回应Kraken收购传闻，澄...` 这种机械省略号观感。
+- **本机格式化验证约束保持不变** — 这轮继续确认 macOS 本机 `taplo fmt` 仍会触发 `Attempted to create a NULL object` panic，因此 `just fmt` 在本机不应被当成可靠通过标准；本轮实际完成的是 `cargo fmt` + `just clippy` + `just test`。
 - **第三次真实公众号草稿试发成功** — 基于新一轮内容质量收敛后的 `/tmp/wechat-report-preview-v5.md`，`just report-publish config.toml '微信公众号日报' '/tmp/wechat-report-preview-v5.md'` 已于 `2026-06-25T09:31:59.745312+00:00` 成功推送公众号草稿，`publish-history` 返回 `count = 3`。这说明当前不只是“主链路能发”，而是“内容优化后的版本也已经完成真实草稿验证”。
 - **公众号日报登录入口标准化** — 新增 `qunmind report-login --report-name <name>` 与 `just report-login config.toml '微信公众号日报'`，把之前只存在于说明里的 “`moonpub login`” 收口成项目内标准入口。这样当 `report-status` 或最近回执明确给出 `automation_state = "login_required"` 时，下一步操作已经不需要再手工回忆上游命令格式，而是继续沿 QunMind 自己的日报目标解析与配置边界执行。
 - **公众号日报自动化重试入口标准化** — 现在继续新增 `qunmind report-configure --report-name <name>` 与 `just report-configure config.toml '微信公众号日报'`，把登录后的浏览器自动化重试也收口进项目内流程。这样“草稿已成功，但自动化卡在登录或预览后续步骤”时，恢复动作已经变成 `report-login -> report-configure` 两个标准命令，而不是继续依赖聊天说明。
