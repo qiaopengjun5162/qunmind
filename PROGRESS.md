@@ -91,6 +91,7 @@
 - **Web3 主线前置** — 当公共素材里 Web3 信号足够强时，`src/daily_report/` 现在不再只把 Web3 塞进单独小节，而会优先把标题、导语、焦点和总结一起拉回 Web3 主线，避免“文中明明有 Web3，第一眼看上去却像 GitHub 榜单”的错位观感。
 - **公众号日报封面回退到 `moonpub` 默认生成** — 撤回了本地自定义封面注入链路，CLI `daily-report`、MCP `report_markdown/report_publish` 和 `publish_markdown(...)` 重新统一为只输出正文 markdown，再交给 `moonpub --render` 按平台默认逻辑生成封面。这样当前优化重点重新集中到内容质量，而不是本地图片资产。
 - **公众号日报标题改为半固定** — 为了让草稿箱里更容易直接识别“最新一条”，微信公众号日报的 frontmatter `title` 现在固定为 `微信公众号日报｜YYYY-MM-DD`。当天变化的 Web3 / AI 主线继续保留在 `digest`、`intro` 和 `今日焦点`，不再让标题随公共素材主线大幅波动。
+- **修复同日试发复用旧稿问题** — `src/publisher.rs` 现在不再把公众号日报临时文件固定写成 `daily-YYYY-MM-DD.md`，而是改成带 UTC 时分秒的唯一文件名。根因是 `moonpub push --render` 在同 slug 的 `.draft.json` 已存在时会复用旧渲染产物，导致“22:27 新发布”表面成功，但实际推到草稿箱的还是 21:53 的旧内容。
 - **AI / Web3 误分进一步收敛** — `src/daily_report/` 现在不再把短词 `"ai"` 当作无边界子串匹配，避免 `chain`、`Defiant`、`onchain` 一类 Web3 文本被误拉进 `AI 前沿`；当 AI / Web3 板块冲突时，也会优先把条目纠正回 Web3 或技术板块。
 - **中文摘要收敛改为按句意截断** — Web3 主线总结和引用摘要现在优先在中文标点边界截断，尽量避免 `Aave创始人回应Kraken收购传闻，澄...` 这种机械省略号观感。
 - **本机格式化验证约束保持不变** — 这轮继续确认 macOS 本机 `taplo fmt` 仍会触发 `Attempted to create a NULL object` panic，因此 `just fmt` 在本机不应被当成可靠通过标准；本轮实际完成的是 `cargo fmt` + `just clippy` + `just test`。

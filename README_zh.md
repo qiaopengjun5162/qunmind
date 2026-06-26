@@ -27,6 +27,7 @@
 - 群消息为空时可选使用 Hacker News、CoinMarketCap、CoinGecko、DeFi Llama、Dune、GitHub Trending、Slerf Blog 生成公共信息参考日报。
 - 基于公共素材生成的公众号日报当前继续交给 `moonpub --render` 默认生成封面，`QunMind` 侧优先聚焦内容质量与板块归类。
 - 微信公众号日报标题当前固定为 `微信公众号日报｜YYYY-MM-DD`，当天主线放在 `digest`、导语和焦点模块里，方便在草稿箱中快速辨认最新一条。
+- 同一天内多次手工试发公众号日报时，QunMind 现在会为每次发布生成唯一临时稿件名，避免 `moonpub` 复用旧 `draft.json` 后出现“时间更新了，但正文还是上一版”的错觉。
 
 ## 当前状态
 

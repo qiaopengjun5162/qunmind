@@ -179,7 +179,8 @@ fn publish_to_wechat_draft(
     let dir = std::env::temp_dir().join("qunmind-daily");
     std::fs::create_dir_all(&dir).map_err(QunMindError::Io)?;
 
-    let filename = format!("daily-{}.md", chrono::Utc::now().format("%Y-%m-%d"));
+    let now = chrono::Utc::now();
+    let filename = build_wechat_daily_temp_filename(now);
     let path = dir.join(&filename);
     std::fs::write(&path, markdown).map_err(QunMindError::Io)?;
 
@@ -240,9 +241,14 @@ fn extract_publish_warnings(raw_output: &str) -> Vec<String> {
         .collect()
 }
 
+fn build_wechat_daily_temp_filename(now: chrono::DateTime<chrono::Utc>) -> String {
+    format!("daily-{}.md", now.format("%Y-%m-%d-%H-%M-%S"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use chrono::TimeZone;
 
     #[test]
     fn publish_rejects_empty_wechat_target_config() {
@@ -307,6 +313,17 @@ mod tests {
                 .to_string()
                 .contains("启动 moonpub test-yulan")
         );
+    }
+
+    #[test]
+    fn wechat_daily_temp_filename_includes_time_to_avoid_slug_reuse() {
+        let now = chrono::Utc
+            .with_ymd_and_hms(2026, 6, 26, 14, 27, 7)
+            .single()
+            .expect("valid timestamp");
+        let filename = build_wechat_daily_temp_filename(now);
+
+        assert_eq!(filename, "daily-2026-06-26-14-27-07.md");
     }
 
     #[test]
