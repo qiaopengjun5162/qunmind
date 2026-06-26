@@ -791,7 +791,7 @@ mod tests {
             "manual public daily report markdown",
         );
 
-        assert!(markdown.contains("title: \"微信公众号日报｜"));
+        assert!(markdown.contains("title: \"AI · Web3 最新日报｜"));
         assert!(markdown.contains("Rust release"));
     }
 

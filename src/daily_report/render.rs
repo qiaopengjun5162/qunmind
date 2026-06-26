@@ -50,7 +50,7 @@ pub(super) fn assemble_markdown(
 }
 
 fn compute_title_digest(report: &ReportJson, items: &[PublicNewsItem]) -> (String, String) {
-    let title = format!("微信公众号日报｜{}", Utc::now().format("%Y-%m-%d"));
+    let title = format!("AI · Web3 最新日报｜{}", Utc::now().format("%Y-%m-%d"));
 
     // digest 优先用 focus_text，它比 intro 第一句更具体。
     let digest = if !report.focus_text.trim().is_empty() {
@@ -527,7 +527,7 @@ mod tests {
 
         let (title, digest) = compute_title_digest(&report, &[make_item("web3", Some(90))]);
 
-        assert!(title.starts_with("微信公众号日报｜"));
+        assert!(title.starts_with("AI · Web3 最新日报｜"));
         assert_eq!(digest, "USDT 接入巴西支付轨");
     }
 }
