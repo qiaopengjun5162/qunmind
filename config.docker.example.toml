@@ -31,7 +31,6 @@ mention_names = []
 
 [schedule]
 daily_report_chat_id = ""
-# Cron is interpreted in UTC. UTC 01:00 = Beijing 09:00.
 daily_report_cron = "0 0 1 * * *"
 daily_report_lookback_hours = 24
 daily_report_max_links = 20
