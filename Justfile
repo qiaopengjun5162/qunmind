@@ -91,6 +91,22 @@ db-create db='qunmind':
 report-status config='config.toml' report='微信公众号日报' limit='5':
     cargo run -- --config {{config}} report-status --report-name "{{report}}" --limit {{limit}}
 
+# 打开公众号后台登录，供浏览器自动化复用登录态
+report-login config='config.toml' report='微信公众号日报':
+    cargo run -- --config {{config}} report-login --report-name "{{report}}"
+
+# 重试公众号浏览器自动化配置
+report-configure config='config.toml' report='微信公众号日报' headed='false':
+    cargo run -- --config {{config}} report-configure --report-name "{{report}}" {{if headed == "true" { "--headed" } else { "" }}}
+
+# 一键执行登录 + 浏览器自动化重试
+report-recover-automation config='config.toml' report='微信公众号日报' headed='false':
+    cargo run -- --config {{config}} report-recover-automation --report-name "{{report}}" {{if headed == "true" { "--headed" } else { "" }}}
+
+# 单独测试公众号预览步骤
+report-preview config='config.toml' report='微信公众号日报' headed='false':
+    cargo run -- --config {{config}} report-preview --report-name "{{report}}" {{if headed == "true" { "--headed" } else { "" }}}
+
 # 生成本地日报 markdown（不发布）
 report-markdown config='config.toml' report='微信公众号日报' output='/tmp/wechat-report.md':
     cargo run -- --config {{config}} daily-report --report-name "{{report}}" --output {{output}}

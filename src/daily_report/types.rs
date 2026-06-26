@@ -1,6 +1,6 @@
 use serde::Deserialize;
 
-#[derive(Deserialize, Default)]
+#[derive(Deserialize, Default, Clone)]
 pub(crate) struct ReportJson {
     #[serde(default)]
     pub title_hint: String,
@@ -26,7 +26,40 @@ pub(crate) struct ReportJson {
     pub summary: String,
 }
 
-#[derive(Deserialize, Default)]
+impl ReportJson {
+    pub(crate) fn referenced_urls(&self) -> std::collections::HashSet<&str> {
+        let mut urls = std::collections::HashSet::new();
+
+        if !self.focus_url.trim().is_empty() {
+            urls.insert(self.focus_url.trim());
+        }
+
+        for item in &self.ai_items {
+            if !item.url.trim().is_empty() {
+                urls.insert(item.url.trim());
+            }
+        }
+        for item in &self.web3_items {
+            if !item.url.trim().is_empty() {
+                urls.insert(item.url.trim());
+            }
+        }
+        for item in &self.tech_items {
+            if !item.url.trim().is_empty() {
+                urls.insert(item.url.trim());
+            }
+        }
+        for item in &self.reads {
+            if !item.url.trim().is_empty() {
+                urls.insert(item.url.trim());
+            }
+        }
+
+        urls
+    }
+}
+
+#[derive(Deserialize, Default, Clone)]
 pub(crate) struct ReportSection {
     #[serde(default)]
     pub title: String,
@@ -42,7 +75,7 @@ pub(crate) struct ReportSection {
     pub subsection: String,
 }
 
-#[derive(Deserialize, Default)]
+#[derive(Deserialize, Default, Clone)]
 pub(crate) struct ReportRead {
     #[serde(default)]
     pub title: String,

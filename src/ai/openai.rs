@@ -74,7 +74,7 @@ impl AiClient for OpenAiClient {
         let req_body = ChatRequest {
             model: self.model.clone(),
             messages: req_messages,
-            max_tokens: Some(2048),
+            max_tokens: Some(4096),
         };
 
         debug!("调用 AI API: {}", self.api_url);

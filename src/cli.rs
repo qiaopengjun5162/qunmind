@@ -60,6 +60,43 @@ pub enum CliCommand {
         #[arg(long, default_value_t = 5)]
         limit: i64,
     },
+    /// 打开公众号浏览器登录，供后续自动化复用登录态
+    #[command(name = "report-login")]
+    ReportLogin {
+        /// 日报目标名称；为空时自动复用唯一日报目标
+        #[arg(long, default_value = "")]
+        report_name: String,
+    },
+    /// 重试公众号浏览器自动化配置步骤
+    #[command(name = "report-configure")]
+    ReportConfigure {
+        /// 日报目标名称；为空时自动复用唯一日报目标
+        #[arg(long, default_value = "")]
+        report_name: String,
+        /// 用有头浏览器调试自动化步骤
+        #[arg(long)]
+        headed: bool,
+    },
+    /// 顺序执行公众号登录与浏览器自动化重试
+    #[command(name = "report-recover-automation")]
+    ReportRecoverAutomation {
+        /// 日报目标名称；为空时自动复用唯一日报目标
+        #[arg(long, default_value = "")]
+        report_name: String,
+        /// 用有头浏览器调试自动化步骤
+        #[arg(long)]
+        headed: bool,
+    },
+    /// 单独测试公众号预览步骤
+    #[command(name = "report-preview")]
+    ReportPreview {
+        /// 日报目标名称；为空时自动复用唯一日报目标
+        #[arg(long, default_value = "")]
+        report_name: String,
+        /// 用有头浏览器调试预览步骤
+        #[arg(long)]
+        headed: bool,
+    },
 }
 
 #[derive(Debug, Subcommand)]
@@ -625,6 +662,84 @@ mod tests {
                 assert_eq!(limit, 2);
             }
             _ => panic!("report-status command should parse"),
+        }
+    }
+
+    #[test]
+    fn parses_report_login_command() {
+        let args = parse_args(&["qunmind", "report-login", "--report-name", "技术群日报"]);
+
+        match args.command {
+            Some(CliCommand::ReportLogin { report_name }) => {
+                assert_eq!(report_name, "技术群日报");
+            }
+            _ => panic!("report-login command should parse"),
+        }
+    }
+
+    #[test]
+    fn parses_report_configure_command() {
+        let args = parse_args(&[
+            "qunmind",
+            "report-configure",
+            "--report-name",
+            "技术群日报",
+            "--headed",
+        ]);
+
+        match args.command {
+            Some(CliCommand::ReportConfigure {
+                report_name,
+                headed,
+            }) => {
+                assert_eq!(report_name, "技术群日报");
+                assert!(headed);
+            }
+            _ => panic!("report-configure command should parse"),
+        }
+    }
+
+    #[test]
+    fn parses_report_recover_automation_command() {
+        let args = parse_args(&[
+            "qunmind",
+            "report-recover-automation",
+            "--report-name",
+            "技术群日报",
+            "--headed",
+        ]);
+
+        match args.command {
+            Some(CliCommand::ReportRecoverAutomation {
+                report_name,
+                headed,
+            }) => {
+                assert_eq!(report_name, "技术群日报");
+                assert!(headed);
+            }
+            _ => panic!("report-recover-automation command should parse"),
+        }
+    }
+
+    #[test]
+    fn parses_report_preview_command() {
+        let args = parse_args(&[
+            "qunmind",
+            "report-preview",
+            "--report-name",
+            "技术群日报",
+            "--headed",
+        ]);
+
+        match args.command {
+            Some(CliCommand::ReportPreview {
+                report_name,
+                headed,
+            }) => {
+                assert_eq!(report_name, "技术群日报");
+                assert!(headed);
+            }
+            _ => panic!("report-preview command should parse"),
         }
     }
 }

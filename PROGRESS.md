@@ -14,15 +14,15 @@
 
 ### Current Phase
 
-当前处于：**MVP 骨架完成，正在从“功能存在”走向“真实可验证、可对外介绍”**
+当前处于：**MVP 骨架完成，公众号日报最小可用链路已真实打通，正在从“功能存在”走向“真实可验证、可对外介绍”**
 
 粗粒度进度条：
 
 - 产品主链路：`[########--] ~80%`
 - wx-cli 诊断与重放：`[#########-] ~85%`
-- 日报生成与发布：`[#######---] ~75%`
-- 真实微信联调验证：`[###-------] ~30%`
-- 生产可用度：`[###-------] ~35%`
+- 日报生成与发布：`[#########-] ~92%`
+- 真实微信联调验证：`[#####-----] ~50%`
+- 生产可用度：`[#####-----] ~50%`
 
 这里的百分比是工程判断，不是精确度量。含义是：
 
@@ -32,7 +32,7 @@
 当前已进入一个更具体的子阶段：
 
 - **wx-cli 命令编排层第二轮收口进行中**
-- **公众号日报试发链路已经真实打通**
+- **公众号日报最小可用目标已经真实打通**
 
 ### Small Goals
 
@@ -45,7 +45,7 @@
    用脱敏后的 capture fixture 验证 poll / dry-run / handle-once / send 的实际行为，而不是只停留在合成样本；继续把“必须唯一选中一条消息才能离线重放”的安全约束固化进去。
 
 3. **`QunMind × moonpub` 联调固化**  
-   把微信公众号日报依赖前置检查、联调清单和上线前提写实，避免“代码能调起 moonpub”被误判为“日报已经可上线”。
+   把微信公众号日报依赖前置检查、联调清单、warning 语义和上线前提写实，继续盯住白名单 IP、草稿箱复核与内容质量，避免“代码能调起 moonpub”被误判为“日报已经完全稳定上线”。
 
 4. **对外描述统一**  
    README / README_zh / PROGRESS 持续保持同一口径，让“当前做到哪、下一步做什么”始终可直接引用。
@@ -61,10 +61,11 @@
 如果目标切到“明天能不能把公众号日报草稿推出来”，当前最短操作路径已经收口成：
 
 1. `just db-create`
-2. `just report-status report="微信公众号日报"`
-3. `just report-markdown report="微信公众号日报" output="/tmp/wechat-report.md"`
-4. 用户明确批准后，再执行 `just report-publish report="微信公众号日报" output="/tmp/wechat-report.md"`
-5. `just report-history report="微信公众号日报"`
+2. `just report-status config.toml '微信公众号日报'`
+3. 如果回执已显示 `automation_state = "login_required"`，先执行 `just report-recover-automation config.toml '微信公众号日报'`
+4. `just report-markdown config.toml '微信公众号日报' '/tmp/wechat-report.md'`
+5. 用户明确批准后，再执行 `just report-publish config.toml '微信公众号日报' '/tmp/wechat-report.md'`
+6. `just report-history config.toml '微信公众号日报'`
 
 ## 2026-06-24
 
@@ -80,7 +81,23 @@
 - **首轮真实公众号草稿试发成功** — 在补齐 `WECHAT_APPID` / `WECHAT_SECRET` 并放行当前公网 IP 后，`daily-report --publish` 已真实推送成功，`publish-history` 已出现第一条回执，`report-status` 也从 `ready_for_first_publish` 切换到 `recently_published`。当前 `moonpub` 返回的附加提示是 `automation: login timeout: QR code not scanned within 120s`，但这次并未阻止草稿成功入库，说明真正的“推草稿”主路径已经跑通。
 - **发布 warning 结构化** — `PublishReceipt`、`report-status`、`publish-history` 和手工 `daily-report --publish` 的 JSON 现在会显式输出 `warnings`。像这次 `moonpub` 的 `automation: login timeout` 不再只藏在 `raw_output` 里，后续判断“这次是完全干净成功”还是“成功但仍需人工盯一下自动化”会更直接。
 - **发布 warning 升级为状态信号** — `report-status` 现在不再把“最近成功但有自动化 warning”的情况和普通 `recently_published` 混在一起。只要最近成功回执里仍有结构化 `warnings`，状态就会直接升级成 `recently_published_with_warnings`，并给出“人工复核草稿 + 继续监控回执”的下一步动作。
+- **自动化 warning 进一步细化为可执行状态** — 当前发布回执和 `report-status` 现在不只会告诉你“有 warning”，还会额外区分 `automation_state`。像 `automation: login timeout: QR code not scanned within 120s` 这类 warning 会被明确标成 `login_required`，语义是“草稿已推成功，但浏览器自动化没有真正进入预览/配置步骤”；下一步应先跑 `report-login` 再接 `report-configure`，而不是误以为系统根本没走自动化。
 - **`mcp/tools.rs` 开始复用 wx-cli 共享 helper** — 这轮继续把 MCP 侧的 `test-plan`、`send` 和 `doctor` 命令胶水往 `src/wx_cli_runtime.rs` 收口，先让 CLI / MCP 共享 test-plan 渲染、send dry-run JSON 和 doctor 报告组装，减少两边各自拼装同一份 wx-cli 输出的重复。
+- **第二次真实公众号草稿试发成功** — 在补齐新的微信白名单 IP 后，`daily-report --publish` 于 `2026-06-25T08:12:42.890589+00:00` 再次成功推送公众号草稿，`publish-history` 已能返回最近两条成功回执。这说明“生成日报 -> 推送草稿 -> 保存发布回执 -> 查询发布历史”这条最小可用链路已经完成至少两次真实验证，不再只是单次偶发成功。
+- **cron 时区语义补档** — 现已明确记录 scheduler 按 `chrono::Utc` 解释 `schedule.daily_report_cron` 与 `schedule.daily_reports[].cron`。配置示例中的“北京时间早上 9 点”改为 `0 0 1 * * *`，公众号日报示例中的“北京时间早上 8 点”改为 `0 0 0 * * *`，避免把 UTC 表达误配成本地时间。
+- **默认测试路径去抖动** — `src/source/web3_media.rs` 的真实外网 RSS smoke test 现在改为默认 `#[ignore]`。原因不是功能撤回，而是避免 `cargo nextest run --all-features` 和 GitHub Actions 因第三方站点瞬时波动误红；默认 CI 继续覆盖解析与聚合逻辑，真实联通性留给显式人工验证。
+- **当前剩余问题从“能不能发”切到“发得够不够稳、内容够不够好”** — 这次真实试发前，白名单 IP 先后出现 `1.80.24.32` 和 `1.80.191.76` 两种出口；同时一次手工生成中还出现过 AI JSON 解析失败并退回空报告。现在项目的公众号日报 blocker 已不再是“主链路没打通”，而是“发布出口 IP 可能漂移”和“日报内容质量仍需继续优化”。
+- **日报内容质量兜底收口到 Rust 生成层** — `src/daily_report/` 现在会在 AI JSON 非法、字段过空或板块误分时自动补齐非空内容：包括回填标题/导语/总结、修正被 `codex -> dex` 误伤的 Web3 分类、补全深读摘要、过滤“具体用途待进一步了解”这类低信号评论、限制 AI/Web3/技术/深读条目数，并只保留正文实际用到的参考链接。这样当前日报不会再因为一次 AI 结构化输出失败就退化成近乎空白的草稿。
+- **第三次真实公众号草稿试发成功** — 基于新一轮内容质量收敛后的 `/tmp/wechat-report-preview-v5.md`，`just report-publish config.toml '微信公众号日报' '/tmp/wechat-report-preview-v5.md'` 已于 `2026-06-25T09:31:59.745312+00:00` 成功推送公众号草稿，`publish-history` 返回 `count = 3`。这说明当前不只是“主链路能发”，而是“内容优化后的版本也已经完成真实草稿验证”。
+- **公众号日报登录入口标准化** — 新增 `qunmind report-login --report-name <name>` 与 `just report-login config.toml '微信公众号日报'`，把之前只存在于说明里的 “`moonpub login`” 收口成项目内标准入口。这样当 `report-status` 或最近回执明确给出 `automation_state = "login_required"` 时，下一步操作已经不需要再手工回忆上游命令格式，而是继续沿 QunMind 自己的日报目标解析与配置边界执行。
+- **公众号日报自动化重试入口标准化** — 现在继续新增 `qunmind report-configure --report-name <name>` 与 `just report-configure config.toml '微信公众号日报'`，把登录后的浏览器自动化重试也收口进项目内流程。这样“草稿已成功，但自动化卡在登录或预览后续步骤”时，恢复动作已经变成 `report-login -> report-configure` 两个标准命令，而不是继续依赖聊天说明。
+- **`report-status` 开始直接给命令提示** — 现在 `report-status` / `report_status` 不只返回 `next_steps` 这类抽象状态词，还会额外输出 `recommended_commands`。例如首次 ready 会直接给 `report-markdown` / `report-publish` / `report-history`，warning 状态会直接给 `report-login` / `report-configure` / `report-history`。这让“看状态 -> 执行下一步”终于不需要再在 README 和聊天记录之间来回翻译。
+- **公众号日报自动化恢复再压成一步** — 现在新增 `qunmind report-recover-automation --report-name <name>` 与 `just report-recover-automation config.toml '微信公众号日报'`，内部顺序就是 `report-login -> report-configure`。这样 warning 状态下的默认恢复动作终于从“两条命令”缩成“一条命令”，`report-status` 的 `recommended_commands` 也会优先推荐这一条。
+- **MCP 侧公众号恢复入口补齐** — 这轮继续把 `report_login`、`report_configure` 和 `report_recover_automation` 补到 `src/mcp/tools.rs`，并复用 `src/reporting.rs` 里的共享日报目标解析。这样现在不只是 CLI 能按项目标准恢复公众号自动化，MCP / 外部 Agent 也能沿同一套 `report_name` 选择、单目标自动复用和 `output = "wechat"` 限制直接调用，不会再出现 CLI 已更新、MCP 还停在旧流程的分叉。
+- **`report-status` 开始给 Agent 结构化下一步建议** — 现在 `report-status` / `report_status` 除了继续返回 `recommended_commands`，还会额外返回 `recommended_tool_calls`。这让 MCP / 外部 Agent 在看到 `recently_published_with_warnings` 或 `automation_state = "login_required"` 时，不需要再从 shell 命令字符串里反推动作，而是可以直接顺着状态结果调用 `report_recover_automation`、`publish_history` 等 tool。
+- **MCP 手工日报闭环入口补齐第一版** — 现在继续新增 `report_markdown` 与 `report_publish`。前者会复用 `qunmind daily-report` 的正式日报目标语义生成本地 markdown；后者则在显式 `confirm_publish = true` 时继续触发真实 publisher，并沿同一条发布回执保存边界把结果返回出来。这样 MCP 侧已经不只是“能看状态、能恢复自动化”，而是开始具备“能按标准流程生成稿件并在获准后真实试发”的完整入口。
+- **首次 ready 状态的 MCP 下一步建议补齐** — `report-status` / `report_status` 现在不只会在 warning 状态下给 Agent 结构化动作；当目标处于 `ready_for_first_publish` 时，也会直接返回 `report_markdown -> report_publish(confirm_publish = true) -> publish_history` 这一组 `recommended_tool_calls`。这样“给人看的 shell 命令提示”和“给 Agent 继续执行的 tool 建议”终于在首次试发场景也完全对齐。
+- **手工发布结果开始直接给后续动作** — 现在 `daily-report --publish` 和 MCP `report_publish` 成功后，也会继续返回 `follow_up_status`、`recommended_commands` 和 `recommended_tool_calls`。如果这次草稿发布干净成功，结果会直接建议去看 `publish_history`；如果带有 `automation: ...` warning，则会直接建议优先 `report-recover-automation` 再复查历史，不需要再额外跑一次 `report-status` 才知道下一步。
 
 ### Verified
 
@@ -94,9 +111,28 @@
 - `WECHAT_APPID=... WECHAT_SECRET=... cargo run -- --config config.toml daily-report --report-name "微信公众号日报" --output /tmp/wechat-report.md --publish`：返回 `published = true`，`publish_receipt_saved = true`
 - `WECHAT_APPID=... WECHAT_SECRET=... cargo run -- --config config.toml publish-history --report-name "微信公众号日报" --limit 5`：返回 `count = 1`
 - `WECHAT_APPID=... WECHAT_SECRET=... cargo run -- --config config.toml report-status --report-name "微信公众号日报" --limit 5`：返回 `status = "recently_published"`，`recent_receipts_count = 1`
+- `WECHAT_APPID=... WECHAT_SECRET=... just report-markdown config.toml '微信公众号日报' '/tmp/wechat-report.md'`：返回本地 markdown 文件，证明“群消息/RSS -> 日报正文”链路仍可继续生成稿件
+- `WECHAT_APPID=... WECHAT_SECRET=... just report-publish config.toml '微信公众号日报' '/tmp/wechat-report.md'`：于 `2026-06-25T08:12:42.890589+00:00` 返回 `published = true`，`publish_receipt_saved = true`
+- `WECHAT_APPID=... WECHAT_SECRET=... just report-history config.toml '微信公众号日报'`：返回 `count = 2`
+- `cargo nextest run --all-features daily_report::tests::generate_falls_back_to_non_empty_sections_when_ai_json_is_invalid`
+- `cargo nextest run --all-features daily_report::tests::generate_rebalances_misclassified_sections_and_fills_missing_read_summaries`
+- `cargo nextest run --all-features daily_report::tests::generate_filters_low_signal_items_and_limits_section_sizes`
+- `cargo nextest run --all-features daily_report::tests::generate_limits_reference_block_to_used_urls`
+- `cargo nextest run --all-features daily_report::render::tests::skips_empty_section_headers`
+- `cargo nextest run --all-features daily_report::render::tests::refs_block_caps_item_count`
+- `cargo nextest run --all-features daily_report::render::tests::render_focus_prefers_chinese_summary_for_english_title`
+- `cargo clippy --all-targets --all-features --tests --benches -- -D warnings`
+- `WECHAT_APPID=... WECHAT_SECRET=... just report-publish config.toml '微信公众号日报' '/tmp/wechat-report-preview-v5.md'`：于 `2026-06-25T09:31:59.745312+00:00` 返回 `published = true`，`publish_receipt_saved = true`
+- `just report-history config.toml '微信公众号日报'`：返回 `count = 3`
 - `cargo nextest run --all-features publisher::tests::extract_publish_warnings_reads_automation_lines`
 - `cargo nextest run --all-features reporting::tests::publish_receipt_json_extracts_warning_lines_from_raw_output`
 - `cargo nextest run --all-features reporting::tests::report_status_json_marks_recently_published_with_warnings_when_receipt_has_warning`
+- `cargo nextest run --all-features reporting::tests::publish_receipt_automation_state_marks_soft_failure_without_login_timeout`
+- `cargo nextest run --all-features persist_manual_publish_receipt_saves_receipt_for_report_target`
+- `cargo nextest run --all-features parses_report_login_command`
+- `cargo nextest run --all-features login_errors_when_bin_not_found`
+- `cargo nextest run --all-features parses_report_configure_command`
+- `cargo nextest run --all-features configure_errors_when_bin_not_found`
 - `cargo nextest run --all-features wx_cli_capture_command_writes_polled_messages`
 - `cargo nextest run --all-features wx_cli_send_dry_run_does_not_execute_command`
 - `cargo nextest run --all-features wx_cli_test_plan_input_file_does_not_execute_external_commands`
@@ -108,7 +144,28 @@
 - `cargo nextest run --all-features tool_send_dry_run_renders_command`
 - `cargo nextest run --all-features tool_doctor_with_input_file`
 - `cargo nextest run --all-features tool_doctor_reports_ok_when_config_is_complete`
+- `cargo nextest run --all-features list_tools_returns_twelve_tools`
+- `cargo nextest run --all-features tool_report_login_rejects_non_wechat_target`
+- `cargo nextest run --all-features tool_report_login_returns_bin_not_found_failure`
+- `cargo nextest run --all-features tool_report_configure_returns_bin_not_found_failure`
+- `cargo nextest run --all-features tool_report_recover_automation_returns_login_failure_first`
+- `cargo nextest run --all-features mcp::tools::tests::tool_report_markdown_requires_output mcp::tools::tests::tool_report_publish_requires_explicit_confirm_publish mcp::tools::tests::tool_report_markdown_rejects_ambiguous_multi_target_setup`
+- `cargo nextest run --all-features qunmind::bin/qunmind tests::persist_manual_publish_receipt_saves_receipt_for_report_target qunmind::bin/qunmind tests::manual_daily_report_publish_target_rejects_non_wechat_output qunmind::bin/qunmind tests::manual_daily_report_falls_back_to_public_sources_when_group_is_empty`
+- `cargo nextest run --all-features reporting::tests::report_status_json_marks_blocked_reports_with_actionable_next_steps reporting::tests::report_status_json_keeps_wechat_target_ready_without_public_sources reporting::tests::report_status_json_marks_recently_published_when_receipts_exist reporting::tests::report_status_json_marks_recently_published_with_warnings_when_receipt_has_warning`
 - PR #41 CI：`test = pass`，`docker = pass`
+
+### Current Readiness
+
+现在更准确的公众号日报状态应该表述为：
+
+- **最小可用目标已完成**：可生成日报、推送到公众号草稿箱、保存回执、查询最近历史
+- **最新优化版已真实试发**：内容质量兜底后的 v5 预览稿已进入公众号草稿箱
+- **当前建议用法**：人工盯一眼草稿箱，再决定是否正式发布
+- **看到 `automation_state = "login_required"` 时的处理**：先执行一次 `moonpub login` 复用浏览器登录态，再重试浏览器自动化步骤
+- **还未完全稳定的点**：
+  - 微信白名单 IP 可能漂移
+  - `moonpub` 仍可能返回 `automation: login timeout` warning
+  - 日报内容质量和结构仍需继续优化，不能把“能发出来”直接等同于“内容已达标”
 
 ## 2026-06-23
 

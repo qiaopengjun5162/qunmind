@@ -40,6 +40,8 @@
 
 `src/reporting.rs` 维护日报运营状态的共享 helper，例如 `report_name` 解析、`report-status` 目标选择、readiness blocker 判定和发布回执 JSON 渲染。凡是 CLI 与 MCP 都需要复用的日报状态逻辑，优先放这里，不要在 `main.rs` 和 `src/mcp/tools.rs` 各写一套。
 
+手工日报目标解析（例如单目标自动复用、多目标强制 `report_name`、`chat_id` 别名兼容）也继续收口在 `src/reporting.rs`。凡是 `report-login`、`report-configure`、`report-recover-automation`、手工 `daily-report` 或 MCP 同类入口需要解析日报目标时，优先复用这里，不要在 CLI / MCP / main 再各写一份。
+
 如果定时 `output = "wechat"` 日报与手工 `daily-report` 的内容生成语义发生分叉，优先把“群消息 + 链接情报 -> AI”这段共享逻辑抽到 `src/reporting.rs` 或其他纯 helper 中复用，不要让 scheduler 和 CLI 各自维护一份日报素材选择逻辑。
 
 `qunmind daily-report` 不再只是一条“随便生成一份 markdown”的孤立命令；如果传 `--report-name`，应尽量复用已配置日报目标的 `daily_quote` / `output` / 发布参数，作为手工联调正式日报目标的入口。涉及这条手工链路的行为变更时，同步检查 README / PROGRESS 对“如何手工跑一次日报”的描述是否一致。
@@ -56,6 +58,12 @@
 
 `src/publisher.rs` 是日报发布边界。`QunMind` 负责“生成什么、何时发、目标是否 ready”；平台侧项目或适配器负责“按平台规则怎么发”。当前只落地了 `PublishTarget::WechatDraft`，通过本地 `moonpub` 推公众号草稿。后续即使接抖音、小红书，也优先新增 publisher target 或独立发布子系统，不把平台鉴权、素材渲染和风控逻辑塞回 scheduler。
 
+截至 `2026-06-25`，`微信公众号日报` 的最小可用链路已经完成三次真实验证：`daily-report --publish` 可成功推送到公众号草稿箱，`publish-history` 可查到最新回执，回执 warning 会继续保留为结构化字段。后续再回答“现在能不能用”时，不要再把它描述成“还没打通”，而要准确说成“最小可用链路已打通，但仍有白名单 IP 漂移、自动化 warning 和内容质量问题需要继续收敛”。
+
+当前 `QunMind -> moonpub` 的真实语义要说清楚：`push --render` 已经会在“草稿推送成功后”顺手尝试一轮浏览器自动化配置，但这一步是软失败策略。像 `automation: login timeout: QR code not scanned within 120s` 这类 warning，不是“完全没走自动化”，而是“草稿已推成功，但浏览器自动化没能真正进入后续预览/配置步骤”。后续状态、文档和对用户的解释都要区分这两层。
+
+`src/daily_report/` 当前除了“模型生成正文”之外，还承担一层质量兜底：如果 AI 返回的 JSON 非法、字段过空、板块误分或摘要质量过低，优先在 Rust 侧补齐非空板块、修正 AI/Web3/技术分类、过滤低信号条目，并只保留正文里真正引用过的参考链接。后续继续优化日报质量时，优先沿这条“AI 生成 + Rust 兜底收敛”边界演进，不要把容错逻辑散回 CLI、scheduler 或 publisher。
+
 发布适配器成功后优先返回结构化 `PublishReceipt`（目标、目的地、时间、摘要、原始输出），不要只在 scheduler 里打印一句成功日志。这样后续补持久化、失败重试或多平台对账时不用重新拆接口。
 
 如果发布成功但状态记录失败，行为优先级应该是“保留成功发布事实，同时明确记录回执保存失败”，不要因为回执落库失败就把外部发布结果误报成整体失败。
@@ -68,6 +76,12 @@
 
 如果用户临近交付、更关心“明天能不能用”，优先提供像 `report-status` 这样的专用日报链路状态视图：直接回答 `status` / `ready` / `blockers` / `next_steps` / `recent_receipts`，而不是要求用户自己拼 doctor、history 和配置字段。
 
+如果 `report-status` / `report_status` 已经输出 `recommended_commands`，优先直接沿这些命令提示继续操作，而不是再次手动改写成另一套步骤说明。新增状态字段时也优先保持 CLI 与 MCP 完全一致，避免一个能直接复制执行、另一个只剩抽象状态词。
+
+如果 `report-status` / `report_status` 已经输出 `recommended_tool_calls`，对 MCP / Agent 入口优先直接复用这些结构化动作，而不是再从 `recommended_commands` 里二次解析 shell。命令提示主要给人看，tool 建议主要给 Agent 接下一步，两者都要保持同一语义。
+
+MCP 侧的 `report_markdown` / `report_publish` 也应继续复用 `src/reporting.rs` 里的手工日报共享逻辑，而不是在 `src/mcp/tools.rs` 再拼一份“群消息优先 / public_sources 回退 / 发布回执保存”流程。后续如果手工日报语义再变，CLI 与 MCP 必须一起变。
+
 `channel.kind = "wx_cli"` 时通过 `wx_cli.bin + wx_cli.poll_args` 轮询 JSON 消息，通过 `wx_cli.send_args` 模板发送文本。`ai.provider = "hermes"` 时调用 `[hermes]` 中的 HTTP API，适合先对接爱马仕/小龙虾一类 Agent 平台。
 
 `[schedule] daily_report_chat_id` 是兼容旧配置的单群日报入口；多群日报使用 `[[schedule.daily_reports]]`，每个目标可以覆盖 `cron`、`prompt`、`lookback_hours`、`max_messages`、`max_links`。未覆盖字段继承全局 `[schedule]`。
@@ -77,6 +91,10 @@
 如果微信草稿发布实际还依赖上游 publisher 的运行时环境变量（当前本机 `moonpub` 已确认依赖 `WECHAT_APPID` 与 `WECHAT_SECRET`），`report-status` / `doctor` 也要把这类缺失提前暴露成 blocker，不要让状态页显示 ready、真实试发时才在 publisher stderr 里失败。
 
 如果用户目标是“尽快测试公众号日报发布”，默认优先给出 RSS 上游联调路径，而不是展开按公众号名字抓取的高风控方案。最短可执行路径应围绕 `report-status` -> `daily-report --output` -> `daily-report --publish` -> `publish-history` 展开。
+
+如果通过 MCP 暴露真实发布入口，也要保留和 CLI 一样的显式授权边界：像 `report_publish` 这类会触发真实外部发布的 tool，必须要求 `confirm_publish = true` 之类的明确确认参数，不要让 Agent 仅凭工具名就直接发出去。
+
+如果最近回执或 `report-status` 已给出 `automation_state = "login_required"`，下一步优先使用项目内标准入口 `qunmind report-recover-automation` / `just report-recover-automation` 一次完成 `moonpub` 登录态复用与浏览器自动化重试；只有在需要拆开调试时才分别使用 `report-login` 与 `report-configure`。日报目标选择、`wechat_bin` 和 `wechat_articles_dir` 解析应继续走 QunMind 自己的配置边界。
 
 可以用 `cargo run -- wx-cli doctor`、`cargo run -- wx-cli test-plan --capture-file wx-output.json`、`cargo run -- wx-cli capture --output wx-output.json`、`cargo run -- wx-cli poll`、`cargo run -- wx-cli dry-run --limit 10` 和 `cargo run -- wx-cli send --chat-id "<chat_id>" --text "<text>" --dry-run` 单独诊断 wx-cli 收发命令；这些命令只读取配置，不会初始化 PG、AI、日报调度或进入机器人主循环。`doctor` 会在真实群测前输出 blockers、warnings 和 next_steps，检查发送参数占位符、AI 配置、@ 触发安全性，以及可选捕获消息里的群聊和 message_id 信号；带捕获文件时还会输出 `reply_candidate_message_ids`、`group_reply_candidate_message_ids`、`formal_test_readiness`、`group_overrides`、`daily_report_targets`、`group_override_not_seen_in_capture` 和 `daily_report_target_not_seen_in_capture` warning，方便真实发送前先精确选择群聊目标消息，并确认群级配置和日报目标群出现在捕获里。`capture_has_no_group_reply_candidates` 和 `capture_has_multiple_group_reply_candidates_select_message_id` 是正式微信群重放前的重要 warning，不要用私聊候选替代群聊候选；`formal_test_readiness.recommended_message_id` 只有在唯一安全群聊候选存在时才可直接用于正式重放。`test-plan` 会输出正式群测命令顺序，生成命令会保留当前 `--config` 路径，复用 `doctor` 的完整 readiness blockers，并用 `safe_to_send` 标记哪些步骤会真的触达微信；`test-plan --shell` 会把同一份计划渲染成 shell 脚本，其中非发送检查可直接执行，真实发微信步骤默认注释，必须人工确认 dry-run 输出后再取消注释。`test-plan --input <json-file>` 会读取捕获消息，在只有一个群聊回复候选时自动填入 message_id，并输出 `selected_message` 预览，避免正式重放前只看到一个 ID；在没有显式测试 chat_id 或 `wx_cli.group_chat_id` 时会从选中消息推断 chat_id，同时跳过新的 capture 步骤，避免覆盖已选中 message_id 所在的捕获文件；候选、测试 chat_id、唯一 message_id、群聊消息或选中消息的回复触发条件不明确时会要求显式修正，避免真实发送步骤带占位符、私聊样本或空跑；没有捕获输入时，真实重放前同样需要显式 `--message-id`。`capture` 会执行一次 `wx_cli.poll_args`，把归一化后的可复放消息写入 JSON 文件，并输出 `formal_test_readiness`、`recommended_commands` 与下一步建议；新增 capture 报告字段时优先在 `diagnostic` 里补纯函数测试，不要把 JSON 组装逻辑写回 `main.rs`。`doctor`、`test-plan`、`poll`、`dry-run` 和 `handle-once` 都支持 `--input <json-file>`，用于解析已捕获的 wx-cli JSON 输出文件，不会再次调用 wx-cli。`dry-run` 会按 `bot.mention_names` 输出哪些消息会触发回复，但不会保存、调用 AI 或发送；`send --dry-run` 会预览最终发送命令但不会调用 wx-cli 发送；捕获文件里有多条消息时可用 `--message-id` 精确预检一条，若指定 ID 不存在、不唯一、来自私聊或不会触发回复会返回结构化 `ok = false` JSON。`handle-once --input <json-file>` 在捕获文件含多条消息时同样必须显式给 `--message-id`，否则会先返回 `message_id_required_for_multiple_messages`，并直接附带 `reply_candidate_message_ids` / `group_reply_candidate_message_ids`，方便下一步立刻选 ID，避免把“离线复放一条消息”误跑成“顺序处理前几条消息”；即使 `message_id` 已给出，若选中的是私聊样本或根本不会触发回复的消息，也会在初始化 PostgreSQL / AI 前直接返回 `selected_message_not_group` 或 `selected_message_would_not_reply`。需要测试“轮询/捕获消息 -> 保存 -> mention 过滤 -> AI -> 回复”真实链路但不想发群消息时，用 `cargo run -- wx-cli handle-once --input wx-output.json --message-id "<msg_id>" --limit 1 --no-send`；它会初始化 PostgreSQL 和 AI，并把本应发送的回复输出为 JSON。去掉 `--no-send` 后会真的通过 wx-cli 回复。
 
@@ -100,10 +118,13 @@
 - `just test`：使用 `cargo nextest run --all-features`
 - `just check-all`：完整检查
 - `just db-create`：在默认本地 PostgreSQL 缺库时补建 `qunmind`
-- `just report-status report="微信公众号日报"`：查看公众号日报 readiness
-- `just report-markdown report="微信公众号日报" output="/tmp/wechat-report.md"`：只生成本地日报 markdown，不触发发布
-- `just report-publish report="微信公众号日报" output="/tmp/wechat-report.md"`：沿正式 publisher 边界真实推送日报
-- `just report-history report="微信公众号日报"`：查看最近发布回执
+- `just report-status config.toml '微信公众号日报'`：查看公众号日报 readiness
+- `just report-login config.toml '微信公众号日报'`：打开公众号后台登录，供后续浏览器自动化复用登录态
+- `just report-configure config.toml '微信公众号日报'`：重试公众号浏览器自动化配置
+- `just report-recover-automation config.toml '微信公众号日报'`：一键执行公众号登录与浏览器自动化重试
+- `just report-markdown config.toml '微信公众号日报' '/tmp/wechat-report.md'`：只生成本地日报 markdown，不触发发布
+- `just report-publish config.toml '微信公众号日报' '/tmp/wechat-report.md'`：沿正式 publisher 边界真实推送日报
+- `just report-history config.toml '微信公众号日报'`：查看最近发布回执
 - `just run`：运行本地服务
 - `just docker-build`：构建本地 Docker 镜像 `qunmind:local`
 - `just compose-config`：检查 Docker Compose 最终配置
@@ -164,9 +185,11 @@
 - wx-cli 普通微信 PoC 要优先兼容常见导出字段名，例如 `msg_content`、`plain_text`、`conversation_id`、`room_name`、`client_msg_id`、`is_group`、`is_chatroom`，避免真实联调时被字段差异卡住。
 - 新增公共信息网站时优先实现为 `PublicNewsSource`，放在 Rust `src/source/` 中，配置默认关闭；HTML/JSON 解析逻辑必须有纯 Rust 单测，不把抓取逻辑写进 scheduler。
 - `CompositePublicNewsSource` 会隔离单个公共源失败；新增来源时要保持“某个网站失败不影响其他来源继续补日报素材”的行为，并补聚合层测试。
+- 依赖真实外网的 `PublicNewsSource` smoke test 不要放进默认 `cargo nextest run --all-features` 路径；这类测试默认 `#[ignore]`，只在显式 `--run-ignored` 或人工联调时执行，避免 CI 因第三方 RSS/站点抖动而误红。
 - 新增投研工具时优先维护 `research::tools` 里的目录、分类和自动化标记；可自动化的市场数据/链上/安全来源再逐步落成 Rust connector。
 - 新增 AI / Agent 学习资料时优先维护 `research::learning` 里的目录、分类、格式、URL 和学习路径；只有会影响运行时能力的内容再落到 `AiClient`、prompt 或 connector。
 - 新增日报能力时优先保持 `ScheduleConfig` 旧字段兼容；多目标行为放进 `schedule.daily_reports`，不要把群日报配置混进 `groups` 的机器人回复 persona 配置。
+- `schedule.daily_report_cron` 和 `schedule.daily_reports[].cron` 当前都按 `chrono::Utc` 解释，不按宿主机本地时区解释；文档、示例和对用户的说明必须显式写清楚 UTC 与北京时间换算，避免把 `0 0 8 * * *` 误说成“北京时间早上 8 点”。
 - Rust 代码不要使用会 panic 的直接解包调用。生产错误用 `thiserror` 的 `QunMindError` 或 `anyhow` 传播；测试断言也用显式 `match` / 测试 helper，避免把 panic 解包调用重新加回来。
 - 源码注释和 Rust doc comment 优先使用英文；注释应解释业务边界、兼容原因、失败策略或安全约束，不要只复述代码动作。
 - 新增 wx-cli 诊断行为时优先放在 `diagnostic` 模块并补纯函数测试，避免 `main.rs` 重新膨胀成业务逻辑集中点。

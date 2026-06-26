@@ -36,25 +36,25 @@ The project currently supports:
 
 ## Status
 
-This is an MVP foundation, not a production-ready bot yet. The next important step is real wx-cli group testing and turning the `QunMind × moonpub` report path into something diagnosable before runtime, not only after a failed scheduled job.
+This is still an MVP foundation, not a fully production-ready bot yet. The basic WeChat public-account daily-report path has now been verified end-to-end into the draft box, and the next important step is real wx-cli group testing plus turning the `QunMind × moonpub` report path from "can publish a real draft" into something more stable, higher quality, and easier to diagnose before runtime.
 
 The current project phase is:
 
-- **Done**: core Rust backend boundaries, persistence, per-group config, wx-cli diagnostics/replay, MCP integration, and daily report generation/publishing.
-- **In progress**: real wx-cli sample validation, `QunMind × moonpub` readiness checks, multi-group report verification, and tighter doc consistency.
+- **Done**: core Rust backend boundaries, persistence, per-group config, wx-cli diagnostics/replay, MCP integration, daily report generation/publishing, and the minimum viable WeChat draft-publish loop.
+- **In progress**: real wx-cli sample validation, `QunMind × moonpub` stability checks, multi-group report verification, report quality improvements, and tighter doc consistency.
 - **Not done yet**: stable real-world normal WeChat group validation, production hardening, and long-term memory / permission / ops capabilities.
 
 Rough progress bars:
 
 - Product core loop: `[########--] ~80%`
 - wx-cli diagnostics and replay: `[########--] ~80%`
-- Daily report generation and publishing: `[#######---] ~75%`
-- Real WeChat validation: `[###-------] ~30%`
-- Production readiness: `[###-------] ~35%`
+- Daily report generation and publishing: `[#########-] ~92%`
+- Real WeChat validation: `[#####-----] ~50%`
+- Production readiness: `[#####-----] ~50%`
 
 One-sentence external summary:
 
-> QunMind already has the backend skeleton, diagnostics, and report pipeline for a WeChat AI group hub, and is now moving from MVP feature completeness to real-environment validation and stable demos.
+> QunMind already has the backend skeleton, diagnostics, and report pipeline for a WeChat AI group hub, and the minimum public-account report-to-draft path is now verified in a real environment. The project is now moving from MVP completeness toward more stable real-environment validation and repeatable demos.
 
 ## Roadmap
 
@@ -68,7 +68,7 @@ Next small goals:
 
 1. Keep shrinking `main.rs` and `src/mcp/tools.rs` by removing command-layer duplication.
 2. Expand the sanitized wx-cli fixture set so poll / dry-run / handle-once / send are exercised against more realistic samples.
-3. Surface `moonpub` and `public_sources` prerequisites before a WeChat daily-report target is treated as ready.
+3. Surface `moonpub`, `public_sources`, and publish-IP prerequisites before a WeChat daily-report target is treated as ready.
 4. Verify multi-group persona, context, and `schedule.daily_reports` combinations in practice.
 5. Keep README / PROGRESS / AGENTS aligned so project status is reusable for internal and external communication.
 
@@ -92,12 +92,13 @@ That lets us surface the main blockers earlier:
 - no enabled `public_sources`
 - a configured WeChat report target that still cannot generate source material or hand off to `moonpub`
 
-Current working timeline:
+Current working timeline has shifted:
 
-- June 23, 2026: local integration and config completion can start
-- June 24, 2026: first real draft-generation test is realistic
-- June 25-26, 2026: internal gray rollout is realistic if draft generation stays stable
-- not recommended to promise stable launch before June 27, 2026
+- June 24, 2026: first real public-account draft push succeeded
+- June 25, 2026: second real public-account draft push succeeded and confirmed the minimum viable path
+- June 25, 2026: third real public-account draft push succeeded with the latest content-quality-tuned v5 preview
+- June 25-26, 2026: internal gray rollout and repeated rehearsals are realistic
+- it is still not recommended to describe the path as fully unattended stable production yet
 
 ## Quick Start
 
@@ -182,6 +183,8 @@ These sources are filtered toward programming technology, Rust, Web3, crypto, AI
 
 The legacy `[schedule] daily_report_chat_id` config still works for one report group. For multiple groups, add `[[schedule.daily_reports]]` entries. Each entry can override `cron`, `prompt`, `lookback_hours`, `max_messages`, and `max_links`; missing fields inherit the global `[schedule]` defaults.
 
+One scheduling detail is easy to miss: cron evaluation currently uses `chrono::Utc`, not the host's local timezone. So a target meant for Beijing `08:00` should use `cron = "0 0 0 * * *"`. Writing `cron = "0 0 8 * * *"` would fire at Beijing `16:00`.
+
 ## Link Intelligence
 
 QunMind extracts `http://` / `https://` links from incoming text messages and stores them in PostgreSQL `message_links`. Daily reports include recent deduplicated links up to `schedule.daily_report_max_links`, so article, tool, and repository resources stay visible instead of being buried in chat text.
@@ -200,27 +203,53 @@ If you already have a WeChat public-account RSS / Atom upstream, the shortest re
 
 ```bash
 just db-create
-just report-status report="微信公众号日报"
-just report-markdown report="微信公众号日报" output="/tmp/wechat-report.md"
-just report-publish report="微信公众号日报" output="/tmp/wechat-report.md"
-just report-history report="微信公众号日报"
+just report-status config.toml '微信公众号日报'
+just report-recover-automation config.toml '微信公众号日报'
+just report-markdown config.toml '微信公众号日报' '/tmp/wechat-report.md'
+just report-publish config.toml '微信公众号日报' '/tmp/wechat-report.md'
+just report-history config.toml '微信公众号日报'
 ```
 
 Recommended order:
 - confirm `report-status` has empty `blockers` and `missing_publish_env`; if `WECHAT_APPID` or `WECHAT_SECRET` still appears, stop there before any real publish attempt
+- if `report-status` or the latest receipt already shows `automation_state = "login_required"`, run `report-recover-automation` first so the project can reuse a fresh WeChat backend login and immediately retry the browser automation path in one step
 - generate local markdown first and verify the RSS-backed article material appears in the report
 - only then run `report-publish` to push the draft through `moonpub`
 
-This path has now been verified with one real draft push:
-- `report-status` can advance to `recently_published`, and will now escalate to `recently_published_with_warnings` when the latest successful receipt still contains automation follow-up signals
-- `publish-history` now returns the first successful receipt
-- even when `moonpub` reports `automation: login timeout: QR code not scanned within 120s`, that warning did not block this draft from reaching the WeChat draft box
+`report-status` now also returns `recommended_commands` in both CLI JSON and MCP output. The intent is simple: once the status view already knows the most likely next commands, operators and agents should be able to copy that list directly instead of translating abstract status words back into shell commands by hand.
+
+For MCP/agent callers, the same payload now also includes `recommended_tool_calls`. This is the structured counterpart to shell commands: when a target is `ready_for_first_publish`, the status response can now directly point an agent to `report_markdown`, `report_publish`, and `publish_history`; when a recent receipt still says `automation_state = "login_required"`, it can directly point the agent to `report_recover_automation` and `publish_history` instead of forcing it to parse shell text first.
+
+The same recovery flow is now available through MCP as first-class tools, not just shell wrappers. MCP clients can call `report_status`, `report_login`, `report_configure`, and `report_recover_automation` with the same target-selection semantics used by the CLI: one configured target can be auto-reused, while multiple targets still require an explicit `report_name`.
+
+MCP can now also drive the manual report rehearsal path itself. `report_markdown` generates the local markdown file with the same group-message-first and public-source-fallback semantics used by `qunmind daily-report`, while `report_publish` only crosses the real external publisher boundary when the caller passes `confirm_publish = true`.
+
+Manual publish results now also carry their own follow-up hints. After a successful `daily-report --publish` or MCP `report_publish`, the JSON response no longer stops at "published = true": it also includes `follow_up_status`, plus the same `recommended_commands` and `recommended_tool_calls` pattern used by `report-status`, so operators and agents can immediately tell whether the next step is just `publish_history` or a recovery flow such as `report_recover_automation`.
+
+This path has now been verified with three real draft pushes:
+- `report-status` can advance to `recently_published_with_warnings`
+- `publish-history` now returns the three latest successful receipts
+- even when `moonpub` reports `automation: login timeout: QR code not scanned within 120s`, that warning did not block either draft from reaching the WeChat draft box
 - these post-publish automation hints are now surfaced as structured `warnings` in receipt JSON instead of living only inside `raw_output`
+- receipt JSON and `report-status` now also classify that warning as `automation_state = "login_required"`, which means the draft push succeeded but the browser automation path did not get past login into the preview/configuration steps
+
+Recent report-quality hardening also now lives inside `src/daily_report/` instead of being left to manual retries:
+- invalid or sparse AI JSON falls back to non-empty sections instead of near-empty output
+- obvious misclassification is rebalanced, such as `openai/codex` no longer being pulled into Web3 just because `codex` contains `dex`
+- low-signal comments are filtered or rewritten from source summaries
+- empty section headers are suppressed
+- the reference block is capped and restricted to URLs actually used in the rendered body
+
+The current operational interpretation is:
+- the minimum viable target is complete: generate report -> push draft -> persist receipt -> inspect publish history
+- if a receipt shows `automation_state = "login_required"`, the next operational step is `qunmind report-recover-automation --report-name "微信公众号日报"` or `just report-recover-automation config.toml '微信公众号日报'`
+- the remaining risk is no longer "can it publish at all", but rather publish-IP drift, automation warnings, and report quality
 
 Notes:
 - `just db-create` only creates the default local PostgreSQL database when it is missing; tables are still created by QunMind at runtime
 - `just report-publish` is a real external publish action and may send stored report material to the configured AI / publisher chain
 - `report-status` now also checks the `moonpub` publish env required by real draft pushes; missing `WECHAT_APPID` or `WECHAT_SECRET` is treated as a blocker before the first external publish attempt
+- MCP `report_publish` keeps the same safety posture and requires explicit `confirm_publish = true`; use `report_markdown` first when you only want a local file for review
 
 Semantics to keep in mind:
 - missing `wechat_bin` / `wechat_articles_dir` is a hard blocker
@@ -280,6 +309,11 @@ recent publish receipts exist.
 That readiness view is now available in both places: `qunmind report-status`
 for operators and `report_status` for MCP clients, with shared target-selection
 and blocker logic so the CLI and MCP do not drift.
+
+The same alignment now extends to automation recovery: `report_login`,
+`report_configure`, and `report_recover_automation` are available in MCP with
+the same `output = "wechat"` guard and report-target resolution rules used by
+the CLI commands.
 
 See [docs/multi-platform-publishing.md](docs/multi-platform-publishing.md) for
 the full rationale and the recommended split for WeChat, Douyin, and future

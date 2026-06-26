@@ -28,25 +28,25 @@
 
 ## 当前状态
 
-项目处在 MVP 基础阶段，还不是生产可用版本。下一步重点是真实 wx-cli 群聊联调，以及把 `QunMind × moonpub` 微信公众号日报链路补到“可提前发现阻塞、可灰度试跑”的状态。
+项目处在 MVP 基础阶段，还不是完全生产可用版本。当前“最基本的微信公众号日报”已经真实打通到公众号草稿箱；下一步重点是真实 wx-cli 群聊联调，以及把 `QunMind × moonpub` 微信公众号日报链路从“能真实推草稿”继续补到“内容更稳、状态更清晰、可持续灰度试跑”的状态。
 
 当前阶段可以概括为：
 
-- **已经完成**：核心 Rust 骨架、消息持久化、群级配置、wx-cli 诊断/重放、MCP 接入、日报生成与发布主链路。
-- **正在补强**：真实 wx-cli 样本验证、`QunMind × moonpub` 联调 readiness、多群日报配置实测、文档口径统一。
+- **已经完成**：核心 Rust 骨架、消息持久化、群级配置、wx-cli 诊断/重放、MCP 接入、日报生成与发布主链路，以及公众号日报最小可用草稿推送闭环。
+- **正在补强**：真实 wx-cli 样本验证、`QunMind × moonpub` 联调稳定性、多群日报配置实测、日报内容质量和文档口径统一。
 - **还没完成**：真实普通微信群稳定联调、生产级部署验证、长期记忆/权限/运维能力。
 
 粗粒度进度条：
 
 - 产品主链路：`[########--] ~80%`
 - wx-cli 诊断与重放：`[########--] ~80%`
-- 日报生成与发布：`[#######---] ~75%`
-- 真实微信联调验证：`[###-------] ~30%`
-- 生产可用度：`[###-------] ~35%`
+- 日报生成与发布：`[#########-] ~92%`
+- 真实微信联调验证：`[#####-----] ~50%`
+- 生产可用度：`[#####-----] ~50%`
 
 如果要对外一句话介绍当前项目位置，可以用：
 
-> QunMind 已完成微信群 AI 中枢的后端骨架、诊断链路和日报能力，当前正在从 MVP 功能可用阶段，推进到真实微信环境可验证、可稳定演示的阶段。
+> QunMind 已完成微信群 AI 中枢的后端骨架、诊断链路和日报能力，其中“公众号日报 -> 草稿箱”最小链路已经真实打通；当前正在从 MVP 功能可用阶段，推进到真实微信环境更稳定、内容质量更高、可持续演示的阶段。
 
 ## 路线图
 
@@ -60,7 +60,7 @@
 
 1. 继续拆薄 `main.rs` 和 `src/mcp/tools.rs`，减少命令层重复。
 2. 扩充已建立的脱敏 wx-cli fixture，继续验证 poll / dry-run / handle-once / send。
-3. 把微信公众号日报的 `moonpub` / `public_sources` 依赖前置暴露，减少“定时任务跑到一半才发现缺配置”。
+3. 把微信公众号日报的 `moonpub` / `public_sources` / 白名单前置依赖继续暴露，减少“定时任务跑到一半才发现缺配置或 IP 漂移”。
 4. 实测多群 persona、群级 context 和 `schedule.daily_reports` 组合行为。
 5. 持续同步 README / PROGRESS / AGENTS，让项目进度对内对外都清楚。
 
@@ -84,12 +84,13 @@
 - `public_sources` 一个都没启用
 - 配了微信公众号日报目标，但实际还没满足生成素材和推草稿的前提
 
-当前更可信的时间判断：
+当前更可信的时间判断已经更新为：
 
-- `2026-06-23`：可以开始本地联调和配置补齐
-- `2026-06-24`：可以做第一次真实日报草稿生成测试
-- `2026-06-25` 到 `2026-06-26`：可以做内部灰度
-- 不建议承诺正式稳定上线早于 `2026-06-27`
+- `2026-06-24`：第一次真实公众号草稿试发成功
+- `2026-06-25`：第二次真实公众号草稿试发成功，最小可用链路确认打通
+- `2026-06-25`：基于内容质量优化后的 v5 预览稿完成第三次真实公众号草稿试发
+- `2026-06-25` 到 `2026-06-26`：适合做内部灰度和连续试发
+- 不建议把“已经能推草稿”直接表述成“完全无人值守稳定上线”
 
 ## 快速开始
 
@@ -173,6 +174,8 @@ topic_keywords = ["rust", "web3", "ai", "llm", "agent", "zkp", "solana", "ethere
 
 旧的 `[schedule] daily_report_chat_id` 单群配置仍然可用。需要多个群分别发日报时，使用 `[[schedule.daily_reports]]` 配置多个目标；每个目标可以单独覆盖 `cron`、`prompt`、`lookback_hours`、`max_messages` 和 `max_links`，未填写的字段继承全局 `[schedule]` 默认值。
 
+这里要特别注意：scheduler 当前按 `chrono::Utc` 解释 cron，不按机器本地时区解释。也就是说，想要北京时间早上 `08:00` 自动发，配置应写成 `cron = "0 0 0 * * *"`；如果写 `cron = "0 0 8 * * *"`，实际会在北京时间 `16:00` 触发。
+
 ## 链接情报
 
 QunMind 会在保存文本消息时抽取 `http://` / `https://` 链接，写入 PostgreSQL 的 `message_links` 表。日报会按 `schedule.daily_report_max_links` 纳入最近去重链接，帮助模型区分普通聊天内容和文章、工具、仓库等可追踪资源。
@@ -205,22 +208,48 @@ QunMind 会在保存文本消息时抽取 `http://` / `https://` 链接，写入
 
 ```bash
 just db-create
-just report-status report="微信公众号日报"
-just report-markdown report="微信公众号日报" output="/tmp/wechat-report.md"
-just report-publish report="微信公众号日报" output="/tmp/wechat-report.md"
-just report-history report="微信公众号日报"
+just report-status config.toml '微信公众号日报'
+just report-recover-automation config.toml '微信公众号日报'
+just report-markdown config.toml '微信公众号日报' '/tmp/wechat-report.md'
+just report-publish config.toml '微信公众号日报' '/tmp/wechat-report.md'
+just report-history config.toml '微信公众号日报'
 ```
 
 推荐顺序是：
 - 先确认 `report-status` 里的 `blockers` 和 `missing_publish_env` 已清空；只要还看到 `WECHAT_APPID` / `WECHAT_SECRET`，就先不要继续真实试发
+- 如果 `report-status` 或最近回执已经出现 `automation_state = "login_required"`，先执行 `report-recover-automation`，让项目一次完成公众号后台登录态复用和浏览器自动化重试
 - 再生成一版本地 markdown，确认 RSS 上游内容已经进入日报素材
 - 最后再执行 `report-publish` 推到 `moonpub` 的公众号草稿箱
 
-当前这条链路已经完成过一次真实试发验证：
-- `report-status` 可到 `recently_published`；若最近成功回执里带自动化提示，则会进一步显示为 `recently_published_with_warnings`
-- `publish-history` 已能查到首条成功回执
-- `moonpub` 原始输出里即使带 `automation: login timeout: QR code not scanned within 120s`，本次也没有阻止草稿成功推入公众号草稿箱
+现在 `report-status` 也会在 CLI JSON 和 MCP 输出里直接给出 `recommended_commands`。这意味着状态页不再只告诉你“下一步大概是什么”，而是尽量直接列出你接下来最该执行的命令，减少临近交付时再靠人工把状态词翻译回 shell 命令。
+
+对 MCP / Agent 调用方，现在同一个状态结果里还会继续附带 `recommended_tool_calls`。它是 shell 命令提示的结构化版本：例如目标处于 `ready_for_first_publish` 时，Agent 已经可以直接顺着状态结果去调 `report_markdown`、`report_publish` 和 `publish_history`；最近回执仍是 `automation_state = "login_required"` 时，也可以直接去调 `report_recover_automation` 和 `publish_history`，不需要再自己从命令字符串里反推下一步。
+
+同一套恢复动作现在也已经补到 MCP，不再只有 shell/CLI 能调。也就是说，外部 Agent / MCP 客户端现在可以直接调用 `report_status`、`report_login`、`report_configure` 和 `report_recover_automation`，并且沿用和 CLI 完全一致的日报目标选择语义：只有一个日报目标时自动复用，多个目标时必须显式给 `report_name`。
+
+现在 MCP 也已经能直接走手工日报演练链路：`report_markdown` 会按和 `qunmind daily-report` 一样的“优先群消息和链接情报、群为空时再回退 public_sources”语义生成本地 markdown；`report_publish` 则只有在显式传入 `confirm_publish = true` 时，才会继续触发真实 publisher 边界。
+
+现在手工发布结果本身也会带下一步建议。也就是说，不管是 CLI 的 `daily-report --publish`，还是 MCP 的 `report_publish`，成功后的 JSON 都不再只停在 `published = true`，还会继续给出 `follow_up_status`，以及和 `report-status` 同语义的 `recommended_commands` / `recommended_tool_calls`，方便立刻判断下一步只是去看 `publish_history`，还是应该先走 `report_recover_automation`。
+
+当前这条链路已经完成过三次真实试发验证：
+- `report-status` 可到 `recently_published_with_warnings`
+- `publish-history` 已能查到最近三条成功回执
+- `moonpub` 原始输出里即使带 `automation: login timeout: QR code not scanned within 120s`，也没有阻止草稿成功推入公众号草稿箱
 - 现在这类成功后的自动化提示也会作为结构化 `warnings` 出现在发布回执 JSON 里，不必再手工翻 `raw_output`
+- 现在回执和 `report-status` 还会把这类 warning 进一步标记成 `automation_state = "login_required"`，语义不是“完全没走自动化”，而是“草稿已推成功，但浏览器自动化没真正进入后续预览/配置步骤”
+
+日报内容质量这轮也已经补了一层 Rust 侧兜底，而不是只靠多试几次模型输出：
+- AI JSON 非法或字段太空时，会自动补齐非空板块，避免退化成接近空白的草稿
+- 会把明显误分的条目重新平衡回正确板块，例如 `openai/codex` 不再因为包含 `dex` 被误放进 Web3
+- 会过滤或重写低信号评论，补齐深读摘要
+- 空板块标题不会再渲染出来
+- 参考来源会限制数量，并且只保留正文实际引用过的链接
+
+这意味着当前最准确的状态是：
+
+- **最小可用目标已完成**：日报能生成、能推公众号草稿、能保存回执、能查历史
+- **仍需人工关注的点**：微信白名单出口 IP 可能漂移、`moonpub` 仍可能返回自动化 warning、日报内容质量还需要继续打磨
+- **如果回执里看到 `automation_state = "login_required"`**：优先执行 `qunmind report-recover-automation --report-name "微信公众号日报"` 或 `just report-recover-automation config.toml '微信公众号日报'`，而不是再手动拆成多步命令或误判成“系统没有走到自动化”
 
 这里的语义要记清：
 - `wechat_bin` / `wechat_articles_dir` 缺失是硬 blocker
@@ -228,6 +257,7 @@ just report-history report="微信公众号日报"
 - `wechat_daily_report_public_sources_disabled_for_empty_group_fallback` 只是 warning，表示“如果目标群当天为空，将没有 RSS / 公共来源回退素材”
 - `just db-create` 只负责在默认本地 PostgreSQL 缺库时补建 `qunmind` 数据库，表结构仍由 QunMind 启动时自动初始化
 - `just report-publish` 会触发真实外部发布链路，也可能把日报素材发送到当前配置的 AI / publisher
+- MCP `report_publish` 也保持同样的安全边界，必须显式 `confirm_publish = true`；如果只是想先看稿件，优先用 `report_markdown`
 
 ## 多平台发布边界
 
@@ -253,6 +283,8 @@ just report-history report="微信公众号日报"
 如果是临近交付、只想知道“明天到底能不能用”，那就更适合直接看 `report-status` 这类专用视图：它应该直接告诉你当前 `status`、ready / 不 ready 的 blockers、下一步该做什么，以及最近有没有成功发布记录。
 
 现在这套状态视图已经同时接到 CLI 和 MCP：操作者可以直接跑 `qunmind report-status`，Agent / 外部系统可以调 `report_status`，两边复用同一份目标选择和 blocker 判定逻辑，避免口径漂移。
+
+现在这个对齐范围也已经扩展到自动化恢复动作：`report_login`、`report_configure` 和 `report_recover_automation` 也能从 MCP 直接调用，并保持和 CLI 一样的 `output = "wechat"` 限制与目标解析规则。
 
 完整说明见 [docs/multi-platform-publishing.md](docs/multi-platform-publishing.md)。后续如果要接抖音，优先走官方 API 形态；小红书默认按“手动 / 半自动 / 等官方 API”处理，而不是一开始就把高风控自动化塞进 QunMind。
 
