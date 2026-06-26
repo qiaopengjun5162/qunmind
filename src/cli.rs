@@ -87,6 +87,16 @@ pub enum CliCommand {
         #[arg(long)]
         headed: bool,
     },
+    /// 单独测试公众号预览步骤
+    #[command(name = "report-preview")]
+    ReportPreview {
+        /// 日报目标名称；为空时自动复用唯一日报目标
+        #[arg(long, default_value = "")]
+        report_name: String,
+        /// 用有头浏览器调试预览步骤
+        #[arg(long)]
+        headed: bool,
+    },
 }
 
 #[derive(Debug, Subcommand)]
@@ -708,6 +718,28 @@ mod tests {
                 assert!(headed);
             }
             _ => panic!("report-recover-automation command should parse"),
+        }
+    }
+
+    #[test]
+    fn parses_report_preview_command() {
+        let args = parse_args(&[
+            "qunmind",
+            "report-preview",
+            "--report-name",
+            "技术群日报",
+            "--headed",
+        ]);
+
+        match args.command {
+            Some(CliCommand::ReportPreview {
+                report_name,
+                headed,
+            }) => {
+                assert_eq!(report_name, "技术群日报");
+                assert!(headed);
+            }
+            _ => panic!("report-preview command should parse"),
         }
     }
 }

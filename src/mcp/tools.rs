@@ -3,7 +3,9 @@ use std::path::PathBuf;
 use crate::channel::wx_cli::{WxCliChannel, write_wx_cli_capture_file};
 use crate::config::Config;
 use crate::diagnostic;
-use crate::publisher::{configure_wechat_backend, login_wechat_backend, publish_markdown};
+use crate::publisher::{
+    configure_wechat_backend, login_wechat_backend, preview_wechat_backend, publish_markdown,
+};
 use crate::reporting::{
     build_ai_client, build_message_store, build_public_news_source, effective_publish_history_name,
     effective_report_status_target, generate_manual_daily_report_markdown,
@@ -106,6 +108,24 @@ pub fn list_tools() -> Vec<Tool> {
                     "headed": {
                         "type": "boolean",
                         "description": "Run browser automation in headed mode during configure (default: false)."
+                    }
+                },
+                "required": []
+            }),
+        },
+        Tool {
+            name: "report_preview".into(),
+            description: "Run the moonpub preview-step debug flow (test-yulan) for a WeChat daily report target.".into(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "report_name": {
+                        "type": "string",
+                        "description": "Explicit daily report target name. Required when multiple schedule.daily_reports entries exist."
+                    },
+                    "headed": {
+                        "type": "boolean",
+                        "description": "Run the preview-step browser automation in headed mode (default: false)."
                     }
                 },
                 "required": []
@@ -308,6 +328,7 @@ pub async fn call_tool(
         "report_login" => tool_report_login(config, arguments),
         "report_configure" => tool_report_configure(config, arguments),
         "report_recover_automation" => tool_report_recover_automation(config, arguments),
+        "report_preview" => tool_report_preview(config, arguments),
         "report_markdown" => tool_report_markdown(config, arguments).await,
         "report_publish" => tool_report_publish(config, arguments).await,
         "wxcli_doctor" => tool_doctor(config, arguments),
@@ -449,6 +470,33 @@ fn tool_report_recover_automation(
         "headed": headed,
         "login_output": login_output,
         "configure_output": configure_output,
+    }))?)
+}
+
+fn tool_report_preview(config: &Config, args: &serde_json::Value) -> anyhow::Result<String> {
+    let report_name = args
+        .get("report_name")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    let headed = args
+        .get("headed")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    let report_target = require_wechat_manual_report_target(config, report_name, "report-preview")?;
+    let raw_output = preview_wechat_backend(
+        &report_target.wechat_bin,
+        &report_target.wechat_articles_dir,
+        headed,
+    )?;
+
+    Ok(serde_json::to_string_pretty(&serde_json::json!({
+        "ok": true,
+        "report_name": report_target.name,
+        "output": report_target.output,
+        "wechat_bin": report_target.wechat_bin,
+        "wechat_articles_dir": report_target.wechat_articles_dir,
+        "headed": headed,
+        "raw_output": raw_output,
     }))?)
 }
 
@@ -735,9 +783,9 @@ mod tests {
     }
 
     #[test]
-    fn list_tools_returns_fourteen_tools() {
+    fn list_tools_returns_fifteen_tools() {
         let tools = list_tools();
-        assert_eq!(tools.len(), 14);
+        assert_eq!(tools.len(), 15);
         let names: Vec<&str> = tools.iter().map(|t| t.name.as_str()).collect();
         assert!(names.contains(&"publish_history"));
         assert!(names.contains(&"report_status"));

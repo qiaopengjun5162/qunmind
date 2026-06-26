@@ -7,7 +7,9 @@ use qunmind::channel::wx_cli::WxCliChannel;
 use qunmind::cli::{Args, CliCommand};
 use qunmind::config::{ChannelKind, Config};
 use qunmind::error::QunMindError;
-use qunmind::publisher::{configure_wechat_backend, login_wechat_backend, publish_markdown};
+use qunmind::publisher::{
+    configure_wechat_backend, login_wechat_backend, preview_wechat_backend, publish_markdown,
+};
 use qunmind::reporting::{
     build_ai_client, build_message_store, build_public_news_source, effective_publish_history_name,
     effective_report_status_target, generate_manual_daily_report_markdown,
@@ -313,6 +315,38 @@ async fn run_diagnostic_command(
                     "headed": headed,
                     "login_output": login_output,
                     "configure_output": configure_output,
+                }))?
+            );
+            Ok(())
+        }
+        CliCommand::ReportPreview {
+            report_name,
+            headed,
+        } => {
+            let report_target = resolve_manual_daily_report_target(config, &report_name)?;
+            if report_target.output != "wechat" {
+                return Err(QunMindError::Config(format!(
+                    "report-preview 仅支持 output = wechat，当前为 {}",
+                    report_target.output
+                ))
+                .into());
+            }
+
+            let raw_output = preview_wechat_backend(
+                &report_target.wechat_bin,
+                &report_target.wechat_articles_dir,
+                headed,
+            )?;
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&serde_json::json!({
+                    "ok": true,
+                    "report_name": report_target.name,
+                    "output": report_target.output,
+                    "wechat_bin": report_target.wechat_bin,
+                    "wechat_articles_dir": report_target.wechat_articles_dir,
+                    "headed": headed,
+                    "raw_output": raw_output,
                 }))?
             );
             Ok(())

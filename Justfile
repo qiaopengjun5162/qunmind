@@ -103,6 +103,10 @@ report-configure config='config.toml' report='微信公众号日报' headed='fal
 report-recover-automation config='config.toml' report='微信公众号日报' headed='false':
     cargo run -- --config {{config}} report-recover-automation --report-name "{{report}}" {{if headed == "true" { "--headed" } else { "" }}}
 
+# 单独测试公众号预览步骤
+report-preview config='config.toml' report='微信公众号日报' headed='false':
+    cargo run -- --config {{config}} report-preview --report-name "{{report}}" {{if headed == "true" { "--headed" } else { "" }}}
+
 # 生成本地日报 markdown（不发布）
 report-markdown config='config.toml' report='微信公众号日报' output='/tmp/wechat-report.md':
     cargo run -- --config {{config}} daily-report --report-name "{{report}}" --output {{output}}
