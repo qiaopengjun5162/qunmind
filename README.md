@@ -207,6 +207,8 @@ The current `wechat_rss` reader also normalizes a few common feed variants so mi
 
 For X / Twitter-style first-hand signals, QunMind uses the same lightweight boundary through `[public_sources] x_rss_*`: provide RSSHub, Nitter-compatible, or self-hosted X-list RSS / Atom feeds, and QunMind will normalize them as `X RSS` public news items. The main process does not embed X login, scraping, proxy, or anti-bot logic.
 
+Manual curated items such as `x.com`, `twitter.com`, Nitter-compatible links, and WeChat public-account URLs are treated as explicitly selected material rather than broad-feed noise, so the topic keyword filter will not drop them simply because the title does not contain a configured keyword.
+
 If you already have a WeChat public-account RSS / Atom upstream, the shortest rehearsal flow is:
 
 ```bash

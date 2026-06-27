@@ -121,6 +121,9 @@ fn is_curated_source_url(url: &str) -> bool {
         || url.contains("arxiv.org")
         || url.contains("ethresear.ch")
         || url.contains("mp.weixin.qq.com")
+        || url.contains("x.com/")
+        || url.contains("twitter.com/")
+        || url.contains("nitter.")
         || url.contains("thedefiant.io")
         || url.contains("cointelegraph.com")
         || url.contains("cryptoslate.com")
@@ -197,6 +200,33 @@ mod tests {
 
         assert_eq!(items.len(), 1);
         assert_eq!(items[0].title, "Rust ZKP library");
+    }
+
+    #[tokio::test]
+    async fn composite_keeps_curated_x_links_even_without_keyword_match() {
+        let source = Arc::new(StaticSource {
+            items: vec![PublicNewsItem {
+                source: "X".to_string(),
+                title: "Easycompany333 on X".to_string(),
+                url: "https://x.com/Easycompany333/status/2069019238283849954".to_string(),
+                summary: Some("用户精选的一手 X 原帖。".to_string()),
+                author: Some("Easycompany333".to_string()),
+                published_at: None,
+                score: Some(1900),
+                comments: None,
+                ai_score: None,
+                category: Some("x_post".to_string()),
+            }],
+        });
+        let composite = CompositePublicNewsSource::new(vec![source], vec!["rust".to_string()], 10);
+
+        let items = match composite.fetch_top_items().await {
+            Ok(items) => items,
+            Err(err) => panic!("items: {err}"),
+        };
+
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].source, "X");
     }
 
     struct FailingSource;

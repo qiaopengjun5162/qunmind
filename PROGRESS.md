@@ -100,6 +100,7 @@
 - **公众号日报排版升级** — `src/daily_report/render.rs` 现在在导语后加入 `今日速览`，正文分区改为 `01｜AI 前沿`、`02｜Web3 技术`、`03｜技术 & 开源`、`04｜推荐深读`，并使用 `moonpub` 已支持的 `tip` / `divider` block 来增强公众号阅读节奏。条目之间不再堆叠过密硬分割线，参考区也明确区分“正文引用来源”和“完整素材链接”。
 - **公众号日报排版细节继续收敛** — 条目摘要现在会补齐句末标点，来源信息改为独立引用行（例如 `> 来源：The Defiant · 120 points`），参考链接区也改为 `moonpub` 的 `divider` block，减少公众号草稿里“技术 Markdown 横线/括号”带来的粗糙感。
 - **手工精选素材入口落地** — 新增 `[[public_sources.manual_items]]`，用于补入用户明确想推荐大家阅读的一手官方文章、X 原帖、论文或项目公告。它会作为 `PublicNewsSource` 进入日报素材池，优先参与“推荐深读”和“完整素材链接”，避免好内容因为 RSS / X 上游暂时没抓到而丢失。
+- **手工精选 X 原帖过滤修复** — 修复 `CompositePublicNewsSource` 的 topic keyword 过滤误伤：`x.com`、`twitter.com` 和 Nitter 兼容 URL 现在和微信公众号文章、GitHub、arXiv、Web3 媒体一样被视作 curated URL。这样用户临时给出的 X 原帖即使标题没命中 `topic_keywords`，也会进入日报素材池并出现在“完整素材链接”里。
 - **X / Twitter 一手来源入口落地** — 新增 `[public_sources] x_rss_*` 与 `src/source/x_rss.rs`，支持消费 RSSHub、Nitter 兼容源或自建 X List RSS / Atom 上游，并归一成 `X RSS` 公共素材。边界仍然是“主进程消费稳定上游”，不把 X 登录、抓取、代理或反风控逻辑嵌进 QunMind。
 - **本机格式化验证约束保持不变** — 这轮继续确认 macOS 本机 `taplo fmt` 仍会触发 `Attempted to create a NULL object` panic，因此 `just fmt` 在本机不应被当成可靠通过标准；本轮实际完成的是 `cargo fmt` + `just clippy` + `just test`。
 - **第三次真实公众号草稿试发成功** — 基于新一轮内容质量收敛后的 `/tmp/wechat-report-preview-v5.md`，`just report-publish config.toml '微信公众号日报' '/tmp/wechat-report-preview-v5.md'` 已于 `2026-06-25T09:31:59.745312+00:00` 成功推送公众号草稿，`publish-history` 返回 `count = 3`。这说明当前不只是“主链路能发”，而是“内容优化后的版本也已经完成真实草稿验证”。
@@ -164,6 +165,9 @@
 - `cargo nextest run --all-features render_test_plan_output_renders_shell_script_when_requested`
 - `cargo test daily_report::render::`：15 个 render 单元测试通过，覆盖条目来源引用行、句末标点和参考链接区 `divider`
 - `cargo test source::manual::tests::manual_source_returns_curated_openai_and_x_links`
+- `cargo test source::tests::composite_keeps_curated_x_links_even_without_keyword_match --all-features`：先确认修复前会因 topic keyword 过滤失败，再修复为通过
+- `cargo test source:: --all-features`：46 passed, 1 ignored
+- `cargo run -- --config /tmp/qunmind-report-manual-2026-06-27.toml daily-report --report-name '微信公众号日报' --output /tmp/wechat-report-2026-06-27-manual.md`：生成手工精选版，不发布；稿件包含 OpenAI 中文 Codex 编排文章、OpenAI GPT-5.6、用户给出的 X 原帖和 4 篇公众号参考链接，其中 X 原帖进入“完整素材链接”
 - `cargo test config::tests::parses_wx_cli_hermes_and_groups`
 - `cargo test daily_report::tests::generate_recommends_manual_openai_article_as_deep_read`
 - `cargo nextest run --all-features send_dry_run_json_renders_command`
