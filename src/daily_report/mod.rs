@@ -153,7 +153,8 @@ fn promote_web3_focus(report: &mut ReportJson, items: &[PublicNewsItem]) {
         .unwrap_or_else(|| "链上资金、协议与机构动作同步升温。".to_string());
     report.intro = format!(
         "今天的公共素材主线集中在 Web3。{}；{}",
-        primary_comment, followup
+        trim_sentence_end(&primary_comment),
+        followup
     );
     report.summary = fallback_web3_summary(report, items);
 }
@@ -917,10 +918,50 @@ fn natural_excerpt(value: &str, max_chars: usize) -> String {
         }
     }
 
-    let candidate = chars[..max_chars.min(chars.len())]
-        .iter()
-        .collect::<String>();
+    let end = excerpt_end_without_short_ascii_tail(&chars, max_chars.min(chars.len()));
+    let candidate = chars[..end].iter().collect::<String>();
     candidate.trim().to_string()
+}
+
+fn excerpt_end_without_short_ascii_tail(chars: &[char], end: usize) -> usize {
+    if end >= chars.len() || end == 0 {
+        return end;
+    }
+
+    if chars[end - 1].is_ascii_alphanumeric() && chars[end].is_ascii_alphanumeric() {
+        let mut expanded = end;
+        while expanded < chars.len() && chars[expanded].is_ascii_alphanumeric() {
+            expanded += 1;
+        }
+        return expanded;
+    }
+
+    let tail_len = chars[..end]
+        .iter()
+        .rev()
+        .take_while(|ch| ch.is_ascii_alphanumeric())
+        .count();
+    if tail_len == 0 || tail_len >= 3 {
+        return end;
+    }
+
+    let mut expanded = end;
+    while expanded < chars.len() && chars[expanded].is_ascii_alphanumeric() {
+        expanded += 1;
+    }
+    if expanded > end {
+        expanded
+    } else {
+        end.saturating_sub(tail_len)
+    }
+}
+
+fn trim_sentence_end(value: &str) -> String {
+    value
+        .trim()
+        .trim_end_matches(['。', '；', ';', '，', ',', '.'])
+        .trim()
+        .to_string()
 }
 
 fn text_contains_keyword(haystack: &str, keyword: &str) -> bool {
@@ -1620,6 +1661,84 @@ mod tests {
     fn natural_excerpt_prefers_sentence_boundaries_over_ellipsis() {
         let text = "Aave创始人回应Kraken收购传闻，澄清当前并不存在折价卖币安排，协议收入仍按既有路线分配。";
         assert_eq!(natural_excerpt(text, 24), "Aave创始人回应Kraken收购传闻");
+    }
+
+    #[test]
+    fn natural_excerpt_does_not_leave_single_letter_ascii_tail() {
+        let text = "MoneyGram CEO讨论向6000万用户推出其自有稳定币MGUSD，并透露已与Kraken合作并持有Tempo网络验证者席位。";
+
+        assert_eq!(
+            natural_excerpt(text, 32),
+            "MoneyGram CEO讨论向6000万用户推出其自有稳定币MGUSD"
+        );
+    }
+
+    #[test]
+    fn natural_excerpt_keeps_truncated_ascii_word_complete() {
+        let text = "Chainlink联合50多家银行启动Project Pangea，通过Chainlink rails和Swift消息实现外汇交易T+0原子结算。";
+
+        assert_eq!(
+            natural_excerpt(text, 32),
+            "Chainlink联合50多家银行启动Project Pangea"
+        );
+    }
+
+    #[test]
+    fn promote_web3_focus_joins_intro_without_double_punctuation() {
+        let mut report = ReportJson {
+            web3_items: vec![
+                ReportSection {
+                    title: "Chainlink Project Pangea".to_string(),
+                    url: "https://example.com/chainlink".to_string(),
+                    comment: "Chainlink启动Project Pangea。".to_string(),
+                    source: "The Defiant".to_string(),
+                    points: 120,
+                    subsection: String::new(),
+                },
+                ReportSection {
+                    title: "Ripple RLUSD Japan".to_string(),
+                    url: "https://example.com/ripple".to_string(),
+                    comment: "Ripple的RLUSD稳定币在日本上线。".to_string(),
+                    source: "The Defiant".to_string(),
+                    points: 120,
+                    subsection: String::new(),
+                },
+                ReportSection {
+                    title: "MoneyGram MGUSD".to_string(),
+                    url: "https://example.com/moneygram".to_string(),
+                    comment: "MoneyGram讨论向用户推出MGUSD。".to_string(),
+                    source: "The Defiant".to_string(),
+                    points: 120,
+                    subsection: String::new(),
+                },
+            ],
+            ..Default::default()
+        };
+        let items = report
+            .web3_items
+            .iter()
+            .map(|section| PublicNewsItem {
+                source: section.source.clone(),
+                title: section.title.clone(),
+                url: section.url.clone(),
+                summary: Some(section.comment.clone()),
+                author: None,
+                published_at: None,
+                score: Some(section.points),
+                comments: None,
+                ai_score: None,
+                category: Some("web3".to_string()),
+            })
+            .collect::<Vec<_>>();
+
+        promote_web3_focus(&mut report, &items);
+
+        assert!(!report.intro.contains("。；"));
+        assert!(
+            report
+                .intro
+                .contains("Chainlink启动Project Pangea；Ripple的RLUSD稳定币在日本上线。")
+        );
     }
 
     #[tokio::test]
