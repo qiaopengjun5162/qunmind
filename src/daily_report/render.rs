@@ -255,7 +255,7 @@ fn build_refs_block(report: &ReportJson, items: &[PublicNewsItem]) -> String {
         return String::new();
     }
     let referenced_urls = report.referenced_urls();
-    let mut block = String::from("---\n\n**参考来源**\n\n");
+    let mut block = String::from(":::divider\nlabel: 参考链接\n:::\n\n**参考来源**\n\n");
     block.push_str("正文直接引用过的来源如下，便于核对主要信息。\n\n");
     let mut referenced_count = 0;
     for item in items
@@ -314,25 +314,27 @@ fn format_section_item(item: &ReportSection) -> Option<String> {
         return None;
     }
 
-    let points_part = if item.points > 0 {
-        format!("（来源：{}，{} points）", item.source, item.points)
+    let source_part = if item.points > 0 && !item.source.is_empty() {
+        format!("来源：{} · {} points", item.source, item.points)
     } else if !item.source.is_empty() {
-        format!("（来源：{}）", item.source)
+        format!("来源：{}", item.source)
+    } else if item.points > 0 {
+        format!("{} points", item.points)
     } else {
         String::new()
     };
 
-    let meta = if points_part.is_empty() {
+    let meta = if source_part.is_empty() {
         String::new()
     } else {
-        format!("\n\n> {}", sanitize(&points_part))
+        format!("\n\n> {}", sanitize(&source_part))
     };
 
     Some(format!(
         "**[{}]({})**\n\n{}{}\n\n",
         sanitize(&item.title),
         url,
-        sanitize(&item.comment),
+        ensure_sentence_end(&sanitize(&item.comment)),
         meta
     ))
 }
@@ -361,6 +363,19 @@ fn humanize_focus_text(text: &str) -> String {
     }
 
     trimmed
+}
+
+fn ensure_sentence_end(value: &str) -> String {
+    let trimmed = value.trim();
+    if trimmed.is_empty()
+        || trimmed
+            .chars()
+            .last()
+            .is_some_and(|ch| matches!(ch, '。' | '！' | '？' | '!' | '?' | '.'))
+    {
+        return trimmed.to_string();
+    }
+    format!("{trimmed}。")
 }
 
 fn short_title(item: &PublicNewsItem, score: i64) -> String {
@@ -559,6 +574,45 @@ mod tests {
         };
         let md = assemble_markdown(&report, &[], "");
         assert!(md.contains("> Google DeepMind 团队提出了一种新的强化学习框架"));
+    }
+
+    #[test]
+    fn section_items_render_polished_sentence_and_source_meta() {
+        let item = ReportSection {
+            title: "Chainlink Project Pangea".to_string(),
+            url: "https://example.com/chainlink".to_string(),
+            comment: "Chainlink联合50多家银行启动Project Pangea".to_string(),
+            source: "The Defiant".to_string(),
+            points: 120,
+            subsection: String::new(),
+        };
+
+        let rendered = format_section_item(&item).expect("section item");
+
+        assert!(rendered.contains("Chainlink联合50多家银行启动Project Pangea。"));
+        assert!(rendered.contains("> 来源：The Defiant · 120 points"));
+        assert!(!rendered.contains("（来源："));
+    }
+
+    #[test]
+    fn refs_block_uses_moonpub_divider_for_link_area() {
+        let item = make_item("used", Some(100));
+        let report = ReportJson {
+            tech_items: vec![ReportSection {
+                title: item.title.clone(),
+                url: item.url.clone(),
+                comment: "说明".to_string(),
+                source: item.source.clone(),
+                points: 100,
+                subsection: String::new(),
+            }],
+            ..Default::default()
+        };
+
+        let refs = build_refs_block(&report, &[item]);
+
+        assert!(refs.starts_with(":::divider\nlabel: 参考链接\n:::\n\n"));
+        assert!(!refs.starts_with("---"));
     }
 
     #[test]
