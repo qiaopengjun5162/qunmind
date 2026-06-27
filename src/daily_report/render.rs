@@ -245,6 +245,8 @@ fn render_reads_section(reads: &[ReportRead]) -> String {
             && !summary.contains("核心信息")
         {
             s.push_str(&format!("> {}\n\n", sanitize(summary)));
+        } else if !read.url.trim().is_empty() {
+            s.push_str("> 未生成可靠摘要，请直接阅读原文核对。\n\n");
         }
         if !read.url.trim().is_empty() {
             s.push_str(&format!("> 原文：{}\n\n", read.url.trim()));
@@ -320,11 +322,11 @@ fn format_section_item(item: &ReportSection) -> Option<String> {
     }
 
     let source_part = if item.points > 0 && !item.source.is_empty() {
-        format!("来源：{} · {} points", item.source, item.points)
+        format!("该观点依据：{} · {} points", item.source, item.points)
     } else if !item.source.is_empty() {
-        format!("来源：{}", item.source)
+        format!("该观点依据：{}", item.source)
     } else if item.points > 0 {
-        format!("{} points", item.points)
+        format!("该观点依据：{} points", item.points)
     } else {
         String::new()
     };
@@ -565,7 +567,8 @@ mod tests {
         };
         let md = assemble_markdown(&report, &[], "");
         assert!(md.contains("**[深度文章]"));
-        assert!(!md.contains("> \n"));
+        assert!(md.contains("> 未生成可靠摘要，请直接阅读原文核对。"));
+        assert!(md.contains("> 原文：https://example.com/a"));
     }
 
     #[test]
@@ -597,8 +600,16 @@ mod tests {
         let rendered = format_section_item(&item).expect("section item");
 
         assert!(rendered.contains("Chainlink联合50多家银行启动Project Pangea。"));
-        assert!(rendered.contains("> 来源：The Defiant · 120 points"));
+        assert!(rendered.contains("> 该观点依据：The Defiant · 120 points"));
         assert!(rendered.contains("> 原文：https://example.com/chainlink"));
+        assert!(
+            rendered
+                .find("Chainlink联合50多家银行启动Project Pangea。")
+                .unwrap()
+                < rendered
+                    .find("> 原文：https://example.com/chainlink")
+                    .unwrap()
+        );
         assert!(!rendered.contains("（来源："));
     }
 
