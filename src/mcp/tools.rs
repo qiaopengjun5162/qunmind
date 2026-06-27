@@ -13,6 +13,7 @@ use crate::reporting::{
     persist_manual_publish_receipt, publish_receipt_json, report_status_json,
     resolve_manual_daily_report_target,
 };
+use crate::source::wechat_rss::{fetch_named_wechat_account_articles, find_wechat_account};
 use crate::storage::MessageStore;
 use crate::storage::postgres::PostgresMessageStore;
 use crate::wx_cli_runtime;
@@ -169,6 +170,24 @@ pub fn list_tools() -> Vec<Tool> {
                     }
                 },
                 "required": ["output", "confirm_publish"]
+            }),
+        },
+        Tool {
+            name: "wechat_articles".into(),
+            description: "Fetch recent articles for a named WeChat public account from a configured RSS/Atom upstream. Does not scrape WeChat directly.".into(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "account_name": {
+                        "type": "string",
+                        "description": "WeChat public account name or alias configured in public_sources.wechat_accounts."
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "Max articles to return (default: 20)."
+                    }
+                },
+                "required": ["account_name"]
             }),
         },
         Tool {
@@ -331,6 +350,7 @@ pub async fn call_tool(
         "report_preview" => tool_report_preview(config, arguments),
         "report_markdown" => tool_report_markdown(config, arguments).await,
         "report_publish" => tool_report_publish(config, arguments).await,
+        "wechat_articles" => tool_wechat_articles(config, arguments).await,
         "wxcli_doctor" => tool_doctor(config, arguments),
         "wxcli_capture" => tool_capture(config, config_path, arguments).await,
         "wxcli_test_plan" => tool_test_plan(config, config_path, arguments),
@@ -578,6 +598,48 @@ async fn tool_report_publish(config: &Config, args: &serde_json::Value) -> anyho
     )?)
 }
 
+async fn tool_wechat_articles(config: &Config, args: &serde_json::Value) -> anyhow::Result<String> {
+    let account_name = required_string(args, "account_name")?;
+    let limit = args.get("limit").and_then(|v| v.as_u64()).unwrap_or(20) as usize;
+    let account = find_wechat_account(&config.public_sources.wechat_accounts, &account_name)
+        .ok_or_else(|| {
+            crate::error::QunMindError::Config(format!(
+                "未找到公众号来源：{}。请先配置 [[public_sources.wechat_accounts]] 的 name / feed_url / aliases",
+                account_name
+            ))
+        })?;
+    let feed_url = account.feed_url.clone();
+    let resolved_account_name = account.name.clone();
+    let items =
+        fetch_named_wechat_account_articles(&config.public_sources, &account_name, limit).await?;
+    let items_json = items
+        .into_iter()
+        .map(|item| {
+            serde_json::json!({
+                "source": item.source,
+                "title": item.title,
+                "url": item.url,
+                "summary": item.summary,
+                "author": item.author,
+                "published_at": item.published_at,
+                "score": item.score,
+                "comments": item.comments,
+                "ai_score": item.ai_score,
+                "category": item.category,
+            })
+        })
+        .collect::<Vec<_>>();
+
+    Ok(serde_json::to_string_pretty(&serde_json::json!({
+        "ok": true,
+        "account_name": resolved_account_name,
+        "requested_account_name": account_name,
+        "feed_url": feed_url,
+        "count": items_json.len(),
+        "items": items_json,
+    }))?)
+}
+
 fn tool_doctor(config: &Config, args: &serde_json::Value) -> anyhow::Result<String> {
     let limit = args
         .get("limit")
@@ -783,9 +845,9 @@ mod tests {
     }
 
     #[test]
-    fn list_tools_returns_fifteen_tools() {
+    fn list_tools_returns_sixteen_tools() {
         let tools = list_tools();
-        assert_eq!(tools.len(), 15);
+        assert_eq!(tools.len(), 16);
         let names: Vec<&str> = tools.iter().map(|t| t.name.as_str()).collect();
         assert!(names.contains(&"publish_history"));
         assert!(names.contains(&"report_status"));
@@ -794,6 +856,7 @@ mod tests {
         assert!(names.contains(&"report_recover_automation"));
         assert!(names.contains(&"report_markdown"));
         assert!(names.contains(&"report_publish"));
+        assert!(names.contains(&"wechat_articles"));
         assert!(names.contains(&"wxcli_doctor"));
         assert!(names.contains(&"wxcli_capture"));
         assert!(names.contains(&"wxcli_test_plan"));
@@ -922,6 +985,42 @@ mod tests {
         .unwrap_err();
 
         assert!(err.to_string().contains("report_name"));
+    }
+
+    #[tokio::test]
+    async fn tool_wechat_articles_rejects_missing_account_name() {
+        let config = test_config();
+
+        let err = call_tool(
+            &config,
+            std::path::Path::new("test-config.toml"),
+            "wechat_articles",
+            &serde_json::json!({}),
+        )
+        .await
+        .unwrap_err();
+
+        assert!(err.to_string().contains("account_name"));
+    }
+
+    #[tokio::test]
+    async fn tool_wechat_articles_errors_before_network_when_account_is_not_bound() {
+        let config = config_from("");
+
+        let err = call_tool(
+            &config,
+            std::path::Path::new("test-config.toml"),
+            "wechat_articles",
+            &serde_json::json!({"account_name": "未绑定公众号"}),
+        )
+        .await
+        .unwrap_err();
+
+        assert!(err.to_string().contains("未找到公众号来源"));
+        assert!(
+            err.to_string()
+                .contains("[[public_sources.wechat_accounts]]")
+        );
     }
 
     #[tokio::test]

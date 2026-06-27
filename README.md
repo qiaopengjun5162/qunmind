@@ -216,7 +216,7 @@ aliases = ["xunyue", "寻月"]
 cargo run -- wechat-articles --account-name '寻月隐君' --limit 20
 ```
 
-The command returns structured JSON with the resolved account name, feed URL, article count, and each article's title, author, publish time, summary, and full original URL. If a name has not been bound to a feed, QunMind fails explicitly and asks for `[[public_sources.wechat_accounts]]` configuration instead of attempting unstable WeChat scraping inside the main process.
+The command returns structured JSON with the resolved account name, feed URL, article count, and each article's title, author, publish time, summary, and full original URL. MCP / agent callers can use the same behavior through the `wechat_articles` tool with `account_name` and optional `limit`. If a name has not been bound to a feed, QunMind fails explicitly and asks for `[[public_sources.wechat_accounts]]` configuration instead of attempting unstable WeChat scraping inside the main process.
 
 The current `wechat_rss` reader also normalizes a few common feed variants so mixed upstream services stay usable: Atom `<author><name>`, RSS `dc:creator`, and `pubDate` / `updated` / `published` / `dc:date` timestamps are mapped into the same `author` and UTC `published_at` fields before they enter the daily-report prompt.
 

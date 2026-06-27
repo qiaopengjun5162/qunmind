@@ -116,7 +116,7 @@
 - **首次 ready 状态的 MCP 下一步建议补齐** — `report-status` / `report_status` 现在不只会在 warning 状态下给 Agent 结构化动作；当目标处于 `ready_for_first_publish` 时，也会直接返回 `report_markdown -> report_publish(confirm_publish = true) -> publish_history` 这一组 `recommended_tool_calls`。这样“给人看的 shell 命令提示”和“给 Agent 继续执行的 tool 建议”终于在首次试发场景也完全对齐。
 - **手工发布结果开始直接给后续动作** — 现在 `daily-report --publish` 和 MCP `report_publish` 成功后，也会继续返回 `follow_up_status`、`recommended_commands` 和 `recommended_tool_calls`。如果这次草稿发布干净成功，结果会直接建议去看 `publish_history`；如果带有 `automation: ...` warning，则会直接建议优先 `report-recover-automation` 再复查历史，不需要再额外跑一次 `report-status` 才知道下一步。
 - **ZK 手工精选日报完成真实发布** — 基于用户给出的 LatticeBlindFold、Etherveil、Reputation Wallet、WHIR、IACR ePrint 和 ZK Insights 等完整来源链接，已通过临时配置 `/tmp/qunmind-report-manual-2026-06-27-zk.toml` 生成 `/tmp/wechat-report-2026-06-27-zk.md` 并真实推送到公众号草稿箱。该版强调“每个观点可追溯到完整原文 URL”，最新回执显示 `published = true`、`publish_receipt_saved = true`、`automation_state = "ok"`、`warnings = []`，说明这次不只是草稿主路径成功，浏览器自动化也没有留下 warning。
-- **命名公众号文章源入口落地** — 新增 `[[public_sources.wechat_accounts]]`，用于把公众号 `name` / `aliases` 显式绑定到 RSS / Atom `feed_url`；同时新增 `qunmind wechat-articles --account-name <name> --limit <n>`，按已绑定公众号名拉取文章列表并输出结构化 JSON。这个入口延续 `PublicNewsSource` / RSS 上游边界：如果只给公众号名字但未绑定 feed，命令会明确报错要求先配置来源，不在 QunMind 主进程里硬爬微信历史文章。
+- **命名公众号文章源入口落地** — 新增 `[[public_sources.wechat_accounts]]`，用于把公众号 `name` / `aliases` 显式绑定到 RSS / Atom `feed_url`；同时新增 `qunmind wechat-articles --account-name <name> --limit <n>` 和 MCP `wechat_articles` tool，按已绑定公众号名拉取文章列表并输出结构化 JSON。这个入口延续 `PublicNewsSource` / RSS 上游边界：如果只给公众号名字但未绑定 feed，命令会明确报错要求先配置来源，不在 QunMind 主进程里硬爬微信历史文章。
 
 ### Verified
 
@@ -199,6 +199,7 @@
 - `cargo test config::tests::parses_named_wechat_accounts`
 - `cargo test source::wechat_rss::tests`
 - `cargo test cli::tests::parses_wechat_articles_command`
+- `cargo test mcp::tools::tests`
 
 ### Current Readiness
 

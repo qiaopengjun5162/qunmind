@@ -214,7 +214,7 @@ aliases = ["xunyue", "寻月"]
 cargo run -- wechat-articles --account-name '寻月隐君' --limit 20
 ```
 
-这条命令会输出结构化 JSON，包含公众号名、feed URL、文章数量，以及每篇文章的标题、作者、发布时间、摘要和完整原文 URL。如果只给公众号名字但没有绑定 `feed_url`，QunMind 会明确报错要求先配置上游来源；它不会在主进程里绕过微信登录态、验证码或反风控去硬抓全量历史文章。
+这条命令会输出结构化 JSON，包含公众号名、feed URL、文章数量，以及每篇文章的标题、作者、发布时间、摘要和完整原文 URL。MCP / Agent 侧也暴露了同语义的 `wechat_articles` tool，参数是 `account_name` 和可选 `limit`。如果只给公众号名字但没有绑定 `feed_url`，QunMind 会明确报错要求先配置上游来源；它不会在主进程里绕过微信登录态、验证码或反风控去硬抓全量历史文章。
 
 如果要手工联调日报，不再只能“随便生成一份 markdown”。`qunmind daily-report` 现在支持 `--report-name <name>` 复用已配置日报目标的 `daily_quote` 和相关目标配置；需要继续验证发布链路时，再加 `--publish`，就能沿着该目标的 publisher 边界继续往下跑，比如 `output = "wechat"` 的公众号草稿链路。
 
