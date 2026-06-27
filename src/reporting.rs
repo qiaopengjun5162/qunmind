@@ -581,6 +581,7 @@ pub fn has_enabled_public_sources(config: &Config) -> bool {
         || sources.hn_daily_enabled
         || sources.arxiv_enabled
         || sources.ethresear_enabled
+        || !sources.manual_items.is_empty()
 }
 
 fn command_exists(bin: &str) -> bool {
@@ -923,6 +924,22 @@ mod tests {
         assert!(blockers.is_empty());
 
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn has_enabled_public_sources_accepts_manual_items() {
+        let config = config_from(
+            r#"
+            [public_sources]
+
+            [[public_sources.manual_items]]
+            title = "Open-source Codex orchestration symphony"
+            url = "https://openai.com/zh-Hans-CN/index/open-source-codex-orchestration-symphony/"
+            source = "OpenAI"
+            "#,
+        );
+
+        assert!(has_enabled_public_sources(&config));
     }
 
     #[test]

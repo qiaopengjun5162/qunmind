@@ -282,6 +282,26 @@ pub struct PublicSourcesConfig {
     pub web3_media_max_items: usize,
     #[serde(default = "default_web3_media_timeout_secs")]
     pub web3_media_timeout_secs: u64,
+    #[serde(default)]
+    pub manual_items: Vec<ManualPublicSourceItem>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct ManualPublicSourceItem {
+    pub title: String,
+    pub url: String,
+    #[serde(default = "default_manual_source_name")]
+    pub source: String,
+    #[serde(default)]
+    pub summary: Option<String>,
+    #[serde(default)]
+    pub author: Option<String>,
+    #[serde(default)]
+    pub published_at: Option<String>,
+    #[serde(default)]
+    pub score: Option<i64>,
+    #[serde(default)]
+    pub category: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -544,6 +564,10 @@ fn default_x_rss_timeout_secs() -> u64 {
     10
 }
 
+fn default_manual_source_name() -> String {
+    "Manual Picks".to_string()
+}
+
 fn default_web3_media_urls() -> Vec<String> {
     vec![
         "https://cryptoslate.com/feed/".to_string(),
@@ -690,6 +714,7 @@ impl Default for PublicSourcesConfig {
             web3_media_urls: default_web3_media_urls(),
             web3_media_max_items: default_web3_media_max_items(),
             web3_media_timeout_secs: default_web3_media_timeout_secs(),
+            manual_items: Vec::new(),
         }
     }
 }
@@ -953,6 +978,14 @@ mod tests {
             x_rss_urls = ["https://rsshub.example/x/user/openai", "https://nitter.example/a16z.rss"]
             x_rss_max_items = 5
             x_rss_timeout_secs = 13
+            [[public_sources.manual_items]]
+            title = "Open-source Codex orchestration symphony"
+            url = "https://openai.com/zh-Hans-CN/index/open-source-codex-orchestration-symphony/"
+            source = "OpenAI"
+            summary = "OpenAI 官方文章，适合作为 AI Agent 编排方向的推荐深读。"
+            author = "OpenAI"
+            score = 1000
+            category = "ai"
 
             [[groups]]
             chat_id = "group-1"
@@ -1063,6 +1096,13 @@ mod tests {
         );
         assert_eq!(config.public_sources.x_rss_max_items, 5);
         assert_eq!(config.public_sources.x_rss_timeout_secs, 13);
+        assert_eq!(config.public_sources.manual_items.len(), 1);
+        assert_eq!(config.public_sources.manual_items[0].source, "OpenAI");
+        assert_eq!(
+            config.public_sources.manual_items[0].url,
+            "https://openai.com/zh-Hans-CN/index/open-source-codex-orchestration-symphony/"
+        );
+        assert_eq!(config.public_sources.manual_items[0].score, Some(1000));
         assert_eq!(config.groups.len(), 1);
         assert!(!config.groups[0].enabled);
         assert_eq!(config.groups[0].name, "技术群");

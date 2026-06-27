@@ -394,6 +394,11 @@ fn fallback_web3_summary(report: &ReportJson, items: &[PublicNewsItem]) -> Strin
 
 fn is_preferred_read_item(item: &PublicNewsItem) -> bool {
     let source = item.source.to_lowercase();
+    if source.contains("manual") || source.contains("openai") || source == "x" || source == "x rss"
+    {
+        return true;
+    }
+
     if source.contains("hacker news") {
         return item.score.unwrap_or(0) >= 80;
     }
@@ -1554,6 +1559,51 @@ mod tests {
         assert!(used_refs.contains("https://example.com/read1"));
         assert!(!used_refs.contains("https://example.com/unused"));
         assert!(source_links.contains("https://example.com/unused"));
+    }
+
+    #[tokio::test]
+    async fn generate_recommends_manual_openai_article_as_deep_read() {
+        let generator = DailyReportGenerator::new(
+            Arc::new(FakeAi::new(vec!["not json".to_string()])),
+            Arc::new(FakeNewsSource {
+                items: vec![
+                    PublicNewsItem {
+                        source: "OpenAI".to_string(),
+                        title: "Open-source Codex orchestration symphony".to_string(),
+                        url: "https://openai.com/zh-Hans-CN/index/open-source-codex-orchestration-symphony/".to_string(),
+                        summary: Some(
+                            "OpenAI 官方文章介绍开源 Codex 编排实践，适合作为 AI Agent 工程化方向的推荐深读。"
+                                .to_string(),
+                        ),
+                        author: Some("OpenAI".to_string()),
+                        published_at: None,
+                        score: Some(1000),
+                        comments: None,
+                        ai_score: None,
+                        category: Some("ai".to_string()),
+                    },
+                    PublicNewsItem {
+                        source: "X".to_string(),
+                        title: "Easycompany333 on X".to_string(),
+                        url: "https://x.com/Easycompany333/status/2069019238283849954".to_string(),
+                        summary: Some("用户精选的一手 X 原帖，适合推荐大家继续阅读。".to_string()),
+                        author: Some("Easycompany333".to_string()),
+                        published_at: None,
+                        score: Some(900),
+                        comments: None,
+                        ai_score: None,
+                        category: Some("x_post".to_string()),
+                    },
+                ],
+            }),
+            String::new(),
+        );
+
+        let report = generator.generate().await.expect("report");
+
+        assert!(report.contains("## 04｜📚 推荐深读"));
+        assert!(report.contains("open-source-codex-orchestration-symphony"));
+        assert!(report.contains("https://x.com/Easycompany333/status/2069019238283849954"));
     }
 
     #[tokio::test]

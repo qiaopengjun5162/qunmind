@@ -33,6 +33,7 @@ The project currently supports:
 - Daily reports generated from recently stored group messages and link intelligence.
 - Per-group daily report targets with optional cron, prompt, lookback, message, and link overrides.
 - Optional Hacker News, CoinMarketCap, CoinGecko, DeFi Llama, Dune, GitHub Trending, and Slerf Blog fallback reports when a report group has no messages.
+- Manual curated source items for one-off official articles, X posts, or other links you explicitly want readers to continue reading.
 - WeChat public-account report drafts use a fixed personal-account cover for the `AI · Web3 最新日报` column, branded as `寻月隐君`, while `moonpub` still owns final rendering and upload.
 - WeChat daily reports render as a review-friendly article layout: intro, quick overview, focus callout, numbered AI / Web3 / tech / deep-read sections, polished source quote lines, and separate referenced-source versus complete-source-link blocks.
 

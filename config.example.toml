@@ -151,6 +151,26 @@ x_rss_urls = [
   # "https://nitter.example/a16zcrypto/rss",
 ] # X/Twitter 一手信息入口；只消费 RSS / Atom 上游，不在 QunMind 主进程内做登录抓取或反风控
 
+# 手工精选入口：适合临时补入你明确想推荐大家阅读的一手原文、X 原帖或官方文章。
+# 这些条目会进入日报素材池，优先出现在“推荐深读”或“完整素材链接”里。
+[[public_sources.manual_items]]
+author = "OpenAI"
+category = "ai"
+score = 1000
+source = "OpenAI"
+summary = "OpenAI 官方文章，适合作为 AI Agent 编排和 Codex 开源工作流方向的推荐深读。"
+title = "Open-source Codex orchestration symphony"
+url = "https://openai.com/zh-Hans-CN/index/open-source-codex-orchestration-symphony/"
+
+# [[public_sources.manual_items]]
+# author = "Easycompany333"
+# category = "x_post"
+# score = 900
+# source = "X"
+# summary = "用户精选的一手 X 原帖，适合进入完整素材链接；如能补正文摘要，会更容易进入推荐深读。"
+# title = "Easycompany333 on X"
+# url = "https://x.com/Easycompany333/status/2069019238283849954"
+
 [[groups]]
 chat_id = "group-chat-id-1"
 context_messages = 8

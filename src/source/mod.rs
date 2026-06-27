@@ -7,6 +7,7 @@ pub mod ethresear;
 pub mod github_trending;
 pub mod hacker_news;
 pub mod hn_daily;
+pub mod manual;
 pub mod registry;
 pub mod slerf_blog;
 pub mod web3_media;
