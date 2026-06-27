@@ -55,13 +55,20 @@ fn into_public_item(item: &ManualPublicSourceItem) -> Option<PublicNewsItem> {
         score: item.score,
         comments: None,
         ai_score: None,
-        category: item
-            .category
-            .as_deref()
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            .map(ToString::to_string),
+        category: Some(format_manual_category(
+            item.category
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty()),
+        )),
     })
+}
+
+fn format_manual_category(category: Option<&str>) -> String {
+    match category {
+        Some(category) => format!("manual:{category}"),
+        None => "manual".to_string(),
+    }
 }
 
 #[cfg(test)]
@@ -101,6 +108,7 @@ mod tests {
 
         assert_eq!(items.len(), 2);
         assert_eq!(items[0].source, "OpenAI");
+        assert_eq!(items[0].category.as_deref(), Some("manual:ai"));
         assert!(
             items[0]
                 .url
@@ -108,6 +116,7 @@ mod tests {
         );
         assert_eq!(items[1].source, "X");
         assert_eq!(items[1].author.as_deref(), Some("Easycompany333"));
+        assert_eq!(items[1].category.as_deref(), Some("manual:x_post"));
     }
 
     #[tokio::test]
@@ -142,5 +151,6 @@ mod tests {
 
         assert_eq!(items.len(), 1);
         assert_eq!(items[0].title, "valid");
+        assert_eq!(items[0].category.as_deref(), Some("manual"));
     }
 }

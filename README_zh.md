@@ -216,7 +216,7 @@ X / Twitter 这类一手信息也走同样的轻量边界：通过 `[public_sour
 
 如果临时看到特别值得推荐大家阅读的原文，但 RSS / X 上游还没稳定抓到，可以直接加到 `[[public_sources.manual_items]]`。它适合放 OpenAI 官方文章、项目公告、论文链接、X 原帖等“人工精选”素材；这些条目会进入日报素材池，并优先出现在“推荐深读”或“完整素材链接”里。
 
-`manual_items` 里的 `x.com`、`twitter.com`、Nitter 兼容链接和微信公众号文章会被当成用户显式精选素材，不会因为标题没有命中 `topic_keywords` 就被过滤掉；关键词过滤主要用于 Hacker News 这类宽泛公共 feed 降噪。
+`manual_items` 会被当成用户显式精选素材，不会因为标题没有命中 `topic_keywords` 或链接域名不在内置白名单里就被过滤掉；关键词过滤主要用于 Hacker News 这类宽泛公共 feed 降噪。
 
 如果你现在已经有公众号 RSS / Atom 上游，最短联调路径可以直接按下面跑：
 

@@ -106,7 +106,7 @@ fn matches_topics(item: &PublicNewsItem, topic_keywords: &[String]) -> bool {
     // Items from curated sources that the user explicitly opted into are always
     // relevant — the user enabling the source IS the relevance signal.  Keyword
     // filtering is for broad feeds (Hacker News, etc.) where most items are noise.
-    if is_curated_source_url(&item.url) {
+    if is_manual_item(item) || is_curated_source_url(&item.url) {
         return true;
     }
 
@@ -127,6 +127,12 @@ fn is_curated_source_url(url: &str) -> bool {
         || url.contains("thedefiant.io")
         || url.contains("cointelegraph.com")
         || url.contains("cryptoslate.com")
+}
+
+fn is_manual_item(item: &PublicNewsItem) -> bool {
+    item.category
+        .as_deref()
+        .is_some_and(|category| category == "manual" || category.starts_with("manual:"))
 }
 
 #[cfg(test)]
@@ -227,6 +233,33 @@ mod tests {
 
         assert_eq!(items.len(), 1);
         assert_eq!(items[0].source, "X");
+    }
+
+    #[tokio::test]
+    async fn composite_keeps_manual_items_even_without_keyword_or_curated_domain_match() {
+        let source = Arc::new(StaticSource {
+            items: vec![PublicNewsItem {
+                source: "ICME Blog".to_string(),
+                title: "LatticeBlindFold".to_string(),
+                url: "https://blog.icme.io/latticeblindfold-towards-the-first-zero-knowledge-lattice-based-folding-scheme/".to_string(),
+                summary: Some("用户精选的 ZK folding 文章。".to_string()),
+                author: Some("Luca Dall’Ava".to_string()),
+                published_at: None,
+                score: Some(2400),
+                comments: None,
+                ai_score: None,
+                category: Some("manual:zk".to_string()),
+            }],
+        });
+        let composite = CompositePublicNewsSource::new(vec![source], vec!["rust".to_string()], 10);
+
+        let items = match composite.fetch_top_items().await {
+            Ok(items) => items,
+            Err(err) => panic!("items: {err}"),
+        };
+
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].source, "ICME Blog");
     }
 
     struct FailingSource;

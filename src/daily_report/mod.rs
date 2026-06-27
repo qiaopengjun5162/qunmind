@@ -369,21 +369,25 @@ fn fallback_web3_summary(report: &ReportJson, items: &[PublicNewsItem]) -> Strin
         .web3_items
         .iter()
         .take(3)
-        .map(|item| summary_topic(&best_section_comment(item, items), 32))
+        .map(|item| section_summary_topic(item, items))
         .collect::<Vec<_>>();
 
     if topics.is_empty() {
         topics = fallback_web3_items(items)
             .into_iter()
             .take(3)
-            .map(|item| summary_topic(&best_section_comment(&item, items), 32))
+            .map(|item| section_summary_topic(&item, items))
             .collect();
     }
 
     let joined = if topics.is_empty() {
         "机构入场、协议治理与链上数据".to_string()
     } else {
-        topics.join("；")
+        topics
+            .into_iter()
+            .map(|topic| trim_dangling_ascii_tail(&topic).to_string())
+            .collect::<Vec<_>>()
+            .join("；")
     };
 
     format!(
@@ -893,8 +897,31 @@ fn summary_topic(value: &str, max_chars: usize) -> String {
     if normalized.is_empty() {
         compact_title(value.trim(), max_chars)
     } else {
-        normalized
+        trim_dangling_ascii_tail(&normalized).to_string()
     }
+}
+
+fn section_summary_topic(item: &ReportSection, items: &[PublicNewsItem]) -> String {
+    let title = item.title.trim();
+    if title_has_ascii_signal(title) {
+        let topic = title
+            .split_once(':')
+            .map(|(topic, _)| topic)
+            .or_else(|| title.split_once(" - ").map(|(topic, _)| topic))
+            .or_else(|| title.split_once(" over ").map(|(topic, _)| topic))
+            .unwrap_or(title)
+            .trim();
+        if !topic.is_empty() {
+            return compact_title(topic, 32);
+        }
+    }
+
+    summary_topic(&best_section_comment(item, items), 32)
+}
+
+fn title_has_ascii_signal(title: &str) -> bool {
+    let total = title.chars().count();
+    total > 0 && title.chars().filter(|ch| ch.is_ascii()).count() > total / 3
 }
 
 fn comment_needs_upgrade(comment: &str) -> bool {
@@ -926,6 +953,32 @@ fn natural_excerpt(value: &str, max_chars: usize) -> String {
     let end = excerpt_end_without_short_ascii_tail(&chars, max_chars.min(chars.len()));
     let candidate = chars[..end].iter().collect::<String>();
     candidate.trim().to_string()
+}
+
+fn trim_dangling_ascii_tail(value: &str) -> &str {
+    let trimmed = value.trim();
+    let Some((last_non_ascii_index, _)) = trimmed
+        .char_indices()
+        .rev()
+        .find(|(_, ch)| !ch.is_ascii() || matches!(ch, '。' | '；' | '，' | '：' | '！' | '？'))
+    else {
+        return trimmed;
+    };
+
+    let last_non_ascii_end = last_non_ascii_index
+        + trimmed[last_non_ascii_index..]
+            .chars()
+            .next()
+            .unwrap()
+            .len_utf8();
+
+    if last_non_ascii_end == trimmed.len() {
+        return trimmed;
+    }
+
+    trimmed[..last_non_ascii_end]
+        .trim_end_matches(['，', '；', '：', '。'])
+        .trim()
 }
 
 fn excerpt_end_without_short_ascii_tail(chars: &[char], end: usize) -> usize {
@@ -1730,6 +1783,45 @@ mod tests {
         assert_eq!(
             natural_excerpt(text, 32),
             "Chainlink联合50多家银行启动Project Pangea"
+        );
+    }
+
+    #[test]
+    fn summary_topic_trims_dangling_ascii_tail() {
+        let text = "Ethereum Research社区提出基于Firefox/Gecko和Tor补丁的Ethereum隐私浏览器实验，集成Kohaku作为原生钱包引擎。";
+
+        assert_eq!(summary_topic(text, 32), "Ethereum Research社区提出基于");
+    }
+
+    #[test]
+    fn section_summary_topic_prefers_title_for_ascii_heavy_titles() {
+        let item = ReportSection {
+            title:
+                "LatticeBlindFold: Towards The First Zero-Knowledge Lattice-Based Folding Scheme"
+                    .to_string(),
+            url: "https://example.com/latticeblindfold".to_string(),
+            comment:
+                "ICME发布了LatticeBlindFold，将NovaBlindFold的零知识折叠思路引入后量子格密码领域。"
+                    .to_string(),
+            source: "ICME Blog".to_string(),
+            points: 5000,
+            subsection: String::new(),
+        };
+
+        assert_eq!(section_summary_topic(&item, &[]), "LatticeBlindFold");
+
+        let whir = ReportSection {
+            title: "EVM Verification of WHIR over a 31-bit Field".to_string(),
+            url: "https://example.com/whir".to_string(),
+            comment: "PSE实现KoalaBear 31-bit field上WHIR的Solidity verifier。".to_string(),
+            source: "PSE".to_string(),
+            points: 4700,
+            subsection: String::new(),
+        };
+
+        assert_eq!(
+            section_summary_topic(&whir, &[]),
+            "EVM Verification of WHIR"
         );
     }
 
