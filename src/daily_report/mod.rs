@@ -1124,9 +1124,9 @@ mod tests {
             Err(err) => panic!("report: {err}"),
         };
 
-        assert!(report.contains("## 🤖 AI 前沿"));
-        assert!(report.contains("## 🔧 技术 & 开源"));
-        assert!(report.contains("## 📚 推荐深读"));
+        assert!(report.contains("## 01｜🤖 AI 前沿"));
+        assert!(report.contains("## 03｜🔧 技术 & 开源"));
+        assert!(report.contains("## 04｜📚 推荐深读"));
         assert!(report.contains("OpenAI Codex"));
         assert!(report.contains("rustdesk/rustdesk"));
     }
@@ -1241,7 +1241,7 @@ mod tests {
 
         let report = generator.generate().await.expect("report");
         assert!(report.contains("Aave") || report.contains("Invesco") || report.contains("Story"));
-        assert!(report.contains("## ⛓️ Web3 技术"));
+        assert!(report.contains("## 02｜⛓️ Web3 技术"));
         assert!(report.contains("代币化") || report.contains("Aave") || report.contains("Web3"));
         assert!(
             !report.contains("digest: \"RustDesk、Bun登GitHub榜首\""),
@@ -1341,18 +1341,18 @@ mod tests {
         };
 
         let web3_section = report
-            .split("## ⛓️ Web3 技术")
+            .split("## 02｜⛓️ Web3 技术")
             .nth(1)
             .and_then(|rest| rest.split("## ").next())
             .unwrap_or("");
         let reads_section = report
-            .split("## 📚 推荐深读")
+            .split("## 04｜📚 推荐深读")
             .nth(1)
             .and_then(|rest| rest.split("---").next())
             .unwrap_or("");
 
         assert!(!web3_section.contains("openai / codex"));
-        assert!(report.contains("## 🔧 技术 & 开源"));
+        assert!(report.contains("## 03｜🔧 技术 & 开源"));
         assert!(report.contains("[openai / codex](https://github.com/openai/codex)"));
         assert!(reads_section.contains("> "));
     }
@@ -1415,7 +1415,7 @@ mod tests {
 
         let report = generator.generate().await.expect("report");
         let tech_section = report
-            .split("## 🔧 技术 & 开源")
+            .split("## 03｜🔧 技术 & 开源")
             .nth(1)
             .and_then(|rest| rest.split("## ").next())
             .unwrap_or("");
@@ -1584,12 +1584,12 @@ mod tests {
 
         let report = generator.generate().await.expect("report");
         let ai_section = report
-            .split("## 🤖 AI 前沿")
+            .split("## 01｜🤖 AI 前沿")
             .nth(1)
             .and_then(|rest| rest.split("## ").next())
             .unwrap_or("");
         let web3_section = report
-            .split("## ⛓️ Web3 技术")
+            .split("## 02｜⛓️ Web3 技术")
             .nth(1)
             .and_then(|rest| rest.split("## ").next())
             .unwrap_or("");

@@ -20,6 +20,7 @@ pub(super) fn assemble_markdown(
     if !report.intro.is_empty() {
         md.push_str(&fence_block("intro", None, &sanitize(&report.intro)));
     }
+    md.push_str(&render_overview(report));
     if !report.focus_text.is_empty() {
         md.push_str(&render_focus(&report.focus_text, &report.focus_url));
     }
@@ -93,12 +94,54 @@ fn render_focus(text: &str, url: &str) -> String {
     fence_block("callout", Some("今日焦点"), &body)
 }
 
+fn render_overview(report: &ReportJson) -> String {
+    let mut lines = vec![String::from("今日速览")];
+
+    if !report.focus_text.trim().is_empty() {
+        let focus = humanize_focus_text(&report.focus_text);
+        if report.focus_url.trim().is_empty() {
+            lines.push(format!("- 焦点：{}", sanitize(&focus)));
+        } else {
+            lines.push(format!(
+                "- 焦点：[{}]({})",
+                sanitize(&focus),
+                report.focus_url.trim()
+            ));
+        }
+    }
+
+    let mut counts = Vec::new();
+    if !report.ai_items.is_empty() {
+        counts.push(format!("AI {} 条", report.ai_items.len()));
+    }
+    if !report.web3_items.is_empty() {
+        counts.push(format!("Web3 {} 条", report.web3_items.len()));
+    }
+    if !report.tech_items.is_empty() {
+        counts.push(format!("技术 {} 条", report.tech_items.len()));
+    }
+    if !report.reads.is_empty() {
+        counts.push(format!("深读 {} 篇", report.reads.len()));
+    }
+    if !counts.is_empty() {
+        lines.push(format!("- 本期结构：{}", counts.join(" / ")));
+    }
+
+    if lines.len() == 1 {
+        return String::new();
+    }
+
+    lines.push("- 阅读方式：先看焦点和速览，再按 AI / Web3 / 技术板块追原文。".to_string());
+
+    format!(":::tip\nicon: 🧭\n{}\n:::\n\n", lines.join("\n"))
+}
+
 fn render_ai_section(items: &[ReportSection], signals: &[String]) -> String {
     if items.is_empty() && signals.is_empty() {
         return String::new();
     }
 
-    let mut s = String::from("## 🤖 AI 前沿\n\n");
+    let mut s = String::from(":::divider\nlabel: 01 · AI\n:::\n\n## 01｜🤖 AI 前沿\n\n");
 
     for sub in &AI_SUBSECTIONS {
         let matched: Vec<_> = items
@@ -151,7 +194,7 @@ fn render_web3_section(items: &[ReportSection]) -> String {
         return String::new();
     }
 
-    let mut s = String::from("## ⛓️ Web3 技术\n\n");
+    let mut s = String::from(":::divider\nlabel: 02 · Web3\n:::\n\n## 02｜⛓️ Web3 技术\n\n");
     for item in items {
         if let Some(rendered) = format_section_item(item) {
             s.push_str(&rendered);
@@ -165,7 +208,7 @@ fn render_tech_section(items: &[ReportSection], timeline: &[String]) -> String {
         return String::new();
     }
 
-    let mut s = String::from("## 🔧 技术 & 开源\n\n");
+    let mut s = String::from(":::divider\nlabel: 03 · Tech\n:::\n\n## 03｜🔧 技术 & 开源\n\n");
     for item in items {
         if let Some(rendered) = format_section_item(item) {
             s.push_str(&rendered);
@@ -182,7 +225,7 @@ fn render_tech_section(items: &[ReportSection], timeline: &[String]) -> String {
 }
 
 fn render_reads_section(reads: &[ReportRead]) -> String {
-    let mut s = String::from("## 📚 推荐深读\n\n");
+    let mut s = String::from(":::divider\nlabel: 04 · Read\n:::\n\n## 04｜📚 推荐深读\n\n");
     for read in reads {
         if read.url.is_empty() {
             s.push_str(&format!("**{}**\n\n", sanitize(&read.title)));
@@ -213,6 +256,7 @@ fn build_refs_block(report: &ReportJson, items: &[PublicNewsItem]) -> String {
     }
     let referenced_urls = report.referenced_urls();
     let mut block = String::from("---\n\n**参考来源**\n\n");
+    block.push_str("正文直接引用过的来源如下，便于核对主要信息。\n\n");
     let mut referenced_count = 0;
     for item in items
         .iter()
@@ -244,6 +288,7 @@ fn build_refs_block(report: &ReportJson, items: &[PublicNewsItem]) -> String {
         .collect::<Vec<_>>();
     if !unreferenced.is_empty() {
         block.push_str("\n**完整素材链接**\n\n");
+        block.push_str("以下是本次采集但未全部写入正文的素材入口，适合继续追踪。\n\n");
         for (i, item) in unreferenced.iter().enumerate() {
             let score_part = match item.score {
                 Some(s) if s > 0 => format!(" · {s} points"),
@@ -277,12 +322,18 @@ fn format_section_item(item: &ReportSection) -> Option<String> {
         String::new()
     };
 
+    let meta = if points_part.is_empty() {
+        String::new()
+    } else {
+        format!("\n\n> {}", sanitize(&points_part))
+    };
+
     Some(format!(
-        "**[{}]({})** — {}{}\n\n",
+        "**[{}]({})**\n\n{}{}\n\n",
         sanitize(&item.title),
         url,
         sanitize(&item.comment),
-        points_part
+        meta
     ))
 }
 
@@ -422,12 +473,63 @@ mod tests {
             "",
         );
         assert!(md.contains(":::intro"));
+        assert!(md.contains(":::tip"));
+        assert!(md.contains("今日速览"));
         assert!(md.contains(":::callout"));
-        assert!(md.contains("## 🤖 AI 前沿"));
-        assert!(md.contains("## ⛓️ Web3 技术"));
-        assert!(md.contains("## 🔧 技术 & 开源"));
+        assert!(md.contains("## 01｜🤖 AI 前沿"));
+        assert!(md.contains("## 02｜⛓️ Web3 技术"));
+        assert!(md.contains("## 03｜🔧 技术 & 开源"));
         assert!(md.contains(":::summary"));
         assert!(md.contains("参考来源"));
+    }
+
+    #[test]
+    fn overview_lists_focus_counts_and_links() {
+        let report = ReportJson {
+            focus_text: "OpenAI 发布新工具".to_string(),
+            focus_url: "https://example.com/focus".to_string(),
+            ai_items: vec![ReportSection {
+                title: "AI".to_string(),
+                url: "https://example.com/ai".to_string(),
+                comment: "说明".to_string(),
+                source: "X RSS".to_string(),
+                points: 0,
+                subsection: "单Agent应用".to_string(),
+            }],
+            web3_items: vec![ReportSection {
+                title: "Web3".to_string(),
+                url: "https://example.com/web3".to_string(),
+                comment: "说明".to_string(),
+                source: "The Defiant".to_string(),
+                points: 0,
+                subsection: String::new(),
+            }],
+            tech_items: vec![ReportSection {
+                title: "Tech".to_string(),
+                url: "https://example.com/tech".to_string(),
+                comment: "说明".to_string(),
+                source: "GitHub".to_string(),
+                points: 0,
+                subsection: String::new(),
+            }],
+            reads: vec![ReportRead {
+                title: "Read".to_string(),
+                url: "https://example.com/read".to_string(),
+                summary: String::new(),
+            }],
+            ..Default::default()
+        };
+
+        let md = assemble_markdown(&report, &[], "");
+
+        assert!(md.contains(":::tip"));
+        assert!(md.contains("icon: 🧭"));
+        assert!(md.contains("今日速览"));
+        assert!(md.contains("AI 1 条"));
+        assert!(md.contains("Web3 1 条"));
+        assert!(md.contains("技术 1 条"));
+        assert!(md.contains("深读 1 篇"));
+        assert!(md.contains("[OpenAI 发布新工具](https://example.com/focus)"));
     }
 
     #[test]
@@ -498,6 +600,7 @@ mod tests {
     fn skips_empty_section_headers() {
         let report = ReportJson::default();
         let md = assemble_markdown(&report, &[], "");
+        assert!(!md.contains("今日速览"));
         assert!(!md.contains("## 🤖 AI 前沿"));
         assert!(!md.contains("## ⛓️ Web3 技术"));
         assert!(!md.contains("## 🔧 技术 & 开源"));
