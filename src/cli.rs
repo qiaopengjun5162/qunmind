@@ -97,6 +97,16 @@ pub enum CliCommand {
         #[arg(long)]
         headed: bool,
     },
+    /// 按已绑定公众号名称拉取文章列表
+    #[command(name = "wechat-articles")]
+    WechatArticles {
+        /// 公众号名称或别名，必须先在 public_sources.wechat_accounts 中绑定 feed_url
+        #[arg(long)]
+        account_name: String,
+        /// 最多返回多少篇文章
+        #[arg(long, default_value_t = 20)]
+        limit: usize,
+    },
 }
 
 #[derive(Debug, Subcommand)]
@@ -740,6 +750,29 @@ mod tests {
                 assert!(headed);
             }
             _ => panic!("report-preview command should parse"),
+        }
+    }
+
+    #[test]
+    fn parses_wechat_articles_command() {
+        let args = parse_args(&[
+            "qunmind",
+            "wechat-articles",
+            "--account-name",
+            "寻月隐君",
+            "--limit",
+            "20",
+        ]);
+
+        match args.command {
+            Some(CliCommand::WechatArticles {
+                account_name,
+                limit,
+            }) => {
+                assert_eq!(account_name, "寻月隐君");
+                assert_eq!(limit, 20);
+            }
+            _ => panic!("wechat-articles command should parse"),
         }
     }
 }

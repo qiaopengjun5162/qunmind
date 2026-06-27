@@ -267,6 +267,8 @@ pub struct PublicSourcesConfig {
     #[serde(default = "default_wechat_rss_timeout_secs")]
     pub wechat_rss_timeout_secs: u64,
     #[serde(default)]
+    pub wechat_accounts: Vec<WechatAccountSourceConfig>,
+    #[serde(default)]
     pub x_rss_enabled: bool,
     #[serde(default = "default_x_rss_urls")]
     pub x_rss_urls: Vec<String>,
@@ -284,6 +286,14 @@ pub struct PublicSourcesConfig {
     pub web3_media_timeout_secs: u64,
     #[serde(default)]
     pub manual_items: Vec<ManualPublicSourceItem>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct WechatAccountSourceConfig {
+    pub name: String,
+    pub feed_url: String,
+    #[serde(default)]
+    pub aliases: Vec<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -706,6 +716,7 @@ impl Default for PublicSourcesConfig {
             wechat_rss_urls: default_wechat_rss_urls(),
             wechat_rss_max_items: default_wechat_rss_max_items(),
             wechat_rss_timeout_secs: default_wechat_rss_timeout_secs(),
+            wechat_accounts: Vec::new(),
             x_rss_enabled: false,
             x_rss_urls: default_x_rss_urls(),
             x_rss_max_items: default_x_rss_max_items(),
@@ -1114,6 +1125,31 @@ mod tests {
         assert_eq!(
             config.groups[0].system_prompt.as_deref(),
             Some("你是技术群 Rust 助手。")
+        );
+    }
+
+    #[test]
+    fn parses_named_wechat_accounts() {
+        let config = config_from(
+            r#"
+            [public_sources]
+
+            [[public_sources.wechat_accounts]]
+            name = "寻月隐君"
+            feed_url = "http://127.0.0.1:8080/xunyue/rss.xml"
+            aliases = ["xunyue", "寻月"]
+            "#,
+        );
+
+        assert_eq!(config.public_sources.wechat_accounts.len(), 1);
+        assert_eq!(config.public_sources.wechat_accounts[0].name, "寻月隐君");
+        assert_eq!(
+            config.public_sources.wechat_accounts[0].feed_url,
+            "http://127.0.0.1:8080/xunyue/rss.xml"
+        );
+        assert_eq!(
+            config.public_sources.wechat_accounts[0].aliases,
+            vec!["xunyue".to_string(), "寻月".to_string()]
         );
     }
 }

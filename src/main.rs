@@ -18,6 +18,7 @@ use qunmind::reporting::{
     report_status_json, resolve_manual_daily_report_target,
 };
 use qunmind::scheduler::daily_report::DailyReportScheduler;
+use qunmind::source::wechat_rss::{fetch_named_wechat_account_articles, find_wechat_account};
 use qunmind::wx_cli_commands::run_wx_cli_command;
 use std::path::Path;
 use std::sync::Arc;
@@ -347,6 +348,52 @@ async fn run_diagnostic_command(
                     "wechat_articles_dir": report_target.wechat_articles_dir,
                     "headed": headed,
                     "raw_output": raw_output,
+                }))?
+            );
+            Ok(())
+        }
+        CliCommand::WechatArticles {
+            account_name,
+            limit,
+        } => {
+            let account = find_wechat_account(&config.public_sources.wechat_accounts, &account_name)
+                .ok_or_else(|| {
+                    QunMindError::Config(format!(
+                        "未找到公众号来源：{}。请先配置 [[public_sources.wechat_accounts]] 的 name / feed_url / aliases",
+                        account_name
+                    ))
+                })?;
+            let feed_url = account.feed_url.clone();
+            let resolved_account_name = account.name.clone();
+            let items =
+                fetch_named_wechat_account_articles(&config.public_sources, &account_name, limit)
+                    .await?;
+            let items_json = items
+                .into_iter()
+                .map(|item| {
+                    serde_json::json!({
+                        "source": item.source,
+                        "title": item.title,
+                        "url": item.url,
+                        "summary": item.summary,
+                        "author": item.author,
+                        "published_at": item.published_at,
+                        "score": item.score,
+                        "comments": item.comments,
+                        "ai_score": item.ai_score,
+                        "category": item.category,
+                    })
+                })
+                .collect::<Vec<_>>();
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&serde_json::json!({
+                    "ok": true,
+                    "account_name": resolved_account_name,
+                    "requested_account_name": account_name,
+                    "feed_url": feed_url,
+                    "count": items_json.len(),
+                    "items": items_json,
                 }))?
             );
             Ok(())

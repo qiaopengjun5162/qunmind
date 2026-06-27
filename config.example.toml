@@ -143,6 +143,14 @@ wechat_rss_timeout_secs = 10
 wechat_rss_urls = [
   "http://127.0.0.1:8080/rss.xml",
 ] # 可对接 wechat-download-api / Horizon 一类上游 RSS 输出；适合公众号日报空群回退或手工日报联调
+
+# 命名公众号源目录：用于 `qunmind wechat-articles --account-name ...`。
+# QunMind 只消费已绑定的 RSS / Atom / API 上游，不在主进程内按公众号名硬爬微信历史文章。
+# [[public_sources.wechat_accounts]]
+# aliases = ["xunyue", "寻月"]
+# feed_url = "http://127.0.0.1:8080/xunyue/rss.xml"
+# name = "寻月隐君"
+
 x_rss_enabled = false
 x_rss_max_items = 20
 x_rss_timeout_secs = 10

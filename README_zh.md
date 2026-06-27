@@ -201,6 +201,21 @@ QunMind 会在保存文本消息时抽取 `http://` / `https://` 链接，写入
 
 当前已经先落了一版更轻的接入方向：`[public_sources] wechat_rss_*`。它允许 QunMind 直接消费公众号文章 RSS / Atom 上游输出，适合对接 `wechat-download-api` 一类独立服务，但仍然保持主机器人进程不承载扫码登录、代理池和反风控复杂度。
 
+现在还可以把公众号名字和上游 feed 显式绑定到 `[[public_sources.wechat_accounts]]`，再用名字拉文章列表：
+
+```toml
+[[public_sources.wechat_accounts]]
+name = "寻月隐君"
+feed_url = "http://127.0.0.1:8080/xunyue/rss.xml"
+aliases = ["xunyue", "寻月"]
+```
+
+```bash
+cargo run -- wechat-articles --account-name '寻月隐君' --limit 20
+```
+
+这条命令会输出结构化 JSON，包含公众号名、feed URL、文章数量，以及每篇文章的标题、作者、发布时间、摘要和完整原文 URL。如果只给公众号名字但没有绑定 `feed_url`，QunMind 会明确报错要求先配置上游来源；它不会在主进程里绕过微信登录态、验证码或反风控去硬抓全量历史文章。
+
 如果要手工联调日报，不再只能“随便生成一份 markdown”。`qunmind daily-report` 现在支持 `--report-name <name>` 复用已配置日报目标的 `daily_quote` 和相关目标配置；需要继续验证发布链路时，再加 `--publish`，就能沿着该目标的 publisher 边界继续往下跑，比如 `output = "wechat"` 的公众号草稿链路。
 
 这条手工发布链路现在也会尝试保存结构化发布回执，所以一次成功的手工推草稿会立刻反映到 `report-status` 和 `publish-history`。如果外部发布成功但回执保存失败，CLI JSON 会明确给出 `publish_receipt_saved = false` 和 `publish_receipt_save_error`，方便区分“草稿没推成”和“草稿推成了但内部状态没记住”。

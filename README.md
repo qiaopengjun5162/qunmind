@@ -203,6 +203,21 @@ For an actual learning order instead of a flat list, use [docs/research-tools.md
 
 For WeChat public-account article material, QunMind now prefers a lighter integration shape: consuming RSS / Atom style upstream output through `[public_sources] wechat_rss_*`, instead of embedding a full login/proxy/anti-bot service into the main bot process.
 
+Named public-account lookup is built on that same boundary. Bind a public-account name to a known upstream feed with `[[public_sources.wechat_accounts]]`, then query it by name:
+
+```toml
+[[public_sources.wechat_accounts]]
+name = "寻月隐君"
+feed_url = "http://127.0.0.1:8080/xunyue/rss.xml"
+aliases = ["xunyue", "寻月"]
+```
+
+```bash
+cargo run -- wechat-articles --account-name '寻月隐君' --limit 20
+```
+
+The command returns structured JSON with the resolved account name, feed URL, article count, and each article's title, author, publish time, summary, and full original URL. If a name has not been bound to a feed, QunMind fails explicitly and asks for `[[public_sources.wechat_accounts]]` configuration instead of attempting unstable WeChat scraping inside the main process.
+
 The current `wechat_rss` reader also normalizes a few common feed variants so mixed upstream services stay usable: Atom `<author><name>`, RSS `dc:creator`, and `pubDate` / `updated` / `published` / `dc:date` timestamps are mapped into the same `author` and UTC `published_at` fields before they enter the daily-report prompt.
 
 For X / Twitter-style first-hand signals, QunMind uses the same lightweight boundary through `[public_sources] x_rss_*`: provide RSSHub, Nitter-compatible, or self-hosted X-list RSS / Atom feeds, and QunMind will normalize them as `X RSS` public news items. The main process does not embed X login, scraping, proxy, or anti-bot logic.
