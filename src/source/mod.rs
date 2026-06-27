@@ -11,6 +11,7 @@ pub mod registry;
 pub mod slerf_blog;
 pub mod web3_media;
 pub mod wechat_rss;
+pub mod x_rss;
 
 use async_trait::async_trait;
 use std::collections::HashSet;

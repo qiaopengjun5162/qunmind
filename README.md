@@ -202,6 +202,8 @@ For WeChat public-account article material, QunMind now prefers a lighter integr
 
 The current `wechat_rss` reader also normalizes a few common feed variants so mixed upstream services stay usable: Atom `<author><name>`, RSS `dc:creator`, and `pubDate` / `updated` / `published` / `dc:date` timestamps are mapped into the same `author` and UTC `published_at` fields before they enter the daily-report prompt.
 
+For X / Twitter-style first-hand signals, QunMind uses the same lightweight boundary through `[public_sources] x_rss_*`: provide RSSHub, Nitter-compatible, or self-hosted X-list RSS / Atom feeds, and QunMind will normalize them as `X RSS` public news items. The main process does not embed X login, scraping, proxy, or anti-bot logic.
+
 If you already have a WeChat public-account RSS / Atom upstream, the shortest rehearsal flow is:
 
 ```bash
@@ -241,7 +243,7 @@ Recent report-quality hardening also now lives inside `src/daily_report/` instea
 - obvious misclassification is rebalanced, such as `openai/codex` no longer being pulled into Web3 just because `codex` contains `dex`
 - low-signal comments are filtered or rewritten from source summaries
 - empty section headers are suppressed
-- the reference block is capped and restricted to URLs actually used in the rendered body
+- the reference block is split into URLs used by the rendered body and a longer "complete source links" list for the remaining material pool
 
 The current operational interpretation is:
 - the minimum viable target is complete: generate report -> push draft -> persist receipt -> inspect publish history

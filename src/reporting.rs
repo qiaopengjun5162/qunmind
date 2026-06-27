@@ -576,6 +576,8 @@ pub fn has_enabled_public_sources(config: &Config) -> bool {
         || sources.github_trending_enabled
         || sources.slerf_blog_enabled
         || sources.wechat_rss_enabled
+        || sources.x_rss_enabled
+        || sources.web3_media_enabled
         || sources.hn_daily_enabled
         || sources.arxiv_enabled
         || sources.ethresear_enabled

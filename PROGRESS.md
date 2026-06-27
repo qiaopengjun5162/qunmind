@@ -95,6 +95,9 @@
 - **修复同日试发复用旧稿问题** — `src/publisher.rs` 现在不再把公众号日报临时文件固定写成 `daily-YYYY-MM-DD.md`，而是改成带 UTC 时分秒的唯一文件名。根因是 `moonpub push --render` 在同 slug 的 `.draft.json` 已存在时会复用旧渲染产物，导致“22:27 新发布”表面成功，但实际推到草稿箱的还是 21:53 的旧内容。
 - **AI / Web3 误分进一步收敛** — `src/daily_report/` 现在不再把短词 `"ai"` 当作无边界子串匹配，避免 `chain`、`Defiant`、`onchain` 一类 Web3 文本被误拉进 `AI 前沿`；当 AI / Web3 板块冲突时，也会优先把条目纠正回 Web3 或技术板块。
 - **中文摘要收敛改为按句意截断** — Web3 主线总结和引用摘要现在优先在中文标点边界截断，尽量避免 `Aave创始人回应Kraken收购传闻，澄...` 这种机械省略号观感。
+- **参考文章结构已用浏览器验证** — 直接 `curl` 访问用户给的微信公众号文章会返回微信“环境异常”验证页；改用本机 Chrome 正常浏览环境后，已能读取参考文章结构。可吸收点主要是两类：`极客日报` 的“每条都明示完整原始链接”，以及结构化日报开头先给“核心收获”的阅读体验。本轮只吸收链接完整性与一手来源优先，不复制对方内容。
+- **完整素材链接补齐** — `src/daily_report/render.rs` 现在把链接区分成两层：`参考来源` 保留正文实际引用的链接，`完整素材链接` 继续列出本次素材池中未写入正文的原始材料，默认最多补 50 条。这样日报既不会牺牲正文简洁度，也能像参考日报那样把所有可追溯入口留给读者。
+- **X / Twitter 一手来源入口落地** — 新增 `[public_sources] x_rss_*` 与 `src/source/x_rss.rs`，支持消费 RSSHub、Nitter 兼容源或自建 X List RSS / Atom 上游，并归一成 `X RSS` 公共素材。边界仍然是“主进程消费稳定上游”，不把 X 登录、抓取、代理或反风控逻辑嵌进 QunMind。
 - **本机格式化验证约束保持不变** — 这轮继续确认 macOS 本机 `taplo fmt` 仍会触发 `Attempted to create a NULL object` panic，因此 `just fmt` 在本机不应被当成可靠通过标准；本轮实际完成的是 `cargo fmt` + `just clippy` + `just test`。
 - **第三次真实公众号草稿试发成功** — 基于新一轮内容质量收敛后的 `/tmp/wechat-report-preview-v5.md`，`just report-publish config.toml '微信公众号日报' '/tmp/wechat-report-preview-v5.md'` 已于 `2026-06-25T09:31:59.745312+00:00` 成功推送公众号草稿，`publish-history` 返回 `count = 3`。这说明当前不只是“主链路能发”，而是“内容优化后的版本也已经完成真实草稿验证”。
 - **公众号日报登录入口标准化** — 新增 `qunmind report-login --report-name <name>` 与 `just report-login config.toml '微信公众号日报'`，把之前只存在于说明里的 “`moonpub login`” 收口成项目内标准入口。这样当 `report-status` 或最近回执明确给出 `automation_state = "login_required"` 时，下一步操作已经不需要再手工回忆上游命令格式，而是继续沿 QunMind 自己的日报目标解析与配置边界执行。

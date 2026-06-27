@@ -9,6 +9,7 @@ use super::{
     defillama::DeFiLlamaProtocolsSource, dune::DuneQuerySource, ethresear::EthResearchSource,
     github_trending::GitHubTrendingSource, hacker_news::HackerNewsSource, hn_daily::HnDailySource,
     slerf_blog::SlerfBlogSource, web3_media::Web3MediaSource, wechat_rss::WechatRssSource,
+    x_rss::XRssSource,
 };
 
 /// 根据配置构建聚合新闻源。所有新闻源的注册都在这里，添加新源只需改这一处。
@@ -47,6 +48,9 @@ pub fn build(config: &PublicSourcesConfig) -> Result<Option<Arc<dyn PublicNewsSo
     }
     if config.wechat_rss_enabled {
         sources.push(Arc::new(WechatRssSource::new(config)?));
+    }
+    if config.x_rss_enabled {
+        sources.push(Arc::new(XRssSource::new(config)?));
     }
     if config.web3_media_enabled {
         sources.push(Arc::new(Web3MediaSource::new(config)?));

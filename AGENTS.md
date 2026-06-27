@@ -14,7 +14,7 @@
 
 项目初心是微信/微信群 AI 中枢；公共投研来源只是日报缺少群消息时的辅助素材，不应压过微信收发、消息归一化、群配置、上下文记忆和真实联调。
 
-当前已有 PostgreSQL 消息持久化。`BotHandler` 会在 mention 过滤前保存入站消息；命中回复时会按 `bot.context_messages` 读取最近同会话文本作为基础对话上下文，默认 8 条，配置为 0 时只使用当前消息；`PostgresMessageStore` 会从文本消息中抽取 URL 并写入 `message_links`；`scheduler` 的日报会按 `schedule.daily_report_lookback_hours`、`schedule.daily_report_max_messages` 和 `schedule.daily_report_max_links` 读取已保存群消息与链接情报后再调用模型生成。群消息为空且 `[public_sources]` 中至少一个来源启用时，会读取 Hacker News、CoinMarketCap、CoinGecko、DeFi Llama、Dune、GitHub Trending、Slerf Blog 作为公共信息参考日报素材，并按 `topic_keywords` 聚焦 Rust、Web3、crypto、AI、ZKP 等前沿技术。当前还没有前端 UI。
+当前已有 PostgreSQL 消息持久化。`BotHandler` 会在 mention 过滤前保存入站消息；命中回复时会按 `bot.context_messages` 读取最近同会话文本作为基础对话上下文，默认 8 条，配置为 0 时只使用当前消息；`PostgresMessageStore` 会从文本消息中抽取 URL 并写入 `message_links`；`scheduler` 的日报会按 `schedule.daily_report_lookback_hours`、`schedule.daily_report_max_messages` 和 `schedule.daily_report_max_links` 读取已保存群消息与链接情报后再调用模型生成。群消息为空且 `[public_sources]` 中至少一个来源启用时，会读取 Hacker News、CoinMarketCap、CoinGecko、DeFi Llama、Dune、GitHub Trending、Slerf Blog、WeChat RSS、X RSS 等公共信息参考日报素材，并按 `topic_keywords` 聚焦 Rust、Web3、crypto、AI、ZKP 等前沿技术。当前还没有前端 UI。
 
 `[[groups]]` 目前用于群级运行覆盖：`enabled = false` 时该群入站消息仍会保存但不会回复；`mention_names` 和 `context_messages` 可覆盖全局 `[bot]` 配置；`system_prompt` 会作为群级 persona 插入到 AI 消息最前面。未配置群覆盖时继续使用全局 `[bot]`。
 
@@ -56,6 +56,8 @@
 
 公众号文章这类外部内容入口优先走 `PublicNewsSource` 边界。当前更推荐的第一步是消费 RSS / Atom 上游输出（例如 `wechat-download-api` 提供的 RSS），而不是把登录、代理和反风控逻辑直接嵌进 `QunMind` 主进程。
 
+X / Twitter 这类一手信息入口也优先走 `PublicNewsSource` 边界。当前落地形态是 `[public_sources] x_rss_*`，消费 RSSHub、Nitter 兼容源或自建 X List RSS / Atom 上游；不要把 X 登录态、反爬、代理池或绕风控逻辑直接塞进 `QunMind` 主进程。需要更强实时性时，优先建设独立采集上游，再把稳定输出接成 RSS/Atom 或后续 connector。
+
 `src/publisher.rs` 是日报发布边界。`QunMind` 负责“生成什么、何时发、目标是否 ready”；平台侧项目或适配器负责“按平台规则怎么发”。当前只落地了 `PublishTarget::WechatDraft`，通过本地 `moonpub` 推公众号草稿。后续即使接抖音、小红书，也优先新增 publisher target 或独立发布子系统，不把平台鉴权、素材渲染和风控逻辑塞回 scheduler。
 
 `QunMind -> moonpub` 的手工/定时日报临时 Markdown 文件名不能只按日期命名。`moonpub push --render` 在同 slug 的 `.draft.json` 已存在时会直接复用旧渲染产物，因此 `src/publisher.rs` 这里必须继续使用带时间戳的唯一 slug，避免同一天多次试发时“发布时间更新了，但正文还是旧稿”。
@@ -64,7 +66,7 @@
 
 当前 `QunMind -> moonpub` 的真实语义要说清楚：`push --render` 已经会在“草稿推送成功后”顺手尝试一轮浏览器自动化配置，但这一步是软失败策略。像 `automation: login timeout: QR code not scanned within 120s` 这类 warning，不是“完全没走自动化”，而是“草稿已推成功，但浏览器自动化没能真正进入后续预览/配置步骤”。后续状态、文档和对用户的解释都要区分这两层。
 
-`src/daily_report/` 当前除了“模型生成正文”之外，还承担一层质量兜底：如果 AI 返回的 JSON 非法、字段过空、板块误分或摘要质量过低，优先在 Rust 侧补齐非空板块、修正 AI/Web3/技术分类、过滤低信号条目，并只保留正文里真正引用过的参考链接。后续继续优化日报质量时，优先沿这条“AI 生成 + Rust 兜底收敛”边界演进，不要把容错逻辑散回 CLI、scheduler 或 publisher。
+`src/daily_report/` 当前除了“模型生成正文”之外，还承担一层质量兜底：如果 AI 返回的 JSON 非法、字段过空、板块误分或摘要质量过低，优先在 Rust 侧补齐非空板块、修正 AI/Web3/技术分类、过滤低信号条目，并把链接区分为“正文实际引用的参考来源”和“未写入正文但来自本次素材池的完整素材链接”。后续继续优化日报质量时，优先沿这条“AI 生成 + Rust 兜底收敛”边界演进，不要把容错逻辑散回 CLI、scheduler 或 publisher。
 
 公众号日报当前面向个人公众号 `寻月隐君` 使用固定封面母版。`QunMind` 在 `publish_markdown(...)` 的 WeChat publisher 边界写出随本次临时稿件命名的 PNG，并向交给 `moonpub --render` 的临时 markdown frontmatter 注入相对 `cover:`，再由 `moonpub` 负责上传为公众号草稿封面。不要把本机绝对路径写进正文 markdown，也不要只改 `moonpub-data` 里的旧 `thumb_media_id`，否则手工生成稿和真实发布会再次分叉。
 为了让公众号草稿箱里的“最新一条”更容易辨认，日报主标题当前优先固定为 `AI · Web3 最新日报｜YYYY-MM-DD`。当天真正变化的主线信息应继续放在 `digest`、`intro` 和 `今日焦点`，不要再把公共素材主线直接塞回 `title`，否则草稿箱里会重新出现“像同一篇又像不同篇”的识别噪音。

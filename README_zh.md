@@ -209,6 +209,8 @@ QunMind 会在保存文本消息时抽取 `http://` / `https://` 链接，写入
 
 当前这层 `wechat_rss` 也补了几种常见 feed 字段兼容：Atom 的 `<author><name>`、RSS 的 `dc:creator`，以及 `pubDate` / `updated` / `published` / `dc:date` 时间字段都会尽量归一成统一的 `author` 和 UTC `published_at`，减少不同上游服务接入后摘要 prompt 字段风格漂移。
 
+X / Twitter 这类一手信息也走同样的轻量边界：通过 `[public_sources] x_rss_*` 配置 RSSHub、Nitter 兼容源或自建 X List RSS / Atom 上游，QunMind 会把它们归一成 `X RSS` 公共素材。主进程不内嵌 X 登录、抓取、代理或反风控逻辑。
+
 如果你现在已经有公众号 RSS / Atom 上游，最短联调路径可以直接按下面跑：
 
 ```bash
@@ -248,7 +250,7 @@ just report-history config.toml '微信公众号日报'
 - 会把明显误分的条目重新平衡回正确板块，例如 `openai/codex` 不再因为包含 `dex` 被误放进 Web3
 - 会过滤或重写低信号评论，补齐深读摘要
 - 空板块标题不会再渲染出来
-- 参考来源会限制数量，并且只保留正文实际引用过的链接
+- 参考来源会分成两层：正文实际引用过的链接，以及更长的“完整素材链接”列表，方便读者继续追溯未写入正文的原始材料
 
 这意味着当前最准确的状态是：
 

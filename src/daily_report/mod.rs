@@ -1426,7 +1426,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn generate_limits_reference_block_to_used_urls() {
+    async fn generate_separates_used_refs_from_complete_source_links() {
         let json = r#"{
             "title_hint":"测试日报",
             "intro":"测试导语",
@@ -1505,11 +1505,14 @@ mod tests {
 
         let report = generator.generate().await.expect("report");
         let refs = report.split("**参考来源**").nth(1).unwrap_or("");
+        let used_refs = refs.split("**完整素材链接**").next().unwrap_or(refs);
+        let source_links = refs.split("**完整素材链接**").nth(1).unwrap_or("");
 
-        assert!(refs.contains("https://example.com/ai1"));
-        assert!(refs.contains("https://example.com/tech1"));
-        assert!(refs.contains("https://example.com/read1"));
-        assert!(!refs.contains("https://example.com/unused"));
+        assert!(used_refs.contains("https://example.com/ai1"));
+        assert!(used_refs.contains("https://example.com/tech1"));
+        assert!(used_refs.contains("https://example.com/read1"));
+        assert!(!used_refs.contains("https://example.com/unused"));
+        assert!(source_links.contains("https://example.com/unused"));
     }
 
     #[tokio::test]

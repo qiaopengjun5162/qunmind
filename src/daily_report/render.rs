@@ -5,6 +5,7 @@ use crate::source::PublicNewsItem;
 
 const AI_SUBSECTIONS: [&str; 3] = ["多Agent编排", "单Agent应用", "工作方式变革"];
 const MAX_REFERENCE_ITEMS: usize = 15;
+const MAX_SOURCE_LINK_ITEMS: usize = 50;
 
 pub(super) fn assemble_markdown(
     report: &ReportJson,
@@ -212,24 +213,51 @@ fn build_refs_block(report: &ReportJson, items: &[PublicNewsItem]) -> String {
     }
     let referenced_urls = report.referenced_urls();
     let mut block = String::from("---\n\n**参考来源**\n\n");
-    for (i, item) in items
+    let mut referenced_count = 0;
+    for item in items
         .iter()
         .filter(|item| referenced_urls.contains(item.url.trim()))
         .take(MAX_REFERENCE_ITEMS)
-        .enumerate()
     {
+        referenced_count += 1;
         let score_part = match item.score {
             Some(s) if s > 0 => format!(" · {s} points"),
             _ => String::new(),
         };
         block.push_str(&format!(
             "{}. [{}]({}) — {}{}\n",
-            i + 1,
+            referenced_count,
             item.title.replace('\n', " ").trim(),
             item.url,
             item.source,
             score_part,
         ));
+    }
+    if referenced_count == 0 {
+        block.push_str("暂无正文直接引用链接。\n");
+    }
+
+    let unreferenced = items
+        .iter()
+        .filter(|item| !referenced_urls.contains(item.url.trim()))
+        .take(MAX_SOURCE_LINK_ITEMS)
+        .collect::<Vec<_>>();
+    if !unreferenced.is_empty() {
+        block.push_str("\n**完整素材链接**\n\n");
+        for (i, item) in unreferenced.iter().enumerate() {
+            let score_part = match item.score {
+                Some(s) if s > 0 => format!(" · {s} points"),
+                _ => String::new(),
+            };
+            block.push_str(&format!(
+                "{}. [{}]({}) — {}{}\n",
+                i + 1,
+                item.title.replace('\n', " ").trim(),
+                item.url,
+                item.source,
+                score_part,
+            ));
+        }
     }
     block
 }
@@ -496,10 +524,42 @@ mod tests {
             ..Default::default()
         };
         let refs = build_refs_block(&report, &items);
+        let used_refs = refs
+            .split("**完整素材链接**")
+            .next()
+            .unwrap_or(refs.as_str());
         assert!(refs.contains("1. [item-0]"));
         assert!(refs.contains("15. [item-14]"));
-        assert!(!refs.contains("16. [item-15]"));
-        assert_eq!(refs.matches(". [item-").count(), 15);
+        assert!(!used_refs.contains("16. [item-15]"));
+        assert_eq!(used_refs.matches(". [item-").count(), 15);
+    }
+
+    #[test]
+    fn refs_block_includes_unreferenced_source_links() {
+        let items = vec![
+            make_item("used", Some(10)),
+            make_item("unreferenced", Some(9)),
+            make_item("another", Some(8)),
+        ];
+        let report = ReportJson {
+            tech_items: vec![ReportSection {
+                title: items[0].title.clone(),
+                url: items[0].url.clone(),
+                comment: "说明".to_string(),
+                source: items[0].source.clone(),
+                points: items[0].score.unwrap_or(0),
+                subsection: String::new(),
+            }],
+            ..Default::default()
+        };
+
+        let refs = build_refs_block(&report, &items);
+
+        assert!(refs.contains("**参考来源**"));
+        assert!(refs.contains("1. [used]"));
+        assert!(refs.contains("**完整素材链接**"));
+        assert!(refs.contains("1. [unreferenced]"));
+        assert!(refs.contains("2. [another]"));
     }
 
     #[test]

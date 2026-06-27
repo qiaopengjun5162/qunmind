@@ -267,6 +267,14 @@ pub struct PublicSourcesConfig {
     #[serde(default = "default_wechat_rss_timeout_secs")]
     pub wechat_rss_timeout_secs: u64,
     #[serde(default)]
+    pub x_rss_enabled: bool,
+    #[serde(default = "default_x_rss_urls")]
+    pub x_rss_urls: Vec<String>,
+    #[serde(default = "default_x_rss_max_items")]
+    pub x_rss_max_items: usize,
+    #[serde(default = "default_x_rss_timeout_secs")]
+    pub x_rss_timeout_secs: u64,
+    #[serde(default)]
     pub web3_media_enabled: bool,
     #[serde(default = "default_web3_media_urls")]
     pub web3_media_urls: Vec<String>,
@@ -524,6 +532,18 @@ fn default_wechat_rss_timeout_secs() -> u64 {
     10
 }
 
+fn default_x_rss_urls() -> Vec<String> {
+    Vec::new()
+}
+
+fn default_x_rss_max_items() -> usize {
+    20
+}
+
+fn default_x_rss_timeout_secs() -> u64 {
+    10
+}
+
 fn default_web3_media_urls() -> Vec<String> {
     vec![
         "https://cryptoslate.com/feed/".to_string(),
@@ -662,6 +682,10 @@ impl Default for PublicSourcesConfig {
             wechat_rss_urls: default_wechat_rss_urls(),
             wechat_rss_max_items: default_wechat_rss_max_items(),
             wechat_rss_timeout_secs: default_wechat_rss_timeout_secs(),
+            x_rss_enabled: false,
+            x_rss_urls: default_x_rss_urls(),
+            x_rss_max_items: default_x_rss_max_items(),
+            x_rss_timeout_secs: default_x_rss_timeout_secs(),
             web3_media_enabled: false,
             web3_media_urls: default_web3_media_urls(),
             web3_media_max_items: default_web3_media_max_items(),
@@ -807,6 +831,10 @@ mod tests {
         );
         assert_eq!(config.public_sources.wechat_rss_max_items, 10);
         assert_eq!(config.public_sources.wechat_rss_timeout_secs, 10);
+        assert!(!config.public_sources.x_rss_enabled);
+        assert!(config.public_sources.x_rss_urls.is_empty());
+        assert_eq!(config.public_sources.x_rss_max_items, 20);
+        assert_eq!(config.public_sources.x_rss_timeout_secs, 10);
         assert!(!config.public_sources.hn_daily_enabled);
         assert_eq!(
             config.public_sources.hn_daily_url,
@@ -921,6 +949,10 @@ mod tests {
             wechat_rss_urls = ["http://127.0.0.1:8080/rss.xml", "http://127.0.0.1:8081/feed.xml"]
             wechat_rss_max_items = 3
             wechat_rss_timeout_secs = 14
+            x_rss_enabled = true
+            x_rss_urls = ["https://rsshub.example/x/user/openai", "https://nitter.example/a16z.rss"]
+            x_rss_max_items = 5
+            x_rss_timeout_secs = 13
 
             [[groups]]
             chat_id = "group-1"
@@ -1021,6 +1053,16 @@ mod tests {
         );
         assert_eq!(config.public_sources.wechat_rss_max_items, 3);
         assert_eq!(config.public_sources.wechat_rss_timeout_secs, 14);
+        assert!(config.public_sources.x_rss_enabled);
+        assert_eq!(
+            config.public_sources.x_rss_urls,
+            vec![
+                "https://rsshub.example/x/user/openai".to_string(),
+                "https://nitter.example/a16z.rss".to_string()
+            ]
+        );
+        assert_eq!(config.public_sources.x_rss_max_items, 5);
+        assert_eq!(config.public_sources.x_rss_timeout_secs, 13);
         assert_eq!(config.groups.len(), 1);
         assert!(!config.groups[0].enabled);
         assert_eq!(config.groups[0].name, "技术群");
