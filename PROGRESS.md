@@ -115,6 +115,7 @@
 - **MCP 手工日报闭环入口补齐第一版** — 现在继续新增 `report_markdown` 与 `report_publish`。前者会复用 `qunmind daily-report` 的正式日报目标语义生成本地 markdown；后者则在显式 `confirm_publish = true` 时继续触发真实 publisher，并沿同一条发布回执保存边界把结果返回出来。这样 MCP 侧已经不只是“能看状态、能恢复自动化”，而是开始具备“能按标准流程生成稿件并在获准后真实试发”的完整入口。
 - **首次 ready 状态的 MCP 下一步建议补齐** — `report-status` / `report_status` 现在不只会在 warning 状态下给 Agent 结构化动作；当目标处于 `ready_for_first_publish` 时，也会直接返回 `report_markdown -> report_publish(confirm_publish = true) -> publish_history` 这一组 `recommended_tool_calls`。这样“给人看的 shell 命令提示”和“给 Agent 继续执行的 tool 建议”终于在首次试发场景也完全对齐。
 - **手工发布结果开始直接给后续动作** — 现在 `daily-report --publish` 和 MCP `report_publish` 成功后，也会继续返回 `follow_up_status`、`recommended_commands` 和 `recommended_tool_calls`。如果这次草稿发布干净成功，结果会直接建议去看 `publish_history`；如果带有 `automation: ...` warning，则会直接建议优先 `report-recover-automation` 再复查历史，不需要再额外跑一次 `report-status` 才知道下一步。
+- **ZK 手工精选日报完成真实发布** — 基于用户给出的 LatticeBlindFold、Etherveil、Reputation Wallet、WHIR、IACR ePrint 和 ZK Insights 等完整来源链接，已通过临时配置 `/tmp/qunmind-report-manual-2026-06-27-zk.toml` 生成 `/tmp/wechat-report-2026-06-27-zk.md` 并真实推送到公众号草稿箱。该版强调“每个观点可追溯到完整原文 URL”，最新回执显示 `published = true`、`publish_receipt_saved = true`、`automation_state = "ok"`、`warnings = []`，说明这次不只是草稿主路径成功，浏览器自动化也没有留下 warning。
 
 ### Verified
 
@@ -187,13 +188,20 @@
 - `cargo nextest run --all-features qunmind::bin/qunmind tests::persist_manual_publish_receipt_saves_receipt_for_report_target qunmind::bin/qunmind tests::manual_daily_report_publish_target_rejects_non_wechat_output qunmind::bin/qunmind tests::manual_daily_report_falls_back_to_public_sources_when_group_is_empty`
 - `cargo nextest run --all-features reporting::tests::report_status_json_marks_blocked_reports_with_actionable_next_steps reporting::tests::report_status_json_keeps_wechat_target_ready_without_public_sources reporting::tests::report_status_json_marks_recently_published_when_receipts_exist reporting::tests::report_status_json_marks_recently_published_with_warnings_when_receipt_has_warning`
 - PR #41 CI：`test = pass`，`docker = pass`
+- `cargo fmt`
+- `cargo fmt --check`
+- `cargo clippy --all-targets --all-features --tests --benches -- -D warnings`
+- `cargo nextest run --all-features`：331 passed, 2 skipped
+- `cargo run -- --config /tmp/qunmind-report-manual-2026-06-27-zk.toml daily-report --report-name '微信公众号日报' --output /tmp/wechat-report-2026-06-27-zk.md --publish`：于 `2026-06-27T11:30:40.051977+00:00` 返回 `published = true`、`publish_receipt_saved = true`、`automation_state = "ok"`、`warnings = []`
+- `cargo run -- --config /tmp/qunmind-report-manual-2026-06-27-zk.toml publish-history --report-name '微信公众号日报' --limit 5`：最新回执为 `2026-06-27T11:30:40.051977+00:00`，`automation_state = "ok"`，`warnings = []`
+- PR #44 CI：`test = pass`，`docker = pass`
 
 ### Current Readiness
 
 现在更准确的公众号日报状态应该表述为：
 
 - **最小可用目标已完成**：可生成日报、推送到公众号草稿箱、保存回执、查询最近历史
-- **最新优化版已真实试发**：内容质量兜底后的 v5 预览稿已进入公众号草稿箱
+- **最新优化版已真实试发**：`2026-06-27` ZK 手工精选版已进入公众号草稿箱，并返回干净回执
 - **当前建议用法**：人工盯一眼草稿箱，再决定是否正式发布
 - **看到 `automation_state = "login_required"` 时的处理**：先执行一次 `moonpub login` 复用浏览器登录态，再重试浏览器自动化步骤
 - **还未完全稳定的点**：

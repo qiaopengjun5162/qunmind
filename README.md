@@ -236,9 +236,10 @@ MCP can now also drive the manual report rehearsal path itself. `report_markdown
 
 Manual publish results now also carry their own follow-up hints. After a successful `daily-report --publish` or MCP `report_publish`, the JSON response no longer stops at "published = true": it also includes `follow_up_status`, plus the same `recommended_commands` and `recommended_tool_calls` pattern used by `report-status`, so operators and agents can immediately tell whether the next step is just `publish_history` or a recovery flow such as `report_recover_automation`.
 
-This path has now been verified with three real draft pushes:
+This path has now been verified with at least four real draft pushes:
 - `report-status` can advance to `recently_published_with_warnings`
-- `publish-history` now returns the three latest successful receipts
+- `publish-history` now returns recent successful receipts
+- the latest ZK manual-curation run on `2026-06-27T11:30:40.051977+00:00` returned `published = true`, `publish_receipt_saved = true`, `automation_state = "ok"`, and `warnings = []`
 - even when `moonpub` reports `automation: login timeout: QR code not scanned within 120s`, that warning did not block either draft from reaching the WeChat draft box
 - these post-publish automation hints are now surfaced as structured `warnings` in receipt JSON instead of living only inside `raw_output`
 - receipt JSON and `report-status` now also classify that warning as `automation_state = "login_required"`, which means the draft push succeeded but the browser automation path did not get past login into the preview/configuration steps
@@ -249,6 +250,7 @@ Recent report-quality hardening also now lives inside `src/daily_report/` instea
 - low-signal comments are filtered or rewritten from source summaries
 - empty section headers are suppressed
 - every rendered focus, section item, deep read, referenced source, and complete-source entry exposes a visible `原文：https://...` URL instead of relying only on Markdown link text
+- when reliable article text or summaries are unavailable, the report should show the title, source, and full original URL instead of presenting unverifiable claims as system analysis
 - the reference block is split into URLs used by the rendered body and a longer "complete source links" list for the remaining material pool
 
 The current operational interpretation is:

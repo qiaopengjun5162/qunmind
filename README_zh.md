@@ -97,6 +97,7 @@
 - `2026-06-25`：基于内容质量优化后的 v5 预览稿完成第三次真实公众号草稿试发
 - `2026-06-26`：为个人公众号 `寻月隐君` 接入固定 `AI · Web3 最新日报` 封面
 - `2026-06-27`：公众号日报正文排版升级为速览、焦点、编号分区和双层链接区，更接近可直接发布的个人号日报形态
+- `2026-06-27`：ZK 手工精选版已真实推送到公众号草稿箱，回执为 `automation_state = "ok"`、`warnings = []`
 - `2026-06-25` 到 `2026-06-26`：适合做内部灰度和连续试发
 - 不建议把“已经能推草稿”直接表述成“完全无人值守稳定上线”
 
@@ -245,9 +246,10 @@ just report-history config.toml '微信公众号日报'
 
 现在手工发布结果本身也会带下一步建议。也就是说，不管是 CLI 的 `daily-report --publish`，还是 MCP 的 `report_publish`，成功后的 JSON 都不再只停在 `published = true`，还会继续给出 `follow_up_status`，以及和 `report-status` 同语义的 `recommended_commands` / `recommended_tool_calls`，方便立刻判断下一步只是去看 `publish_history`，还是应该先走 `report_recover_automation`。
 
-当前这条链路已经完成过三次真实试发验证：
+当前这条链路已经完成过至少四次真实试发验证：
 - `report-status` 可到 `recently_published_with_warnings`
-- `publish-history` 已能查到最近三条成功回执
+- `publish-history` 已能查到最近成功回执
+- 最新一次 ZK 手工精选版于 `2026-06-27T11:30:40.051977+00:00` 返回 `published = true`、`publish_receipt_saved = true`、`automation_state = "ok"`、`warnings = []`
 - `moonpub` 原始输出里即使带 `automation: login timeout: QR code not scanned within 120s`，也没有阻止草稿成功推入公众号草稿箱
 - 现在这类成功后的自动化提示也会作为结构化 `warnings` 出现在发布回执 JSON 里，不必再手工翻 `raw_output`
 - 现在回执和 `report-status` 还会把这类 warning 进一步标记成 `automation_state = "login_required"`，语义不是“完全没走自动化”，而是“草稿已推成功，但浏览器自动化没真正进入后续预览/配置步骤”
@@ -259,6 +261,7 @@ just report-history config.toml '微信公众号日报'
 - 空板块标题不会再渲染出来
 - 条目摘要会补齐句末标点，正文观点会用 `该观点依据：...` 独立引用行展示，避免正文里堆括号
 - 焦点、正文观点、深读推荐、参考来源和完整素材入口都会直接显示 `原文：https://...` 裸链接；如果深读没有可靠摘要，会明确提示“请直接阅读原文核对”，避免公众号渲染后只剩可点击标题、无法复制追溯
+- 如果系统拿不到正文或可靠摘要，就只展示标题、来源和完整原文 URL；不会把不可核验的信息包装成自己的观点
 - 参考来源会分成两层：正文实际引用过的链接，以及更长的“完整素材链接”列表，方便读者继续追溯未写入正文的原始材料
 
 这意味着当前最准确的状态是：
