@@ -248,6 +248,7 @@ Recent report-quality hardening also now lives inside `src/daily_report/` instea
 - obvious misclassification is rebalanced, such as `openai/codex` no longer being pulled into Web3 just because `codex` contains `dex`
 - low-signal comments are filtered or rewritten from source summaries
 - empty section headers are suppressed
+- every rendered focus, section item, deep read, referenced source, and complete-source entry exposes a visible `原文：https://...` URL instead of relying only on Markdown link text
 - the reference block is split into URLs used by the rendered body and a longer "complete source links" list for the remaining material pool
 
 The current operational interpretation is:

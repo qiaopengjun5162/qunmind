@@ -89,7 +89,7 @@ fn render_focus(text: &str, url: &str) -> String {
     let body = if url.is_empty() {
         focus_text
     } else {
-        format!("{} — [点击阅读]({})", focus_text, url)
+        format!("{} — [点击阅读]({})\n\n原文：{}", focus_text, url, url)
     };
     fence_block("callout", Some("今日焦点"), &body)
 }
@@ -246,6 +246,9 @@ fn render_reads_section(reads: &[ReportRead]) -> String {
         {
             s.push_str(&format!("> {}\n\n", sanitize(summary)));
         }
+        if !read.url.trim().is_empty() {
+            s.push_str(&format!("> 原文：{}\n\n", read.url.trim()));
+        }
     }
     s
 }
@@ -269,12 +272,13 @@ fn build_refs_block(report: &ReportJson, items: &[PublicNewsItem]) -> String {
             _ => String::new(),
         };
         block.push_str(&format!(
-            "{}. [{}]({}) — {}{}\n",
+            "{}. [{}]({}) — {}{}\n   原文：{}\n",
             referenced_count,
             item.title.replace('\n', " ").trim(),
             item.url,
             item.source,
             score_part,
+            item.url,
         ));
     }
     if referenced_count == 0 {
@@ -295,12 +299,13 @@ fn build_refs_block(report: &ReportJson, items: &[PublicNewsItem]) -> String {
                 _ => String::new(),
             };
             block.push_str(&format!(
-                "{}. [{}]({}) — {}{}\n",
+                "{}. [{}]({}) — {}{}\n   原文：{}\n",
                 i + 1,
                 item.title.replace('\n', " ").trim(),
                 item.url,
                 item.source,
                 score_part,
+                item.url,
             ));
         }
     }
@@ -325,9 +330,9 @@ fn format_section_item(item: &ReportSection) -> Option<String> {
     };
 
     let meta = if source_part.is_empty() {
-        String::new()
+        format!("\n\n> 原文：{url}")
     } else {
-        format!("\n\n> {}", sanitize(&source_part))
+        format!("\n\n> {}\n> 原文：{}", sanitize(&source_part), url)
     };
 
     Some(format!(
@@ -545,6 +550,7 @@ mod tests {
         assert!(md.contains("技术 1 条"));
         assert!(md.contains("深读 1 篇"));
         assert!(md.contains("[OpenAI 发布新工具](https://example.com/focus)"));
+        assert!(md.contains("原文：https://example.com/focus"));
     }
 
     #[test]
@@ -574,6 +580,7 @@ mod tests {
         };
         let md = assemble_markdown(&report, &[], "");
         assert!(md.contains("> Google DeepMind 团队提出了一种新的强化学习框架"));
+        assert!(md.contains("> 原文：https://example.com/a"));
     }
 
     #[test]
@@ -591,6 +598,7 @@ mod tests {
 
         assert!(rendered.contains("Chainlink联合50多家银行启动Project Pangea。"));
         assert!(rendered.contains("> 来源：The Defiant · 120 points"));
+        assert!(rendered.contains("> 原文：https://example.com/chainlink"));
         assert!(!rendered.contains("（来源："));
     }
 
@@ -714,9 +722,12 @@ mod tests {
 
         assert!(refs.contains("**参考来源**"));
         assert!(refs.contains("1. [used]"));
+        assert!(refs.contains("原文：https://example.com/used"));
         assert!(refs.contains("**完整素材链接**"));
         assert!(refs.contains("1. [unreferenced]"));
+        assert!(refs.contains("原文：https://example.com/unreferenced"));
         assert!(refs.contains("2. [another]"));
+        assert!(refs.contains("原文：https://example.com/another"));
     }
 
     #[test]
