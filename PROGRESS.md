@@ -54,9 +54,10 @@
 
 我们下一步建议直接做：
 
-1. 把 `src/mcp/tools.rs` 的剩余命令层适配继续往纯 helper 收。
-2. 扩充 `tests/fixtures/wx_cli/` 里的匿名化样本。
-3. 把 fixture 覆盖继续接到 handle-once / test-plan / poll。
+1. 先补公众号文章单链接提取器：给一个 `mp.weixin.qq.com/s/...` URL 时，最佳努力抽取标题、公众号名、作者、发布时间、封面和正文摘要，作为 `PublicNewsSource` 素材进入日报；长期订阅仍继续走 `wechat_rss_*` 上游，不把微信登录、代理池或反风控放进主进程。
+2. 把 `src/mcp/tools.rs` 的剩余命令层适配继续往纯 helper 收。
+3. 扩充 `tests/fixtures/wx_cli/` 里的匿名化样本。
+4. 把 fixture 覆盖继续接到 handle-once / test-plan / poll。
 
 如果目标切到“明天能不能把公众号日报草稿推出来”，当前最短操作路径已经收口成：
 
