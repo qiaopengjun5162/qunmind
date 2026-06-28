@@ -35,8 +35,8 @@ pub(super) fn assemble_markdown(
     if !report.reads.is_empty() {
         md.push_str(&render_reads_section(&report.reads));
     }
-    if !report.summary.is_empty() {
-        md.push_str(&fence_block("summary", None, &sanitize(&report.summary)));
+    if let Some(summary) = render_summary(report) {
+        md.push_str(&fence_block("summary", None, &summary));
     }
 
     md.push_str(&build_refs_block(report, items));
@@ -86,24 +86,36 @@ fn fence_block(kind: &str, label: Option<&str>, body: &str) -> String {
 
 fn render_focus(text: &str, url: &str) -> String {
     let focus_text = humanize_focus_text(text);
-    let body = if url.is_empty() {
-        focus_text
+    let body = if url.trim().is_empty() {
+        format!(
+            "**发生了什么**\n{}\n\n**为什么重要**\n它是本期信息流里最适合先核对的一条，可以帮助读者快速建立今天的阅读上下文。\n\n**后续关注**\n继续关注是否出现官方文档、产品更新或社区复盘。",
+            ensure_sentence_end(&focus_text)
+        )
     } else {
-        format!("{} — [点击阅读]({})\n\n原文：{}", focus_text, url, url)
+        let url = url.trim();
+        format!(
+            "**发生了什么**\n{} — [点击阅读]({})\n\n**为什么重要**\n它是本期信息流里最适合先核对的一条，可以帮助读者快速建立今天的阅读上下文。\n\n**后续关注**\n继续关注是否出现官方文档、产品更新或社区复盘。\n\n原文：{}",
+            ensure_sentence_end(&focus_text),
+            url,
+            url
+        )
     };
     fence_block("callout", Some("今日焦点"), &body)
 }
 
 fn render_overview(report: &ReportJson) -> String {
-    let mut lines = vec![String::from("今日速览")];
+    let mut lines = vec![String::from("今日三件事")];
 
     if !report.focus_text.trim().is_empty() {
         let focus = humanize_focus_text(&report.focus_text);
         if report.focus_url.trim().is_empty() {
-            lines.push(format!("- 焦点：{}", sanitize(&focus)));
+            lines.push(format!(
+                "- 先看焦点：{}",
+                ensure_sentence_end(&sanitize(&focus))
+            ));
         } else {
             lines.push(format!(
-                "- 焦点：[{}]({})",
+                "- 先看焦点：[{}]({})",
                 sanitize(&focus),
                 report.focus_url.trim()
             ));
@@ -124,14 +136,14 @@ fn render_overview(report: &ReportJson) -> String {
         counts.push(format!("深读 {} 篇", report.reads.len()));
     }
     if !counts.is_empty() {
-        lines.push(format!("- 本期结构：{}", counts.join(" / ")));
+        lines.push(format!("- 再按板块浏览：{}", counts.join(" / ")));
     }
 
     if lines.len() == 1 {
         return String::new();
     }
 
-    lines.push("- 阅读方式：先看焦点和速览，再按 AI / Web3 / 技术板块追原文。".to_string());
+    lines.push("- 最后看链接区：每条正文依据和完整素材都会保留裸原文链接，方便追溯。".to_string());
 
     format!(":::tip\nicon: 🧭\n{}\n:::\n\n", lines.join("\n"))
 }
@@ -238,12 +250,7 @@ fn render_reads_section(reads: &[ReportRead]) -> String {
         }
         let summary = read.summary.trim();
         // 过滤掉套话和空摘要，只保留有实质内容的描述。
-        if !summary.is_empty()
-            && summary.chars().count() >= 20
-            && !summary.contains("这篇材料围绕")
-            && !summary.contains("这篇文章讲了")
-            && !summary.contains("核心信息")
-        {
+        if is_reliable_read_summary(summary) {
             s.push_str(&format!("> {}\n\n", sanitize(summary)));
         } else if !read.url.trim().is_empty() {
             s.push_str("> 未生成可靠摘要，请直接阅读原文核对。\n\n");
@@ -336,12 +343,19 @@ fn format_section_item(item: &ReportSection) -> Option<String> {
     } else {
         format!("\n\n> {}\n> 原文：{}", sanitize(&source_part), url)
     };
+    let comment = if item.comment.trim().is_empty() {
+        "未生成可靠摘要，请直接阅读原文核对。".to_string()
+    } else if has_ascii_ellipsis_fragment(item.comment.trim()) {
+        fallback_section_comment(item)
+    } else {
+        ensure_sentence_end(&sanitize(&item.comment))
+    };
 
     Some(format!(
-        "**[{}]({})**\n\n{}{}\n\n",
+        "**[{}]({})**\n\n> **值得关注**：{}{}\n\n",
         sanitize(&item.title),
         url,
-        ensure_sentence_end(&sanitize(&item.comment)),
+        comment,
         meta
     ))
 }
@@ -383,6 +397,102 @@ fn ensure_sentence_end(value: &str) -> String {
         return trimmed.to_string();
     }
     format!("{trimmed}。")
+}
+
+fn render_summary(report: &ReportJson) -> Option<String> {
+    let summary = sanitize(report.summary.trim());
+    if is_useful_chinese_summary(&summary) {
+        return Some(summary);
+    }
+
+    let mut titles = Vec::new();
+    if let Some(item) = report.ai_items.first()
+        && let Some(text) = summary_item_text(item)
+    {
+        titles.push(format!("AI：{text}"));
+    }
+    if let Some(item) = report.web3_items.first()
+        && let Some(text) = summary_item_text(item)
+    {
+        titles.push(format!("Web3：{text}"));
+    }
+    if let Some(item) = report.tech_items.first()
+        && let Some(text) = summary_item_text(item)
+    {
+        titles.push(format!("技术：{text}"));
+    }
+
+    if titles.is_empty() {
+        return None;
+    }
+
+    Some(format!(
+        "本期建议优先阅读{}。如果某条摘要不够完整，请以对应原文链接为准。",
+        titles.join("、")
+    ))
+}
+
+fn is_reliable_read_summary(summary: &str) -> bool {
+    let summary = summary.trim();
+    is_useful_chinese_summary(summary)
+        && !summary.contains("这篇材料围绕")
+        && !summary.contains("这篇文章讲了")
+        && !summary.contains("核心信息")
+}
+
+fn is_useful_chinese_summary(summary: &str) -> bool {
+    if summary.chars().count() < 10 {
+        return false;
+    }
+    if has_ascii_ellipsis_fragment(summary) {
+        return false;
+    }
+    let chinese_chars = summary
+        .chars()
+        .filter(|ch| matches!(*ch, '\u{4e00}'..='\u{9fff}'))
+        .count();
+    chinese_chars >= 8
+}
+
+fn summary_item_text(item: &ReportSection) -> Option<String> {
+    let comment = sanitize(item.comment.trim());
+    if is_useful_chinese_summary(&comment) {
+        return Some(trim_sentence_end(&comment).to_string());
+    }
+
+    let title = sanitize(item.title.trim());
+    if is_useful_chinese_summary(&title) {
+        return Some(trim_sentence_end(&title).to_string());
+    }
+
+    None
+}
+
+fn trim_sentence_end(value: &str) -> &str {
+    value.trim_end_matches(['。', '！', '？', '!', '?', '.'])
+}
+
+fn has_ascii_ellipsis_fragment(value: &str) -> bool {
+    value.match_indices("...").any(|(index, _)| {
+        let before = &value[..index];
+        let tail = before
+            .chars()
+            .rev()
+            .take_while(|ch| ch.is_ascii_alphanumeric() || ch.is_ascii_whitespace())
+            .collect::<String>();
+        tail.chars().filter(|ch| ch.is_ascii_alphabetic()).count() >= 4
+    })
+}
+
+fn fallback_section_comment(item: &ReportSection) -> String {
+    if item.source.trim().is_empty() {
+        "这条信息摘要不够完整，建议直接阅读原文核对。".to_string()
+    } else {
+        format!(
+            "这条信息近期来自{}，摘要不够完整，建议直接阅读原文核对。",
+            sanitize(item.source.trim())
+        )
+    }
 }
 
 fn short_title(item: &PublicNewsItem, score: i64) -> String {
@@ -482,7 +592,7 @@ mod tests {
                 source: "GitHub Trending".to_string(),
                 points: 70,
             }],
-            summary: "总结".to_string(),
+            summary: "本期信息主要集中在 AI 工具、Web3 安全事件和 Rust 开源生态。".to_string(),
             ..Default::default()
         };
         let md = assemble_markdown(
@@ -496,7 +606,7 @@ mod tests {
         );
         assert!(md.contains(":::intro"));
         assert!(md.contains(":::tip"));
-        assert!(md.contains("今日速览"));
+        assert!(md.contains("今日三件事"));
         assert!(md.contains(":::callout"));
         assert!(md.contains("## 01｜🤖 AI 前沿"));
         assert!(md.contains("## 02｜⛓️ Web3 技术"));
@@ -546,13 +656,26 @@ mod tests {
 
         assert!(md.contains(":::tip"));
         assert!(md.contains("icon: 🧭"));
-        assert!(md.contains("今日速览"));
+        assert!(md.contains("今日三件事"));
         assert!(md.contains("AI 1 条"));
         assert!(md.contains("Web3 1 条"));
         assert!(md.contains("技术 1 条"));
         assert!(md.contains("深读 1 篇"));
         assert!(md.contains("[OpenAI 发布新工具](https://example.com/focus)"));
         assert!(md.contains("原文：https://example.com/focus"));
+    }
+
+    #[test]
+    fn focus_is_rendered_as_three_reading_blocks() {
+        let body = render_focus(
+            "OpenAI 发布新的 Codex 编排方案，强调多 Agent 协作与任务拆分",
+            "https://example.com/openai-codex",
+        );
+
+        assert!(body.contains("**发生了什么**"));
+        assert!(body.contains("**为什么重要**"));
+        assert!(body.contains("**后续关注**"));
+        assert!(body.contains("原文：https://example.com/openai-codex"));
     }
 
     #[test]
@@ -568,6 +691,24 @@ mod tests {
         let md = assemble_markdown(&report, &[], "");
         assert!(md.contains("**[深度文章]"));
         assert!(md.contains("> 未生成可靠摘要，请直接阅读原文核对。"));
+        assert!(md.contains("> 原文：https://example.com/a"));
+    }
+
+    #[test]
+    fn reads_skip_ascii_fragment_summary() {
+        let report = ReportJson {
+            reads: vec![ReportRead {
+                title: "深度文章".to_string(),
+                url: "https://example.com/a".to_string(),
+                summary: "Aave confirmed Saturday that Aavenomics 3".to_string(),
+            }],
+            ..Default::default()
+        };
+
+        let md = assemble_markdown(&report, &[], "");
+
+        assert!(md.contains("> 未生成可靠摘要，请直接阅读原文核对。"));
+        assert!(!md.contains("Aave confirmed Saturday"));
         assert!(md.contains("> 原文：https://example.com/a"));
     }
 
@@ -599,6 +740,7 @@ mod tests {
 
         let rendered = format_section_item(&item).expect("section item");
 
+        assert!(rendered.contains("> **值得关注**："));
         assert!(rendered.contains("Chainlink联合50多家银行启动Project Pangea。"));
         assert!(rendered.contains("> 该观点依据：The Defiant · 120 points"));
         assert!(rendered.contains("> 原文：https://example.com/chainlink"));
@@ -611,6 +753,64 @@ mod tests {
                     .unwrap()
         );
         assert!(!rendered.contains("（来源："));
+    }
+
+    #[test]
+    fn section_item_falls_back_when_comment_has_ascii_ellipsis_fragment() {
+        let item = ReportSection {
+            title: "AI learns the dark art".to_string(),
+            url: "https://example.com/ai-rfic".to_string(),
+            comment: "AI learns the dark art of R... 近期在 Hacker News 上引发讨论".to_string(),
+            source: "Hacker News".to_string(),
+            points: 208,
+            subsection: String::new(),
+        };
+
+        let rendered = format_section_item(&item).expect("section item");
+
+        assert!(rendered.contains("摘要不够完整，建议直接阅读原文核对"));
+        assert!(!rendered.contains("AI learns the dark art of R..."));
+        assert!(rendered.contains("> 原文：https://example.com/ai-rfic"));
+    }
+
+    #[test]
+    fn summary_uses_chinese_fallback_for_english_fragment() {
+        let report = ReportJson {
+            summary: "今天公开素材的主线是 Web3：AMLBot Puts Polymarket Phishi...；Aave Confirms Aavenomics 3.0 ...。".to_string(),
+            ai_items: vec![ReportSection {
+                title: "OpenAI Codex orchestration".to_string(),
+                url: "https://example.com/openai".to_string(),
+                comment: "OpenAI 发布 Codex 编排实践，适合关注多 Agent 协作".to_string(),
+                source: "OpenAI".to_string(),
+                points: 0,
+                subsection: "多Agent编排".to_string(),
+            }],
+            web3_items: vec![ReportSection {
+                title: "Ethereum privacy browser".to_string(),
+                url: "https://example.com/eth".to_string(),
+                comment: "以太坊隐私浏览器原型值得追踪".to_string(),
+                source: "Ethereum Research".to_string(),
+                points: 0,
+                subsection: String::new(),
+            }],
+            ..Default::default()
+        };
+
+        let md = assemble_markdown(&report, &[], "");
+        let summary_block = md
+            .split(":::summary")
+            .nth(1)
+            .and_then(|value| value.split(":::").next())
+            .expect("summary block");
+
+        assert!(md.contains(":::summary"));
+        assert!(summary_block.contains("本期建议优先阅读"));
+        assert!(summary_block.contains("OpenAI 发布 Codex 编排实践"));
+        assert!(summary_block.contains("以太坊隐私浏览器原型值得追踪"));
+        assert!(!summary_block.contains("Aave Confirms"));
+        assert!(!summary_block.contains("AMLBot Puts Polymarket Phishi..."));
+        assert!(!summary_block.contains("OpenAI Codex orchestration"));
+        assert!(!summary_block.contains("Ethereum privacy browser"));
     }
 
     #[test]

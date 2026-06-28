@@ -35,7 +35,7 @@ The project currently supports:
 - Optional Hacker News, CoinMarketCap, CoinGecko, DeFi Llama, Dune, GitHub Trending, and Slerf Blog fallback reports when a report group has no messages.
 - Manual curated source items for one-off official articles, X posts, or other links you explicitly want readers to continue reading.
 - WeChat public-account report drafts use a fixed personal-account cover for the `AI · Web3 最新日报` column, branded as `寻月隐君`, while `moonpub` still owns final rendering and upload.
-- WeChat daily reports render as a review-friendly article layout: intro, quick overview, focus callout, numbered AI / Web3 / tech / deep-read sections, polished source quote lines, and separate referenced-source versus complete-source-link blocks.
+- WeChat daily reports render as a review-friendly article layout: intro, "today's three things", a three-part focus callout, numbered AI / Web3 / tech / deep-read sections, "worth watching" item notes, polished source quote lines, and separate referenced-source versus complete-source-link blocks.
 
 ## Status
 
@@ -103,6 +103,7 @@ Current working timeline has shifted:
 - June 25, 2026: third real public-account draft push succeeded with the latest content-quality-tuned v5 preview
 - June 26, 2026: a fixed personal-account cover was added for `AI · Web3 最新日报`
 - June 27, 2026: the public-account report layout was tightened with quick overview, numbered sections, lighter item spacing, and clearer source-link blocks
+- June 28, 2026: the layout was further polished into "today's three things", a three-part focus block, "worth watching" item notes, and Chinese fallback summaries to avoid clipped English fragments
 - June 25-26, 2026: internal gray rollout and repeated rehearsals are realistic
 - it is still not recommended to describe the path as fully unattended stable production yet
 
