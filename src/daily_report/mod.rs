@@ -115,6 +115,8 @@ fn enrich_report(mut report: ReportJson, items: &[PublicNewsItem]) -> ReportJson
 
     promote_web3_focus(&mut report, items);
     polish_sections(&mut report, items);
+    remove_focus_duplicates_from_sections(&mut report);
+    dedup_and_backfill_reads(&mut report, items);
 
     report
 }
@@ -497,6 +499,8 @@ fn polish_sections(report: &mut ReportJson, items: &[PublicNewsItem]) {
     polish_section_items(&mut report.ai_items, items);
     polish_section_items(&mut report.web3_items, items);
     polish_section_items(&mut report.tech_items, items);
+    backfill_fresh_tech_items(&mut report.tech_items, items);
+    prioritize_fresh_tech_items(&mut report.tech_items, items);
 
     report.ai_items.truncate(MAX_AI_ITEMS);
     report.web3_items.truncate(MAX_WEB3_ITEMS);
@@ -525,6 +529,139 @@ fn polish_section_items(section_items: &mut Vec<ReportSection>, items: &[PublicN
         }
 
         section.comment = best_section_comment(section, items);
+    }
+}
+
+fn prioritize_fresh_tech_items(section_items: &mut Vec<ReportSection>, items: &[PublicNewsItem]) {
+    let mut fresh = Vec::new();
+    let mut repeat_prone = Vec::new();
+
+    for item in section_items.drain(..) {
+        if is_repeat_prone_github_trending_repo(&item, items) {
+            repeat_prone.push(item);
+        } else {
+            fresh.push(item);
+        }
+    }
+
+    if fresh.is_empty() {
+        *section_items = repeat_prone;
+        return;
+    }
+
+    section_items.extend(fresh);
+    if let Some(item) = repeat_prone.into_iter().next() {
+        section_items.push(item);
+    }
+}
+
+fn backfill_fresh_tech_items(section_items: &mut Vec<ReportSection>, items: &[PublicNewsItem]) {
+    let existing_urls = section_items
+        .iter()
+        .map(|item| item.url.clone())
+        .collect::<std::collections::HashSet<_>>();
+
+    let mut additions = items
+        .iter()
+        .filter(|item| !existing_urls.contains(&item.url))
+        .filter(|item| !is_ai_item(item))
+        .filter(|item| !is_web3_item(item))
+        .filter(|item| is_high_signal_item(item))
+        .filter(|item| is_fresh_tech_candidate(item))
+        .map(|item| ReportSection {
+            title: compact_title(item.title.trim(), 50),
+            url: item.url.clone(),
+            comment: fallback_comment(item),
+            source: item.source.clone(),
+            points: item.score.unwrap_or(0),
+            subsection: String::new(),
+        })
+        .collect::<Vec<_>>();
+
+    if additions.is_empty() {
+        return;
+    }
+
+    section_items.append(&mut additions);
+    dedup_sections(section_items);
+}
+
+fn remove_focus_duplicates_from_sections(report: &mut ReportJson) {
+    if report.focus_url.trim().is_empty() {
+        return;
+    }
+
+    drop_focus_duplicate_if_possible(&mut report.ai_items, &report.focus_url);
+    drop_focus_duplicate_if_possible(&mut report.web3_items, &report.focus_url);
+    drop_focus_duplicate_if_possible(&mut report.tech_items, &report.focus_url);
+}
+
+fn drop_focus_duplicate_if_possible(items: &mut Vec<ReportSection>, focus_url: &str) {
+    if items.len() <= 1 {
+        return;
+    }
+
+    items.retain(|item| item.url.trim() != focus_url.trim());
+}
+
+fn dedup_and_backfill_reads(report: &mut ReportJson, items: &[PublicNewsItem]) {
+    let mut used_urls = std::collections::HashSet::new();
+    if !report.focus_url.trim().is_empty() {
+        used_urls.insert(report.focus_url.trim().to_string());
+    }
+    for item in &report.ai_items {
+        if !item.url.trim().is_empty() {
+            used_urls.insert(item.url.trim().to_string());
+        }
+    }
+    for item in &report.web3_items {
+        if !item.url.trim().is_empty() {
+            used_urls.insert(item.url.trim().to_string());
+        }
+    }
+    for item in &report.tech_items {
+        if !item.url.trim().is_empty() {
+            used_urls.insert(item.url.trim().to_string());
+        }
+    }
+
+    let mut seen_read_urls = std::collections::HashSet::new();
+    report.reads.retain(|read| {
+        let url = read.url.trim();
+        !url.is_empty() && !used_urls.contains(url) && seen_read_urls.insert(url.to_string())
+    });
+
+    for read in &report.reads {
+        used_urls.insert(read.url.trim().to_string());
+    }
+
+    if report.reads.len() >= MAX_READS {
+        report.reads.truncate(MAX_READS);
+        return;
+    }
+
+    for item in items {
+        if report.reads.len() >= MAX_READS {
+            break;
+        }
+        if used_urls.contains(item.url.trim()) {
+            continue;
+        }
+        if !is_preferred_read_item(item) || !is_high_signal_item(item) {
+            continue;
+        }
+
+        report.reads.push(ReportRead {
+            title: item.title.trim().to_string(),
+            url: item.url.clone(),
+            summary: item
+                .summary
+                .as_deref()
+                .map(clean_summary)
+                .filter(|summary| !summary.is_empty())
+                .unwrap_or_else(|| fallback_read_summary(item)),
+        });
+        used_urls.insert(item.url.clone());
     }
 }
 
@@ -603,6 +740,114 @@ fn is_web3_section_item(item: &ReportSection, source_items: &[PublicNewsItem]) -
         .iter()
         .find(|source_item| source_item.url == item.url)
         .is_some_and(is_web3_item)
+}
+
+fn is_repeat_prone_github_trending_repo(
+    item: &ReportSection,
+    source_items: &[PublicNewsItem],
+) -> bool {
+    if !item.source.contains("GitHub Trending") || !is_plain_github_repo_url(&item.url) {
+        return false;
+    }
+
+    let mut haystack = format!("{} {} {}", item.title, item.comment, item.source).to_lowercase();
+    if let Some(source_item) = source_items
+        .iter()
+        .find(|source_item| source_item.url == item.url)
+        && let Some(summary) = source_item.summary.as_deref()
+    {
+        haystack.push(' ');
+        haystack.push_str(&summary.to_lowercase());
+    }
+
+    if contains_any_text(&haystack, &["没有新的", "本次没有", "无新的", "未见新的"])
+    {
+        return true;
+    }
+
+    !contains_any_text(
+        &haystack,
+        &[
+            "release",
+            "launch",
+            "announce",
+            "security",
+            "cve",
+            "0day",
+            "0-day",
+            "exploit",
+            "incident",
+            "breach",
+            "guide",
+            "setup",
+            "migration",
+            "benchmark",
+            "paper",
+            "research",
+            "postmortem",
+            "root cause",
+            "事故",
+            "漏洞",
+            "安全",
+            "发布",
+            "上线",
+            "指南",
+            "教程",
+            "基准",
+            "论文",
+            "复盘",
+        ],
+    )
+}
+
+fn is_fresh_tech_candidate(item: &PublicNewsItem) -> bool {
+    let haystack = format!(
+        "{} {} {} {}",
+        item.source,
+        item.title,
+        item.url,
+        item.summary.as_deref().unwrap_or("")
+    )
+    .to_lowercase();
+
+    if contains_any_text(&haystack, &["没有新的", "本次没有", "无新的", "未见新的"])
+    {
+        return false;
+    }
+
+    contains_any_text(
+        &haystack,
+        &[
+            "guide",
+            "setup",
+            "release",
+            "launch",
+            "announce",
+            "security",
+            "cve",
+            "0day",
+            "0-day",
+            "exploit",
+            "incident",
+            "breach",
+            "migration",
+            "benchmark",
+            "paper",
+            "research",
+            "postmortem",
+            "root cause",
+            "指南",
+            "教程",
+            "发布",
+            "上线",
+            "安全",
+            "漏洞",
+            "事故",
+            "复盘",
+            "基准",
+            "论文",
+        ],
+    )
 }
 
 fn is_ai_section_item(item: &ReportSection, source_items: &[PublicNewsItem]) -> bool {
@@ -871,6 +1116,14 @@ fn contains_any(item: &PublicNewsItem, keywords: &[&str]) -> bool {
     .to_lowercase();
 
     contains_any_text(&haystack, keywords)
+}
+
+fn is_plain_github_repo_url(url: &str) -> bool {
+    let Some(path) = url.strip_prefix("https://github.com/") else {
+        return false;
+    };
+    let parts = path.split('/').collect::<Vec<_>>();
+    parts.len() == 2 && parts.iter().all(|part| !part.trim().is_empty())
 }
 
 fn contains_any_text(haystack: &str, keywords: &[&str]) -> bool {
@@ -1513,15 +1766,407 @@ mod tests {
         );
 
         let report = generator.generate().await.expect("report");
-        let tech_section = report
-            .split("## 03｜🔧 技术 & 开源")
-            .nth(1)
-            .and_then(|rest| rest.split("## ").next())
-            .unwrap_or("");
+        let tech_tail = report.split("## 03｜🔧 技术 & 开源").nth(1).unwrap_or("");
+        let tech_section = tech_tail
+            .split_once(":::divider\nlabel: 04 · Read")
+            .map(|(section, _)| section)
+            .or_else(|| {
+                tech_tail
+                    .split_once(":::summary")
+                    .map(|(section, _)| section)
+            })
+            .unwrap_or(tech_tail);
 
         assert!(!tech_section.contains("具体用途待进一步了解"));
         assert!(!tech_section.contains("[G](https://example.com/g)"));
         assert_eq!(tech_section.matches("**[").count(), 6);
+    }
+
+    #[test]
+    fn prioritize_fresh_tech_items_limits_repeat_prone_github_trending_items() {
+        let source_items = vec![
+            PublicNewsItem {
+                source: "GitHub Trending".to_string(),
+                title: "rustdesk / rustdesk".to_string(),
+                url: "https://github.com/rustdesk/rustdesk".to_string(),
+                summary: Some("RustDesk 继续保持高热度，但本次没有新的正式发布或事故信号。".to_string()),
+                author: None,
+                published_at: None,
+                score: Some(117175),
+                comments: None,
+                ai_score: None,
+                category: None,
+            },
+            PublicNewsItem {
+                source: "GitHub Trending".to_string(),
+                title: "rust-lang / rust".to_string(),
+                url: "https://github.com/rust-lang/rust".to_string(),
+                summary: Some("Rust 语言仓库继续位于热门榜单前列，但本次没有新的版本发布。".to_string()),
+                author: None,
+                published_at: None,
+                score: Some(114305),
+                comments: None,
+                ai_score: None,
+                category: None,
+            },
+            PublicNewsItem {
+                source: "GitHub Trending".to_string(),
+                title: "zed-industries / zed".to_string(),
+                url: "https://github.com/zed-industries/zed".to_string(),
+                summary: Some("Zed 编辑器保持热度，但本次没有新的功能发布说明。".to_string()),
+                author: None,
+                published_at: None,
+                score: Some(86092),
+                comments: None,
+                ai_score: None,
+                category: None,
+            },
+            PublicNewsItem {
+                source: "Hacker News".to_string(),
+                title: "Anonymous GitHub account mass-dropping undisclosed 0-days".to_string(),
+                url: "https://github.com/bikini/exploitarium".to_string(),
+                summary: Some("一个匿名 GitHub 账户集中公开未披露 0day 漏洞，引发安全社区高度关注。".to_string()),
+                author: None,
+                published_at: None,
+                score: Some(778),
+                comments: None,
+                ai_score: None,
+                category: None,
+            },
+            PublicNewsItem {
+                source: "Hacker News".to_string(),
+                title: "AMD Strix Halo RDMA Cluster Setup Guide".to_string(),
+                url: "https://github.com/kyuz0/amd-strix-halo-vllm-toolboxes/blob/main/rdma_cluster/setup_guide.md".to_string(),
+                summary: Some("开发者公开 AMD Strix Halo RDMA 集群搭建指南，聚焦本地大模型推理基础设施。".to_string()),
+                author: None,
+                published_at: None,
+                score: Some(111),
+                comments: None,
+                ai_score: None,
+                category: None,
+            },
+            PublicNewsItem {
+                source: "Hacker News".to_string(),
+                title: "WAL-RUS: a Rust Rewrite of WAL-G for PostgreSQL Backups".to_string(),
+                url: "https://clickhouse.com/blog/walrus-postgres-backups-in-rust".to_string(),
+                summary: Some("ClickHouse 团队发布用 Rust 重写的 PostgreSQL 备份工具，强调备份链路可靠性。".to_string()),
+                author: None,
+                published_at: None,
+                score: Some(51),
+                comments: None,
+                ai_score: None,
+                category: None,
+            },
+        ];
+        let mut tech_items = vec![
+            ReportSection {
+                title: "rustdesk / rustdesk".to_string(),
+                url: "https://github.com/rustdesk/rustdesk".to_string(),
+                comment: "开源远程桌面软件RustDesk在GitHub Trending上获得117175 points。".to_string(),
+                source: "GitHub Trending".to_string(),
+                points: 117175,
+                subsection: String::new(),
+            },
+            ReportSection {
+                title: "rust-lang / rust".to_string(),
+                url: "https://github.com/rust-lang/rust".to_string(),
+                comment: "Rust编程语言仓库在GitHub Trending上获得114305 points。".to_string(),
+                source: "GitHub Trending".to_string(),
+                points: 114305,
+                subsection: String::new(),
+            },
+            ReportSection {
+                title: "zed-industries / zed".to_string(),
+                url: "https://github.com/zed-industries/zed".to_string(),
+                comment: "Zed代码编辑器在GitHub Trending上获得86092 points。".to_string(),
+                source: "GitHub Trending".to_string(),
+                points: 86092,
+                subsection: String::new(),
+            },
+            ReportSection {
+                title: "Anonymous GitHub account mass-dropping undisclosed 0-days".to_string(),
+                url: "https://github.com/bikini/exploitarium".to_string(),
+                comment: "一个匿名GitHub账户批量发布未公开的0day漏洞。".to_string(),
+                source: "Hacker News".to_string(),
+                points: 778,
+                subsection: String::new(),
+            },
+            ReportSection {
+                title: "AMD Strix Halo RDMA Cluster Setup Guide".to_string(),
+                url: "https://github.com/kyuz0/amd-strix-halo-vllm-toolboxes/blob/main/rdma_cluster/setup_guide.md".to_string(),
+                comment: "AMD Strix Halo RDMA集群搭建指南发布。".to_string(),
+                source: "Hacker News".to_string(),
+                points: 111,
+                subsection: String::new(),
+            },
+            ReportSection {
+                title: "WAL-RUS: a Rust Rewrite of WAL-G for PostgreSQL Backups".to_string(),
+                url: "https://clickhouse.com/blog/walrus-postgres-backups-in-rust".to_string(),
+                comment: "ClickHouse团队发布用Rust重写的PostgreSQL备份工具。".to_string(),
+                source: "Hacker News".to_string(),
+                points: 51,
+                subsection: String::new(),
+            },
+        ];
+
+        prioritize_fresh_tech_items(&mut tech_items, &source_items);
+
+        let stable_repo_count = tech_items
+            .iter()
+            .filter(|item| {
+                matches!(
+                    item.url.as_str(),
+                    "https://github.com/rustdesk/rustdesk"
+                        | "https://github.com/rust-lang/rust"
+                        | "https://github.com/zed-industries/zed"
+                )
+            })
+            .count();
+
+        assert!(
+            tech_items
+                .iter()
+                .any(|item| item.url == "https://github.com/bikini/exploitarium")
+        );
+        assert!(tech_items.iter().any(|item| {
+            item.url
+                == "https://github.com/kyuz0/amd-strix-halo-vllm-toolboxes/blob/main/rdma_cluster/setup_guide.md"
+        }));
+        assert!(
+            tech_items
+                .iter()
+                .any(|item| item.url
+                    == "https://clickhouse.com/blog/walrus-postgres-backups-in-rust")
+        );
+        assert!(stable_repo_count <= 1);
+    }
+
+    #[tokio::test]
+    async fn generate_backfills_fresh_tech_items_when_ai_keeps_only_stable_repo() {
+        let json = r#"{
+            "title_hint":"测试日报",
+            "intro":"今天技术项目很多",
+            "focus_text":"RustDesk远程桌面项目热度最高",
+            "focus_url":"https://github.com/rustdesk/rustdesk",
+            "ai_items":[],
+            "ai_signals":[],
+            "web3_items":[],
+            "tech_items":[
+                {"title":"rustdesk / rustdesk","url":"https://github.com/rustdesk/rustdesk","comment":"RustDesk是一款开源远程桌面软件，使用Rust语言实现，今日成为GitHub最受欢迎项目。","source":"GitHub Trending","points":117182},
+                {"title":"WAL-RUS: a Rust Rewrite of WAL-G for PostgreSQL Backups","url":"https://clickhouse.com/blog/walrus-postgres-backups-in-rust","comment":"WAL-RUS是用Rust重写的WAL-G工具，专注于PostgreSQL备份。","source":"Hacker News","points":64}
+            ],
+            "tech_timeline":[],
+            "reads":[],
+            "summary":"今天以技术与开源动态为主。"
+        }"#;
+        let generator = DailyReportGenerator::new(
+            Arc::new(FakeAi::new(vec![json.to_string()])),
+            Arc::new(FakeNewsSource {
+                items: vec![
+                    PublicNewsItem {
+                        source: "GitHub Trending".to_string(),
+                        title: "rustdesk / rustdesk".to_string(),
+                        url: "https://github.com/rustdesk/rustdesk".to_string(),
+                        summary: Some("RustDesk 继续保持高热度，但本次没有新的正式发布或事故信号。".to_string()),
+                        author: None,
+                        published_at: None,
+                        score: Some(117182),
+                        comments: None,
+                        ai_score: None,
+                        category: None,
+                    },
+                    PublicNewsItem {
+                        source: "GitHub Trending".to_string(),
+                        title: "rust-lang / rust".to_string(),
+                        url: "https://github.com/rust-lang/rust".to_string(),
+                        summary: Some("Rust 语言仓库继续位于热门榜单前列，但本次没有新的版本发布。".to_string()),
+                        author: None,
+                        published_at: None,
+                        score: Some(114339),
+                        comments: None,
+                        ai_score: None,
+                        category: None,
+                    },
+                    PublicNewsItem {
+                        source: "GitHub Trending".to_string(),
+                        title: "zed-industries / zed".to_string(),
+                        url: "https://github.com/zed-industries/zed".to_string(),
+                        summary: Some("Zed 编辑器保持热度，但本次没有新的功能发布说明。".to_string()),
+                        author: None,
+                        published_at: None,
+                        score: Some(86097),
+                        comments: None,
+                        ai_score: None,
+                        category: None,
+                    },
+                    PublicNewsItem {
+                        source: "Hacker News".to_string(),
+                        title: "Anonymous GitHub account mass-dropping undisclosed 0-days"
+                            .to_string(),
+                        url: "https://github.com/bikini/exploitarium".to_string(),
+                        summary: Some("一个匿名 GitHub 账户集中公开未披露 0day 漏洞，引发安全社区高度关注。".to_string()),
+                        author: None,
+                        published_at: None,
+                        score: Some(793),
+                        comments: None,
+                        ai_score: None,
+                        category: None,
+                    },
+                    PublicNewsItem {
+                        source: "Hacker News".to_string(),
+                        title: "AMD Strix Halo RDMA Cluster Setup Guide".to_string(),
+                        url: "https://github.com/kyuz0/amd-strix-halo-vllm-toolboxes/blob/main/rdma_cluster/setup_guide.md".to_string(),
+                        summary: Some("开发者公开 AMD Strix Halo RDMA 集群搭建指南，聚焦本地大模型推理基础设施。".to_string()),
+                        author: None,
+                        published_at: None,
+                        score: Some(127),
+                        comments: None,
+                        ai_score: None,
+                        category: None,
+                    },
+                    PublicNewsItem {
+                        source: "Hacker News".to_string(),
+                        title: "WAL-RUS: a Rust Rewrite of WAL-G for PostgreSQL Backups"
+                            .to_string(),
+                        url: "https://clickhouse.com/blog/walrus-postgres-backups-in-rust"
+                            .to_string(),
+                        summary: Some("ClickHouse 团队发布用 Rust 重写的 PostgreSQL 备份工具，强调备份链路可靠性。".to_string()),
+                        author: None,
+                        published_at: None,
+                        score: Some(64),
+                        comments: None,
+                        ai_score: None,
+                        category: None,
+                    },
+                ],
+            }),
+            String::new(),
+        );
+
+        let report = generator.generate().await.expect("report");
+        let tech_tail = report.split("## 03｜🔧 技术 & 开源").nth(1).unwrap_or("");
+        let tech_section = tech_tail
+            .split_once(":::divider\nlabel: 04 · Read")
+            .map(|(section, _)| section)
+            .or_else(|| {
+                tech_tail
+                    .split_once(":::summary")
+                    .map(|(section, _)| section)
+            })
+            .unwrap_or(tech_tail);
+
+        assert!(
+            tech_section.contains("https://clickhouse.com/blog/walrus-postgres-backups-in-rust")
+        );
+        assert!(tech_section.contains("https://github.com/bikini/exploitarium"));
+        assert!(
+            tech_section.contains(
+                "https://github.com/kyuz0/amd-strix-halo-vllm-toolboxes/blob/main/rdma_cluster/setup_guide.md"
+            )
+        );
+    }
+
+    #[test]
+    fn dedup_and_backfill_reads_avoids_focus_and_section_duplicates() {
+        let items = vec![
+            PublicNewsItem {
+                source: "The Defiant".to_string(),
+                title: "Focus item".to_string(),
+                url: "https://example.com/focus".to_string(),
+                summary: Some("焦点条目摘要".to_string()),
+                author: None,
+                published_at: None,
+                score: Some(120),
+                comments: None,
+                ai_score: None,
+                category: Some("web3".to_string()),
+            },
+            PublicNewsItem {
+                source: "The Defiant".to_string(),
+                title: "Web3 extra".to_string(),
+                url: "https://example.com/web3-extra".to_string(),
+                summary: Some("额外Web3条目摘要".to_string()),
+                author: None,
+                published_at: None,
+                score: Some(110),
+                comments: None,
+                ai_score: None,
+                category: Some("web3".to_string()),
+            },
+            PublicNewsItem {
+                source: "Hacker News".to_string(),
+                title: "Tech item".to_string(),
+                url: "https://example.com/tech".to_string(),
+                summary: Some("技术条目摘要".to_string()),
+                author: None,
+                published_at: None,
+                score: Some(90),
+                comments: None,
+                ai_score: None,
+                category: None,
+            },
+            PublicNewsItem {
+                source: "Manual Source".to_string(),
+                title: "Fresh read".to_string(),
+                url: "https://example.com/fresh-read".to_string(),
+                summary: Some("新的深读链接，应该被保留下来。".to_string()),
+                author: None,
+                published_at: None,
+                score: Some(80),
+                comments: None,
+                ai_score: None,
+                category: None,
+            },
+        ];
+        let mut report = ReportJson {
+            focus_text: "Chainlink启动Project Pangea".to_string(),
+            focus_url: "https://example.com/focus".to_string(),
+            web3_items: vec![ReportSection {
+                title: "Web3 extra".to_string(),
+                url: "https://example.com/web3-extra".to_string(),
+                comment: "额外Web3条目".to_string(),
+                source: "The Defiant".to_string(),
+                points: 110,
+                subsection: String::new(),
+            }],
+            tech_items: vec![ReportSection {
+                title: "Tech item".to_string(),
+                url: "https://example.com/tech".to_string(),
+                comment: "技术条目".to_string(),
+                source: "Hacker News".to_string(),
+                points: 90,
+                subsection: String::new(),
+            }],
+            reads: vec![
+                ReportRead {
+                    title: "Focus deep read".to_string(),
+                    url: "https://example.com/focus".to_string(),
+                    summary: "焦点深读摘要，原本会和焦点重复。".to_string(),
+                },
+                ReportRead {
+                    title: "Tech deep read".to_string(),
+                    url: "https://example.com/tech".to_string(),
+                    summary: "技术深读摘要，原本会和技术区重复。".to_string(),
+                },
+                ReportRead {
+                    title: "Fresh read".to_string(),
+                    url: "https://example.com/fresh-read".to_string(),
+                    summary: "新的深读链接，应该被保留下来。".to_string(),
+                },
+            ],
+            ..Default::default()
+        };
+
+        dedup_and_backfill_reads(&mut report, &items);
+
+        let urls = report
+            .reads
+            .iter()
+            .map(|read| read.url.as_str())
+            .collect::<Vec<_>>();
+        assert!(!urls.contains(&"https://example.com/focus"));
+        assert!(!urls.contains(&"https://example.com/tech"));
+        assert!(urls.contains(&"https://example.com/fresh-read"));
     }
 
     #[tokio::test]
@@ -1610,8 +2255,8 @@ mod tests {
         assert!(used_refs.contains("https://example.com/ai1"));
         assert!(used_refs.contains("https://example.com/tech1"));
         assert!(used_refs.contains("https://example.com/read1"));
-        assert!(!used_refs.contains("https://example.com/unused"));
-        assert!(source_links.contains("https://example.com/unused"));
+        assert!(used_refs.contains("https://example.com/unused"));
+        assert!(!source_links.contains("https://example.com/unused"));
     }
 
     #[tokio::test]
@@ -1654,9 +2299,9 @@ mod tests {
 
         let report = generator.generate().await.expect("report");
 
-        assert!(report.contains("## 04｜📚 推荐深读"));
         assert!(report.contains("open-source-codex-orchestration-symphony"));
         assert!(report.contains("https://x.com/Easycompany333/status/2069019238283849954"));
+        assert!(report.contains("原文：https://x.com/Easycompany333/status/2069019238283849954"));
     }
 
     #[tokio::test]
