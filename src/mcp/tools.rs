@@ -538,6 +538,7 @@ async fn tool_report_markdown(config: &Config, args: &serde_json::Value) -> anyh
         ai_client,
         message_store,
         public_news_source,
+        None,
     )
     .await?;
     std::fs::write(&output_path, &markdown)
@@ -577,6 +578,7 @@ async fn tool_report_publish(config: &Config, args: &serde_json::Value) -> anyho
         ai_client,
         message_store.clone(),
         public_news_source,
+        None,
     )
     .await?;
     std::fs::write(&output_path, &markdown)

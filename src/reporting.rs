@@ -10,6 +10,7 @@ use crate::source;
 use crate::source::PublicNewsSource;
 use crate::storage::postgres::PostgresMessageStore;
 use crate::storage::{MessageStore, StoredLink, StoredMessage, StoredPublishReceipt};
+use std::collections::HashSet;
 use std::path::Path;
 use std::sync::Arc;
 use tracing::error;
@@ -456,6 +457,7 @@ pub async fn generate_manual_daily_report_markdown(
     ai_client: Arc<dyn AiClient>,
     message_store: Arc<dyn MessageStore>,
     public_news_source: Option<Arc<dyn PublicNewsSource>>,
+    previous_markdown: Option<&str>,
 ) -> anyhow::Result<String> {
     let ai_client_for_fallback = Arc::clone(&ai_client);
     if let Some(markdown) = generate_group_report_from_store(
@@ -478,22 +480,48 @@ pub async fn generate_manual_daily_report_markdown(
         QunMindError::Config("daily-report 需要启用至少一个 public_sources".to_string())
     })?;
 
-    generate_manual_public_daily_report(report_target, ai_client_for_fallback, public_news_source)
-        .await
+    generate_manual_public_daily_report(
+        report_target,
+        ai_client_for_fallback,
+        public_news_source,
+        previous_markdown,
+    )
+    .await
 }
 
 async fn generate_manual_public_daily_report(
     report_target: &ManualDailyReportTarget,
     ai_client: Arc<dyn AiClient>,
     public_news_source: Arc<dyn PublicNewsSource>,
+    previous_markdown: Option<&str>,
 ) -> anyhow::Result<String> {
     let generator = DailyReportGenerator::new(
         ai_client,
         public_news_source,
         report_target.daily_quote.clone(),
-    );
+    )
+    .with_recent_used_urls(previous_report_urls(previous_markdown));
 
     generator.generate().await.map_err(Into::into)
+}
+
+fn previous_report_urls(previous_markdown: Option<&str>) -> HashSet<String> {
+    let mut urls = HashSet::new();
+    let Some(markdown) = previous_markdown else {
+        return urls;
+    };
+
+    for line in markdown.lines() {
+        let trimmed = line.trim();
+        if let Some(url) = trimmed.strip_prefix("原文：https://") {
+            let url = url.trim();
+            if !url.is_empty() {
+                urls.insert(url.to_string());
+            }
+        }
+    }
+
+    urls
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

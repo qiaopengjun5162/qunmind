@@ -127,12 +127,14 @@ async fn run_diagnostic_command(
             let report_target = resolve_manual_daily_report_target(config, &report_name)?;
             let message_store = build_message_store(config).await?;
             let public_news_source = build_public_news_source(config)?;
+            let previous_markdown = std::fs::read_to_string(&output).ok();
             let markdown = generate_manual_daily_report_markdown(
                 config,
                 &report_target,
                 Arc::clone(&ai_client),
                 Arc::clone(&message_store),
                 public_news_source,
+                previous_markdown.as_deref(),
             )
             .await?;
             std::fs::write(&output, &markdown)
@@ -772,8 +774,15 @@ mod tests {
             "manual daily report target",
         );
         let markdown = must(
-            generate_manual_daily_report_markdown(&config, &report_target, ai.clone(), store, None)
-                .await,
+            generate_manual_daily_report_markdown(
+                &config,
+                &report_target,
+                ai.clone(),
+                store,
+                None,
+                None,
+            )
+            .await,
             "manual daily report markdown",
         );
 
@@ -833,6 +842,7 @@ mod tests {
                 ai.clone(),
                 store,
                 Some(source),
+                None,
             )
             .await,
             "manual public daily report markdown",

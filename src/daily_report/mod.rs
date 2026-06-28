@@ -3,6 +3,7 @@ mod prompt;
 mod render;
 mod types;
 
+use std::collections::HashSet;
 use std::sync::Arc;
 
 use crate::ai::{AiClient, ChatMessage};
@@ -25,6 +26,7 @@ pub struct DailyReportGenerator {
     ai: Arc<dyn AiClient>,
     news_source: Arc<dyn PublicNewsSource>,
     daily_quote: String,
+    recent_used_urls: HashSet<String>,
 }
 
 impl DailyReportGenerator {
@@ -37,7 +39,13 @@ impl DailyReportGenerator {
             ai,
             news_source,
             daily_quote,
+            recent_used_urls: HashSet::new(),
         }
+    }
+
+    pub fn with_recent_used_urls(mut self, recent_used_urls: HashSet<String>) -> Self {
+        self.recent_used_urls = recent_used_urls;
+        self
     }
 
     pub async fn generate(&self) -> Result<String> {
@@ -55,13 +63,17 @@ impl DailyReportGenerator {
             content: build_json_prompt(&ranked),
         }];
         let raw = self.ai.chat(&messages).await?;
-        let report = enrich_report(parse_report_json(&raw), &ranked);
+        let report = enrich_report(parse_report_json(&raw), &ranked, &self.recent_used_urls);
 
         Ok(assemble_markdown(&report, &ranked, &self.daily_quote))
     }
 }
 
-fn enrich_report(mut report: ReportJson, items: &[PublicNewsItem]) -> ReportJson {
+fn enrich_report(
+    mut report: ReportJson,
+    items: &[PublicNewsItem],
+    recent_used_urls: &HashSet<String>,
+) -> ReportJson {
     rebalance_sections(&mut report, items);
     fill_missing_read_summaries(&mut report, items);
 
@@ -115,8 +127,9 @@ fn enrich_report(mut report: ReportJson, items: &[PublicNewsItem]) -> ReportJson
 
     promote_web3_focus(&mut report, items);
     polish_sections(&mut report, items);
+    deprioritize_recently_used_urls(&mut report, items, recent_used_urls);
     remove_focus_duplicates_from_sections(&mut report);
-    dedup_and_backfill_reads(&mut report, items);
+    dedup_and_backfill_reads(&mut report, items, recent_used_urls);
 
     report
 }
@@ -604,7 +617,11 @@ fn drop_focus_duplicate_if_possible(items: &mut Vec<ReportSection>, focus_url: &
     items.retain(|item| item.url.trim() != focus_url.trim());
 }
 
-fn dedup_and_backfill_reads(report: &mut ReportJson, items: &[PublicNewsItem]) {
+fn dedup_and_backfill_reads(
+    report: &mut ReportJson,
+    items: &[PublicNewsItem],
+    recent_used_urls: &HashSet<String>,
+) {
     let mut used_urls = std::collections::HashSet::new();
     if !report.focus_url.trim().is_empty() {
         used_urls.insert(report.focus_url.trim().to_string());
@@ -625,10 +642,21 @@ fn dedup_and_backfill_reads(report: &mut ReportJson, items: &[PublicNewsItem]) {
         }
     }
 
+    let had_non_plain_candidates = items.iter().any(|item| {
+        !recent_used_urls.contains(item.url.trim())
+            && is_preferred_read_item(item)
+            && is_high_signal_item(item)
+            && !is_plain_github_trending_read(&item.url, items)
+    });
+
     let mut seen_read_urls = std::collections::HashSet::new();
     report.reads.retain(|read| {
         let url = read.url.trim();
-        !url.is_empty() && !used_urls.contains(url) && seen_read_urls.insert(url.to_string())
+        !url.is_empty()
+            && !used_urls.contains(url)
+            && !recent_used_urls.contains(url)
+            && (!had_non_plain_candidates || !is_plain_github_trending_read(url, items))
+            && seen_read_urls.insert(url.to_string())
     });
 
     for read in &report.reads {
@@ -647,7 +675,13 @@ fn dedup_and_backfill_reads(report: &mut ReportJson, items: &[PublicNewsItem]) {
         if used_urls.contains(item.url.trim()) {
             continue;
         }
+        if recent_used_urls.contains(item.url.trim()) {
+            continue;
+        }
         if !is_preferred_read_item(item) || !is_high_signal_item(item) {
+            continue;
+        }
+        if had_non_plain_candidates && is_plain_github_trending_read(&item.url, items) {
             continue;
         }
 
@@ -663,6 +697,143 @@ fn dedup_and_backfill_reads(report: &mut ReportJson, items: &[PublicNewsItem]) {
         });
         used_urls.insert(item.url.clone());
     }
+
+    if report.reads.is_empty() {
+        for item in items {
+            if recent_used_urls.contains(item.url.trim()) {
+                continue;
+            }
+            if !is_preferred_read_item(item) || !is_high_signal_item(item) {
+                continue;
+            }
+            if item.url.trim() == report.focus_url.trim() {
+                continue;
+            }
+
+            report.reads.push(ReportRead {
+                title: item.title.trim().to_string(),
+                url: item.url.clone(),
+                summary: item
+                    .summary
+                    .as_deref()
+                    .map(clean_summary)
+                    .filter(|summary| !summary.is_empty())
+                    .unwrap_or_else(|| fallback_read_summary(item)),
+            });
+            break;
+        }
+    }
+}
+
+fn deprioritize_recently_used_urls(
+    report: &mut ReportJson,
+    items: &[PublicNewsItem],
+    recent_used_urls: &HashSet<String>,
+) {
+    if recent_used_urls.is_empty() {
+        return;
+    }
+
+    drop_recent_duplicates_if_possible(&mut report.ai_items, recent_used_urls);
+    drop_recent_duplicates_if_possible(&mut report.web3_items, recent_used_urls);
+    drop_recent_duplicates_if_possible(&mut report.tech_items, recent_used_urls);
+
+    backfill_recently_pruned_sections(&mut report.ai_items, items, recent_used_urls, is_ai_item);
+    backfill_recently_pruned_sections(
+        &mut report.web3_items,
+        items,
+        recent_used_urls,
+        is_web3_item,
+    );
+    backfill_recently_pruned_sections(&mut report.tech_items, items, recent_used_urls, |item| {
+        !is_ai_item(item) && !is_web3_item(item) && is_high_signal_item(item)
+    });
+
+    report.ai_items.truncate(MAX_AI_ITEMS);
+    report.web3_items.truncate(MAX_WEB3_ITEMS);
+    report.tech_items.truncate(MAX_TECH_ITEMS);
+
+    if recent_used_urls.contains(report.focus_url.trim())
+        && let Some(replacement) = report
+            .web3_items
+            .first()
+            .or_else(|| report.ai_items.first())
+            .or_else(|| report.tech_items.first())
+    {
+        report.focus_text = replacement.comment.clone();
+        report.focus_url = replacement.url.clone();
+    }
+}
+
+fn drop_recent_duplicates_if_possible(
+    items: &mut Vec<ReportSection>,
+    recent_used_urls: &HashSet<String>,
+) {
+    if items.len() <= 1 {
+        return;
+    }
+
+    let keep_count = items
+        .iter()
+        .filter(|item| !recent_used_urls.contains(item.url.trim()))
+        .count();
+    if keep_count == 0 {
+        return;
+    }
+
+    items.retain(|item| !recent_used_urls.contains(item.url.trim()));
+}
+
+fn backfill_recently_pruned_sections(
+    section_items: &mut Vec<ReportSection>,
+    items: &[PublicNewsItem],
+    recent_used_urls: &HashSet<String>,
+    predicate: impl Fn(&PublicNewsItem) -> bool,
+) {
+    let existing_urls = section_items
+        .iter()
+        .map(|item| item.url.clone())
+        .collect::<HashSet<_>>();
+    let mut additions = Vec::new();
+
+    for item in items {
+        if recent_used_urls.contains(item.url.trim()) {
+            continue;
+        }
+        if existing_urls.contains(&item.url) {
+            continue;
+        }
+        if !predicate(item) {
+            continue;
+        }
+
+        additions.push(ReportSection {
+            title: compact_title(item.title.trim(), 50),
+            url: item.url.clone(),
+            comment: fallback_comment(item),
+            source: item.source.clone(),
+            points: item.score.unwrap_or(0),
+            subsection: if is_ai_item(item) {
+                infer_ai_subsection(item).to_string()
+            } else {
+                String::new()
+            },
+        });
+    }
+
+    section_items.extend(additions);
+    dedup_sections(section_items);
+}
+
+fn is_plain_github_trending_read(url: &str, items: &[PublicNewsItem]) -> bool {
+    items
+        .iter()
+        .find(|item| item.url == url)
+        .is_some_and(|item| {
+            item.source.contains("GitHub Trending")
+                && is_plain_github_repo_url(&item.url)
+                && !is_fresh_tech_candidate(item)
+        })
 }
 
 fn is_web3_section_item(item: &ReportSection, source_items: &[PublicNewsItem]) -> bool {
@@ -2157,7 +2328,7 @@ mod tests {
             ..Default::default()
         };
 
-        dedup_and_backfill_reads(&mut report, &items);
+        dedup_and_backfill_reads(&mut report, &items, &std::collections::HashSet::new());
 
         let urls = report
             .reads
@@ -2166,6 +2337,123 @@ mod tests {
             .collect::<Vec<_>>();
         assert!(!urls.contains(&"https://example.com/focus"));
         assert!(!urls.contains(&"https://example.com/tech"));
+        assert!(urls.contains(&"https://example.com/fresh-read"));
+    }
+
+    #[test]
+    fn dedup_and_backfill_reads_skips_plain_github_trending_repos_when_articles_exist() {
+        let items = vec![
+            PublicNewsItem {
+                source: "GitHub Trending".to_string(),
+                title: "rust-lang / rust".to_string(),
+                url: "https://github.com/rust-lang/rust".to_string(),
+                summary: Some("Rust 仓库继续保持热度，但本次没有新的正式发布。".to_string()),
+                author: None,
+                published_at: None,
+                score: Some(114350),
+                comments: None,
+                ai_score: None,
+                category: None,
+            },
+            PublicNewsItem {
+                source: "Hacker News".to_string(),
+                title: "AI learns the dark art of RFIC design".to_string(),
+                url: "https://spectrum.ieee.org/ai-radio-chip-design".to_string(),
+                summary: Some("AI 正在进入 RFIC 设计这一长期依赖专家经验的领域。".to_string()),
+                author: None,
+                published_at: None,
+                score: Some(231),
+                comments: None,
+                ai_score: None,
+                category: None,
+            },
+            PublicNewsItem {
+                source: "Manual Source".to_string(),
+                title: "OpenAI orchestration".to_string(),
+                url:
+                    "https://openai.com/zh-Hans-CN/index/open-source-codex-orchestration-symphony/"
+                        .to_string(),
+                summary: Some("OpenAI 官方文章，适合作为今天的延伸阅读。".to_string()),
+                author: None,
+                published_at: None,
+                score: Some(200),
+                comments: None,
+                ai_score: None,
+                category: None,
+            },
+        ];
+        let mut report = ReportJson {
+            reads: vec![ReportRead {
+                title: "rust-lang / rust".to_string(),
+                url: "https://github.com/rust-lang/rust".to_string(),
+                summary: "未生成可靠摘要，请直接阅读原文核对。".to_string(),
+            }],
+            ..Default::default()
+        };
+
+        dedup_and_backfill_reads(&mut report, &items, &std::collections::HashSet::new());
+
+        let urls = report
+            .reads
+            .iter()
+            .map(|read| read.url.as_str())
+            .collect::<Vec<_>>();
+        assert!(!urls.contains(&"https://github.com/rust-lang/rust"));
+        assert!(
+            urls.contains(&"https://spectrum.ieee.org/ai-radio-chip-design")
+                || urls.contains(
+                    &"https://openai.com/zh-Hans-CN/index/open-source-codex-orchestration-symphony/"
+                )
+        );
+    }
+
+    #[test]
+    fn dedup_and_backfill_reads_prefers_urls_not_used_in_previous_report() {
+        let items = vec![
+            PublicNewsItem {
+                source: "Hacker News".to_string(),
+                title: "Old read".to_string(),
+                url: "https://example.com/old-read".to_string(),
+                summary: Some("上一版已经用过的深读。".to_string()),
+                author: None,
+                published_at: None,
+                score: Some(190),
+                comments: None,
+                ai_score: None,
+                category: None,
+            },
+            PublicNewsItem {
+                source: "Manual Source".to_string(),
+                title: "Fresh read".to_string(),
+                url: "https://example.com/fresh-read".to_string(),
+                summary: Some("这是一条本次应该优先回补的新深读。".to_string()),
+                author: None,
+                published_at: None,
+                score: Some(180),
+                comments: None,
+                ai_score: None,
+                category: None,
+            },
+        ];
+        let mut report = ReportJson {
+            reads: vec![ReportRead {
+                title: "Old read".to_string(),
+                url: "https://example.com/old-read".to_string(),
+                summary: "上一版已经用过的深读。".to_string(),
+            }],
+            ..Default::default()
+        };
+        let recent_used_urls =
+            std::collections::HashSet::from([String::from("https://example.com/old-read")]);
+
+        dedup_and_backfill_reads(&mut report, &items, &recent_used_urls);
+
+        let urls = report
+            .reads
+            .iter()
+            .map(|read| read.url.as_str())
+            .collect::<Vec<_>>();
+        assert!(!urls.contains(&"https://example.com/old-read"));
         assert!(urls.contains(&"https://example.com/fresh-read"));
     }
 
