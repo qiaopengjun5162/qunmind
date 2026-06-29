@@ -26,6 +26,8 @@
 - 多群日报目标配置，可按群覆盖 cron、prompt、回看窗口、消息数量和链接数量。
 - 群消息为空时可选使用 Hacker News、CoinMarketCap、CoinGecko、DeFi Llama、Dune、GitHub Trending、Slerf Blog 生成公共信息参考日报。
 - 支持 `[[public_sources.manual_items]]` 手工精选入口，用来补入你明确想推荐大家阅读的一手官方文章、X 原帖或其他优质链接。
+- 默认 `web3_media_urls` 现已包含 `PANews RSS`，`panewslab.com` 这类中文 Web3 原文也会作为可追溯精选来源保留下来。
+- 默认 `web3_media_urls` 现已同时包含 `吴说区块链 Atom feed`，`wublock123.com` 这类中文 Web3 / 交易所快讯也会作为可追溯精选来源保留下来。
 - 微信公众号日报发布前会注入固定个人号封面：栏目是 `AI · Web3 最新日报`，署名是 `寻月隐君`，最终仍由 `moonpub --render` 负责渲染和上传。
 - 微信公众号日报标题当前固定为 `AI · Web3 最新日报｜YYYY-MM-DD`，当天主线放在 `digest`、导语和焦点模块里，方便在草稿箱中快速辨认最新一条。
 - 微信公众号日报正文现在按“导语 -> 今日三件事 -> 今日焦点 -> AI / Web3 / 技术 / 深读编号分区 -> 参考来源 / 完整素材链接”组织，焦点拆成“发生了什么 / 为什么重要 / 后续关注”，条目用“值得关注 + 独立依据行 + 裸原文链接”呈现，更适合先快速浏览再追原文。

@@ -127,6 +127,8 @@ fn is_curated_source_url(url: &str) -> bool {
         || url.contains("thedefiant.io")
         || url.contains("cointelegraph.com")
         || url.contains("cryptoslate.com")
+        || url.contains("panewslab.com")
+        || url.contains("wublock123.com")
 }
 
 fn is_manual_item(item: &PublicNewsItem) -> bool {
@@ -260,6 +262,67 @@ mod tests {
 
         assert_eq!(items.len(), 1);
         assert_eq!(items[0].source, "ICME Blog");
+    }
+
+    #[tokio::test]
+    async fn composite_keeps_curated_panews_links_even_without_keyword_match() {
+        let source = Arc::new(StaticSource {
+            items: vec![PublicNewsItem {
+                source: "PANews".to_string(),
+                title: "USDC隐私功能现已在Starknet上线".to_string(),
+                url: "https://www.panewslab.com/zh/articles/019f01d4-429f-74e8-8cda-057403ce44f6"
+                    .to_string(),
+                summary: Some(
+                    "USDC 在 Starknet 上线隐私能力，适合纳入稳定币与隐私支付跟踪。".to_string(),
+                ),
+                author: Some("PA一线".to_string()),
+                published_at: Some("2026-06-26T02:48:00.000Z".to_string()),
+                score: Some(120),
+                comments: None,
+                ai_score: None,
+                category: Some("web3".to_string()),
+            }],
+        });
+        let composite = CompositePublicNewsSource::new(vec![source], vec!["rust".to_string()], 10);
+
+        let items = match composite.fetch_top_items().await {
+            Ok(items) => items,
+            Err(err) => panic!("items: {err}"),
+        };
+
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].source, "PANews");
+    }
+
+    #[tokio::test]
+    async fn composite_keeps_curated_wublock_links_even_without_keyword_match() {
+        let source = Arc::new(StaticSource {
+            items: vec![PublicNewsItem {
+                source: "吴说区块链".to_string(),
+                title: "Coinbase 将 Grove（GROVE）加入资产上线路线图".to_string(),
+                url: "https://www.wublock123.com/news/coinbase-adds-grove-grove-token-listing-roadmap-63354"
+                    .to_string(),
+                summary: Some(
+                    "Coinbase 已将 GROVE 纳入上线路线图，正式交易时间待后续公布。"
+                        .to_string(),
+                ),
+                author: Some("吴说".to_string()),
+                published_at: Some("2026-06-23T21:38:27.000Z".to_string()),
+                score: Some(120),
+                comments: None,
+                ai_score: None,
+                category: Some("web3".to_string()),
+            }],
+        });
+        let composite = CompositePublicNewsSource::new(vec![source], vec!["rust".to_string()], 10);
+
+        let items = match composite.fetch_top_items().await {
+            Ok(items) => items,
+            Err(err) => panic!("items: {err}"),
+        };
+
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].source, "吴说区块链");
     }
 
     struct FailingSource;

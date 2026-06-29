@@ -1,6 +1,8 @@
+use std::sync::OnceLock;
 use std::time::Duration;
 
 use async_trait::async_trait;
+use regex::Regex;
 use reqwest::Client;
 
 use super::{PublicNewsItem, PublicNewsSource};
@@ -39,20 +41,19 @@ impl Web3MediaSource {
             .text()
             .await?;
 
-        Ok(parse_rss_items(&xml, url, self.max_items))
+        Ok(parse_feed_items(&xml, url, self.max_items))
     }
 }
 
 #[async_trait]
 impl PublicNewsSource for Web3MediaSource {
     async fn fetch_top_items(&self) -> Result<Vec<PublicNewsItem>> {
-        let mut items = Vec::new();
+        let mut batches = Vec::new();
         for url in &self.urls {
             match self.fetch_feed(url).await {
                 Ok(feed_items) => {
-                    items.extend(feed_items);
-                    if items.len() >= self.max_items {
-                        break;
+                    if !feed_items.is_empty() {
+                        batches.push(feed_items);
                     }
                 }
                 Err(e) => {
@@ -60,18 +61,50 @@ impl PublicNewsSource for Web3MediaSource {
                 }
             }
         }
-        items.truncate(self.max_items);
-        Ok(items)
+
+        Ok(interleave_feed_batches(batches, self.max_items))
     }
 }
 
-fn parse_rss_items(xml: &str, feed_url: &str, max_items: usize) -> Vec<PublicNewsItem> {
-    let source_name = feed_source_name(feed_url);
+fn interleave_feed_batches(
+    batches: Vec<Vec<PublicNewsItem>>,
+    max_items: usize,
+) -> Vec<PublicNewsItem> {
+    let mut items = Vec::new();
+    let max_items = max_items.max(1);
+    let mut index = 0;
 
-    xml.split("<item")
-        .skip(1)
-        .filter_map(|fragment| {
-            let item_xml = fragment.split_once("</item>")?.0;
+    while items.len() < max_items {
+        let mut progressed = false;
+
+        for batch in &batches {
+            if let Some(item) = batch.get(index) {
+                items.push(item.clone());
+                progressed = true;
+                if items.len() >= max_items {
+                    break;
+                }
+            }
+        }
+
+        if !progressed {
+            break;
+        }
+
+        index += 1;
+    }
+
+    items
+}
+
+fn parse_feed_items(xml: &str, feed_url: &str, max_items: usize) -> Vec<PublicNewsItem> {
+    let source_name = feed_source_name(feed_url);
+    let max_items = max_items.max(1);
+
+    let rss_items = rss_item_re()
+        .captures_iter(xml)
+        .filter_map(|cap| cap.get(1).map(|m| m.as_str()))
+        .filter_map(|item_xml| {
             let title = extract_tag_text(item_xml, "title")?;
             let link = extract_tag_text(item_xml, "link")?;
             if title.is_empty() || link.is_empty() {
@@ -97,7 +130,44 @@ fn parse_rss_items(xml: &str, feed_url: &str, max_items: usize) -> Vec<PublicNew
                 category: None,
             })
         })
-        .take(max_items.max(1))
+        .take(max_items)
+        .collect::<Vec<_>>();
+
+    if !rss_items.is_empty() {
+        return rss_items;
+    }
+
+    atom_entry_re()
+        .captures_iter(xml)
+        .filter_map(|cap| cap.get(1).map(|m| m.as_str()))
+        .filter_map(|item_xml| {
+            let title = extract_tag_text(item_xml, "title")?;
+            let link = extract_atom_link_href(item_xml)?;
+            if title.is_empty() || link.is_empty() {
+                return None;
+            }
+
+            let summary = extract_tag_text(item_xml, "summary")
+                .or_else(|| extract_tag_text(item_xml, "content"))
+                .map(|text| strip_html_tags(&text));
+            let published_at = extract_tag_text(item_xml, "published")
+                .or_else(|| extract_tag_text(item_xml, "updated"));
+            let author = extract_atom_author_name(item_xml);
+
+            Some(PublicNewsItem {
+                source: source_name.clone(),
+                title: html_decode(&title),
+                url: link.trim().to_string(),
+                summary,
+                author,
+                published_at,
+                score: Some(120),
+                comments: None,
+                ai_score: None,
+                category: None,
+            })
+        })
+        .take(max_items)
         .collect()
 }
 
@@ -117,17 +187,22 @@ fn feed_source_name(feed_url: &str) -> String {
         "Cointelegraph".to_string()
     } else if lower.contains("cryptoslate") {
         "CryptoSlate".to_string()
+    } else if lower.contains("panewslab") {
+        "PANews".to_string()
+    } else if lower.contains("wublock123") || lower.contains("wublockchain") {
+        "吴说区块链".to_string()
     } else {
         "Web3 Media".to_string()
     }
 }
 
 fn extract_tag_text(xml: &str, tag: &str) -> Option<String> {
-    let open = format!("<{}>", tag);
+    let open = format!("<{}", tag);
     let close = format!("</{}>", tag);
-    let start = xml.find(&open)? + open.len();
-    let end = xml[start..].find(&close)? + start;
-    let raw = xml[start..end].trim();
+    let open_start = xml.find(&open)?;
+    let content_start = xml[open_start..].find('>')? + open_start + 1;
+    let end = xml[content_start..].find(&close)? + content_start;
+    let raw = xml[content_start..end].trim();
     if raw.is_empty() {
         return None;
     }
@@ -144,6 +219,29 @@ fn extract_tag_text(xml: &str, tag: &str) -> Option<String> {
         return None;
     }
     Some(text.to_string())
+}
+
+fn rss_item_re() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| Regex::new(r"(?s)<item>(.*?)</item>").unwrap())
+}
+
+fn atom_entry_re() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| Regex::new(r"(?s)<entry[^>]*>(.*?)</entry>").unwrap())
+}
+
+fn extract_atom_link_href(xml: &str) -> Option<String> {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| Regex::new(r#"(?s)<link[^>]*href=["']([^"']+)["'][^>]*/?>"#).unwrap())
+        .captures(xml)
+        .and_then(|cap| cap.get(1).map(|m| m.as_str().trim().to_string()))
+        .filter(|text| !text.is_empty())
+}
+
+fn extract_atom_author_name(xml: &str) -> Option<String> {
+    let author = extract_tag_text(xml, "author")?;
+    extract_tag_text(&author, "name").or(Some(author))
 }
 
 fn strip_html_tags(value: &str) -> String {
@@ -201,7 +299,7 @@ mod tests {
           </channel>
         </rss>"#;
 
-        let items = parse_rss_items(xml, "https://www.theblock.co/rss", 10);
+        let items = parse_feed_items(xml, "https://www.theblock.co/rss", 10);
 
         assert_eq!(items.len(), 2);
         assert_eq!(items[0].title, "Ethereum Layer-2 Race Heats Up");
@@ -227,7 +325,7 @@ mod tests {
           </channel>
         </rss>"#;
 
-        let items = parse_rss_items(xml, "https://thedefiant.io/feed", 10);
+        let items = parse_feed_items(xml, "https://thedefiant.io/feed", 10);
 
         assert_eq!(items.len(), 1);
         assert_eq!(items[0].title, "DeFi Protocol Raises $50M");
@@ -237,6 +335,38 @@ mod tests {
             Some("The protocol secured funding from leading VCs.".to_string())
         );
         assert_eq!(items[0].source, "The Defiant");
+    }
+
+    #[test]
+    fn parses_atom_items() {
+        let xml = r#"<?xml version="1.0" encoding="utf-8"?>
+        <feed xmlns="http://www.w3.org/2005/Atom">
+          <entry>
+            <title type="html"><![CDATA[Coinbase 将 Grove（GROVE）加入资产上线路线图]]></title>
+            <link href="https://www.wublock123.com/news/coinbase-adds-grove-grove-token-listing-roadmap-63354"/>
+            <updated>2026-06-23T21:38:27.000Z</updated>
+            <summary type="html"><![CDATA[吴说获悉，Coinbase 将 Grove（GROVE）加入资产上线路线图。]]></summary>
+            <author><name>吴说</name></author>
+          </entry>
+        </feed>"#;
+
+        let items = parse_feed_items(xml, "https://www.wublock123.com/feed", 10);
+
+        assert_eq!(items.len(), 1);
+        assert_eq!(
+            items[0].title,
+            "Coinbase 将 Grove（GROVE）加入资产上线路线图"
+        );
+        assert_eq!(
+            items[0].url,
+            "https://www.wublock123.com/news/coinbase-adds-grove-grove-token-listing-roadmap-63354"
+        );
+        assert_eq!(
+            items[0].summary,
+            Some("吴说获悉，Coinbase 将 Grove（GROVE）加入资产上线路线图。".to_string())
+        );
+        assert_eq!(items[0].author, Some("吴说".to_string()));
+        assert_eq!(items[0].source, "吴说区块链");
     }
 
     #[test]
@@ -253,7 +383,55 @@ mod tests {
             feed_source_name("https://cryptoslate.com/feed/"),
             "CryptoSlate"
         );
+        assert_eq!(
+            feed_source_name("https://www.panewslab.com/rss.xml?lang=zh&type=NEWS"),
+            "PANews"
+        );
+        assert_eq!(
+            feed_source_name("https://www.wublock123.com/feed"),
+            "吴说区块链"
+        );
         assert_eq!(feed_source_name("https://unknown.io/rss"), "Web3 Media");
+    }
+
+    #[test]
+    fn interleaves_feed_batches_to_preserve_source_diversity() {
+        let item = |source: &str, title: &str, url: &str| PublicNewsItem {
+            source: source.to_string(),
+            title: title.to_string(),
+            url: url.to_string(),
+            summary: None,
+            author: None,
+            published_at: None,
+            score: Some(120),
+            comments: None,
+            ai_score: None,
+            category: Some("web3".to_string()),
+        };
+
+        let items = interleave_feed_batches(
+            vec![
+                vec![
+                    item("The Defiant", "A1", "https://thedefiant.io/a1"),
+                    item("The Defiant", "A2", "https://thedefiant.io/a2"),
+                ],
+                vec![
+                    item("PANews", "P1", "https://www.panewslab.com/p1"),
+                    item("PANews", "P2", "https://www.panewslab.com/p2"),
+                ],
+                vec![
+                    item("吴说区块链", "W1", "https://www.wublock123.com/w1"),
+                    item("吴说区块链", "W2", "https://www.wublock123.com/w2"),
+                ],
+            ],
+            4,
+        );
+
+        assert_eq!(items.len(), 4);
+        assert_eq!(items[0].source, "The Defiant");
+        assert_eq!(items[1].source, "PANews");
+        assert_eq!(items[2].source, "吴说区块链");
+        assert_eq!(items[3].title, "A2");
     }
 
     #[tokio::test]

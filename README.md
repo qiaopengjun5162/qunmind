@@ -34,6 +34,8 @@ The project currently supports:
 - Per-group daily report targets with optional cron, prompt, lookback, message, and link overrides.
 - Optional Hacker News, CoinMarketCap, CoinGecko, DeFi Llama, Dune, GitHub Trending, and Slerf Blog fallback reports when a report group has no messages.
 - Manual curated source items for one-off official articles, X posts, or other links you explicitly want readers to continue reading.
+- The default `web3_media_urls` list now includes a PANews RSS feed, and `panewslab.com` links are treated as curated traceable sources so Chinese Web3 articles can survive topic filtering with full original URLs intact.
+- The default `web3_media_urls` list also includes the WuBlockchain Atom feed, and `wublock123.com` links are treated as curated traceable sources so Chinese Web3 exchange/news flashes can flow into the report pipeline with full original URLs.
 - WeChat public-account report drafts use a fixed personal-account cover for the `AI · Web3 最新日报` column, branded as `寻月隐君`, while `moonpub` still owns final rendering and upload.
 - WeChat daily reports render as a review-friendly article layout: intro, "today's three things", a three-part focus callout, numbered AI / Web3 / tech / deep-read sections, "worth watching" item notes, polished source quote lines, and separate referenced-source versus complete-source-link blocks.
 

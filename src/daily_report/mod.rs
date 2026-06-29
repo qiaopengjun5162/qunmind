@@ -88,7 +88,7 @@ fn enrich_report(
     if report.focus_text.trim().is_empty()
         && let Some(item) = items.first()
     {
-        report.focus_text = item.title.trim().to_string();
+        report.focus_text = fallback_comment(item);
     }
 
     if report.focus_url.trim().is_empty()
@@ -129,6 +129,7 @@ fn enrich_report(
     polish_sections(&mut report, items);
     deprioritize_recently_used_urls(&mut report, items, recent_used_urls);
     remove_focus_duplicates_from_sections(&mut report);
+    backfill_sections_after_focus_removal(&mut report, items, recent_used_urls);
     dedup_and_backfill_reads(&mut report, items, recent_used_urls);
 
     report
@@ -275,6 +276,9 @@ fn migrate_ai_items_out_of_tech(report: &mut ReportJson, items: &[PublicNewsItem
 
     report.tech_items = retained_tech;
     dedup_sections(&mut report.ai_items);
+    report
+        .tech_items
+        .retain(|item| !report.ai_items.iter().any(|ai| ai.url == item.url));
 }
 
 fn fallback_title(items: &[PublicNewsItem]) -> String {
@@ -362,9 +366,7 @@ fn fallback_web3_items(items: &[PublicNewsItem]) -> Vec<ReportSection> {
 fn fallback_tech_items(items: &[PublicNewsItem]) -> Vec<ReportSection> {
     items
         .iter()
-        .filter(|item| !is_web3_item(item))
-        .filter(|item| is_tech_worthy_item(item))
-        .filter(|item| is_high_signal_item(item))
+        .filter(|item| is_tech_item(item))
         .take(MAX_TECH_ITEMS)
         .map(|item| ReportSection {
             title: compact_title(item.title.trim(), 50),
@@ -491,7 +493,7 @@ fn is_preferred_read_item(item: &PublicNewsItem) -> bool {
 fn fallback_comment(item: &PublicNewsItem) -> String {
     if let Some(summary) = item.summary.as_deref() {
         let summary = clean_summary(summary);
-        if !summary.is_empty() {
+        if !summary.is_empty() && !summary_is_english_fragment(&summary) {
             return summary;
         }
     }
@@ -506,6 +508,17 @@ fn fallback_comment(item: &PublicNewsItem) -> String {
         }
         _ => format!("{subject} 近期受到关注，适合继续跟进相关进展。"),
     }
+}
+
+fn summary_is_english_fragment(summary: &str) -> bool {
+    let trimmed = summary.trim();
+    if trimmed.is_empty() {
+        return false;
+    }
+
+    let total = trimmed.chars().count();
+    let ascii = trimmed.chars().filter(|ch| ch.is_ascii()).count();
+    ascii * 2 > total
 }
 
 fn fallback_read_summary(item: &PublicNewsItem) -> String {
@@ -580,10 +593,21 @@ fn is_tech_worthy_item(item: &PublicNewsItem) -> bool {
 }
 
 fn tech_section_is_worthy(section: &ReportSection, items: &[PublicNewsItem]) -> bool {
+    if is_ai_section_item(section, items) || is_web3_section_item(section, items) {
+        return false;
+    }
+
     items
         .iter()
         .find(|item| item.url == section.url)
         .is_none_or(is_tech_worthy_item)
+}
+
+fn is_tech_item(item: &PublicNewsItem) -> bool {
+    !is_ai_item(item)
+        && !is_web3_item(item)
+        && is_tech_worthy_item(item)
+        && is_high_signal_item(item)
 }
 
 fn is_high_signal_item(item: &PublicNewsItem) -> bool {
@@ -693,10 +717,7 @@ fn backfill_fresh_tech_items(section_items: &mut Vec<ReportSection>, items: &[Pu
     let mut additions = items
         .iter()
         .filter(|item| !existing_urls.contains(&item.url))
-        .filter(|item| !is_ai_item(item))
-        .filter(|item| !is_web3_item(item))
-        .filter(|item| is_tech_worthy_item(item))
-        .filter(|item| is_high_signal_item(item))
+        .filter(|item| is_tech_item(item))
         .filter(|item| is_fresh_tech_candidate(item))
         .map(|item| ReportSection {
             title: compact_title(item.title.trim(), 50),
@@ -867,9 +888,33 @@ fn deprioritize_recently_used_urls(
         recent_used_urls,
         is_web3_item,
     );
-    backfill_recently_pruned_sections(&mut report.tech_items, items, recent_used_urls, |item| {
-        !is_ai_item(item) && !is_web3_item(item) && is_high_signal_item(item)
-    });
+    backfill_recently_pruned_sections(
+        &mut report.tech_items,
+        items,
+        recent_used_urls,
+        is_tech_item,
+    );
+    top_up_section_with_recent_items_if_thin(
+        &mut report.ai_items,
+        items,
+        recent_used_urls,
+        is_ai_item,
+        MAX_AI_ITEMS.min(2),
+    );
+    top_up_section_with_recent_items_if_thin(
+        &mut report.web3_items,
+        items,
+        recent_used_urls,
+        is_web3_item,
+        MAX_WEB3_ITEMS,
+    );
+    top_up_section_with_recent_items_if_thin(
+        &mut report.tech_items,
+        items,
+        recent_used_urls,
+        is_tech_item,
+        MAX_TECH_ITEMS.min(4),
+    );
 
     report.ai_items.truncate(MAX_AI_ITEMS);
     report.web3_items.truncate(MAX_WEB3_ITEMS);
@@ -947,6 +992,161 @@ fn backfill_recently_pruned_sections(
     dedup_sections(section_items);
 }
 
+fn top_up_section_with_recent_items_if_thin(
+    section_items: &mut Vec<ReportSection>,
+    items: &[PublicNewsItem],
+    recent_used_urls: &HashSet<String>,
+    predicate: impl Fn(&PublicNewsItem) -> bool,
+    min_items: usize,
+) {
+    if section_items.len() >= min_items {
+        return;
+    }
+
+    let existing_urls = section_items
+        .iter()
+        .map(|item| item.url.clone())
+        .collect::<HashSet<_>>();
+
+    let mut additions = Vec::new();
+    for item in items {
+        if !recent_used_urls.contains(item.url.trim()) {
+            continue;
+        }
+        if existing_urls.contains(&item.url) {
+            continue;
+        }
+        if !predicate(item) {
+            continue;
+        }
+
+        additions.push(ReportSection {
+            title: compact_title(item.title.trim(), 50),
+            url: item.url.clone(),
+            comment: fallback_comment(item),
+            source: item.source.clone(),
+            points: item.score.unwrap_or(0),
+            subsection: if is_ai_item(item) {
+                infer_ai_subsection(item).to_string()
+            } else {
+                String::new()
+            },
+        });
+
+        if section_items.len() + additions.len() >= min_items {
+            break;
+        }
+    }
+
+    if additions.is_empty() {
+        return;
+    }
+
+    section_items.extend(additions);
+    dedup_sections(section_items);
+}
+
+fn backfill_sections_after_focus_removal(
+    report: &mut ReportJson,
+    items: &[PublicNewsItem],
+    recent_used_urls: &HashSet<String>,
+) {
+    backfill_section_after_focus_removal(
+        &mut report.ai_items,
+        items,
+        recent_used_urls,
+        is_ai_item,
+        MAX_AI_ITEMS,
+        report.focus_url.trim(),
+    );
+    backfill_section_after_focus_removal(
+        &mut report.web3_items,
+        items,
+        recent_used_urls,
+        is_web3_item,
+        MAX_WEB3_ITEMS,
+        report.focus_url.trim(),
+    );
+    backfill_section_after_focus_removal(
+        &mut report.tech_items,
+        items,
+        recent_used_urls,
+        is_tech_item,
+        MAX_TECH_ITEMS,
+        report.focus_url.trim(),
+    );
+}
+
+fn backfill_section_after_focus_removal(
+    section_items: &mut Vec<ReportSection>,
+    items: &[PublicNewsItem],
+    recent_used_urls: &HashSet<String>,
+    predicate: impl Fn(&PublicNewsItem) -> bool,
+    target_len: usize,
+    focus_url: &str,
+) {
+    if section_items.len() >= target_len {
+        return;
+    }
+
+    let existing_urls = section_items
+        .iter()
+        .map(|item| item.url.clone())
+        .collect::<HashSet<_>>();
+
+    let mut additions = Vec::new();
+
+    for prefer_recent in [false, true] {
+        for item in items {
+            let is_recent = recent_used_urls.contains(item.url.trim());
+            if is_recent != prefer_recent {
+                continue;
+            }
+            if item.url.trim() == focus_url {
+                continue;
+            }
+            if existing_urls.contains(&item.url)
+                || additions
+                    .iter()
+                    .any(|section: &ReportSection| section.url == item.url)
+            {
+                continue;
+            }
+            if !predicate(item) {
+                continue;
+            }
+
+            additions.push(ReportSection {
+                title: compact_title(item.title.trim(), 50),
+                url: item.url.clone(),
+                comment: fallback_comment(item),
+                source: item.source.clone(),
+                points: item.score.unwrap_or(0),
+                subsection: if is_ai_item(item) {
+                    infer_ai_subsection(item).to_string()
+                } else {
+                    String::new()
+                },
+            });
+
+            if section_items.len() + additions.len() >= target_len {
+                break;
+            }
+        }
+
+        if section_items.len() + additions.len() >= target_len {
+            break;
+        }
+    }
+
+    if additions.is_empty() {
+        return;
+    }
+
+    section_items.extend(additions);
+    dedup_sections(section_items);
+}
+
 fn is_plain_github_trending_read(url: &str, items: &[PublicNewsItem]) -> bool {
     items
         .iter()
@@ -959,8 +1159,9 @@ fn is_plain_github_trending_read(url: &str, items: &[PublicNewsItem]) -> bool {
 }
 
 fn is_web3_section_item(item: &ReportSection, source_items: &[PublicNewsItem]) -> bool {
+    let haystack = format!("{} {}", item.title, item.source).to_lowercase();
     if contains_any_text(
-        &format!("{} {} {}", item.title, item.comment, item.source),
+        &haystack,
         &[
             "web3",
             "blockchain",
@@ -1014,6 +1215,17 @@ fn is_web3_section_item(item: &ReportSection, source_items: &[PublicNewsItem]) -
             "stablecoin",
             "rwa",
             "tokenization",
+            "预测市场",
+            "加密货币",
+            "现货 etf",
+            "交易所",
+            "链上",
+            "代币",
+            "clarity act",
+            "senate",
+            "法案",
+            "参议院",
+            "监管",
             "etf",
             "sec",
             "cftc",
@@ -1317,6 +1529,17 @@ fn is_web3_item(item: &PublicNewsItem) -> bool {
             "stablecoin",
             "rwa",
             "tokenization",
+            "预测市场",
+            "加密货币",
+            "现货 etf",
+            "交易所",
+            "链上",
+            "代币",
+            "clarity act",
+            "senate",
+            "法案",
+            "参议院",
+            "监管",
             "etf",
             "sec",
             "cftc",
@@ -1776,6 +1999,35 @@ mod tests {
         assert!(report.contains("## 04｜📚 推荐深读"));
         assert!(report.contains("OpenAI Codex"));
         assert!(report.contains("rustdesk/rustdesk"));
+    }
+
+    #[tokio::test]
+    async fn generate_prefers_chinese_fallback_comment_when_source_summary_is_english_fragment() {
+        let generator = DailyReportGenerator::new(
+            Arc::new(FakeAi::new(vec!["not json".to_string()])),
+            Arc::new(FakeNewsSource {
+                items: vec![PublicNewsItem {
+                    source: "The Defiant".to_string(),
+                    title: "AMLBot Puts Polymarket Phishing Toll at $3.1M Across 11 Wallets, Funds Traced to Ethereum".to_string(),
+                    url: "https://example.com/polymarket".to_string(),
+                    summary: Some(
+                        "Blockchain intelligence firm AMLBot has confirmed the Polymarket supply-chain attack total at approximately $3.1 million."
+                            .to_string(),
+                    ),
+                    author: None,
+                    published_at: None,
+                    score: Some(120),
+                    comments: None,
+                    ai_score: None,
+                    category: Some("web3".to_string()),
+                }],
+            }),
+            String::new(),
+        );
+
+        let report = generator.generate().await.expect("report");
+        assert!(report.contains("这条信息近期来自The Defiant"));
+        assert!(!report.contains("Blockchain intelligence firm AMLBot has confirmed"));
     }
 
     #[tokio::test]
@@ -2464,6 +2716,130 @@ mod tests {
         assert!(urls.contains(&"https://example.com/fresh-read"));
     }
 
+    #[tokio::test]
+    async fn generate_keeps_web3_section_filled_when_recent_urls_prune_too_aggressively() {
+        let json = r#"{
+            "title_hint":"测试日报",
+            "intro":"测试导语",
+            "focus_text":"焦点是 Loopring 关闭 DEX",
+            "focus_url":"https://example.com/loopring",
+            "ai_items":[],
+            "ai_signals":[],
+            "web3_items":[
+                {
+                    "title":"Loopring closes DEX",
+                    "url":"https://example.com/loopring",
+                    "comment":"Loopring 关闭 DEX。",
+                    "source":"Cointelegraph",
+                    "points":120
+                },
+                {
+                    "title":"Aave buybacks live",
+                    "url":"https://example.com/aave",
+                    "comment":"Aave 启动自动回购。",
+                    "source":"The Defiant",
+                    "points":119
+                },
+                {
+                    "title":"Polymarket phishing traced",
+                    "url":"https://example.com/polymarket",
+                    "comment":"Polymarket 钓鱼攻击损失被链上追踪。",
+                    "source":"The Defiant",
+                    "points":118
+                }
+            ],
+            "tech_items":[],
+            "tech_timeline":[],
+            "reads":[],
+            "summary":"测试总结"
+        }"#;
+        let generator = DailyReportGenerator::new(
+            Arc::new(FakeAi::new(vec![json.to_string()])),
+            Arc::new(FakeNewsSource {
+                items: vec![
+                    PublicNewsItem {
+                        source: "Cointelegraph".to_string(),
+                        title: "Loopring closes DEX".to_string(),
+                        url: "https://example.com/loopring".to_string(),
+                        summary: Some("Loopring 关闭 DEX。".to_string()),
+                        author: None,
+                        published_at: None,
+                        score: Some(120),
+                        comments: None,
+                        ai_score: None,
+                        category: Some("web3".to_string()),
+                    },
+                    PublicNewsItem {
+                        source: "The Defiant".to_string(),
+                        title: "Aave buybacks live".to_string(),
+                        url: "https://example.com/aave".to_string(),
+                        summary: Some("Aave 启动自动回购。".to_string()),
+                        author: None,
+                        published_at: None,
+                        score: Some(119),
+                        comments: None,
+                        ai_score: None,
+                        category: Some("web3".to_string()),
+                    },
+                    PublicNewsItem {
+                        source: "The Defiant".to_string(),
+                        title: "Polymarket phishing traced".to_string(),
+                        url: "https://example.com/polymarket".to_string(),
+                        summary: Some("Polymarket 钓鱼攻击损失被链上追踪。".to_string()),
+                        author: None,
+                        published_at: None,
+                        score: Some(118),
+                        comments: None,
+                        ai_score: None,
+                        category: Some("web3".to_string()),
+                    },
+                    PublicNewsItem {
+                        source: "PANews".to_string(),
+                        title: "Robinhood 预测市场收入增长".to_string(),
+                        url: "https://example.com/robinhood".to_string(),
+                        summary: Some("Robinhood 预测市场收入增长迅速。".to_string()),
+                        author: None,
+                        published_at: None,
+                        score: Some(117),
+                        comments: None,
+                        ai_score: None,
+                        category: Some("web3".to_string()),
+                    },
+                ],
+            }),
+            String::new(),
+        )
+        .with_recent_used_urls(std::collections::HashSet::from([
+            String::from("https://example.com/loopring"),
+            String::from("https://example.com/aave"),
+            String::from("https://example.com/polymarket"),
+        ]));
+
+        let report = generator.generate().await.expect("report");
+        let web3_tail = report.split("## 02｜⛓️ Web3 技术").nth(1).unwrap_or("");
+        let web3_section = web3_tail
+            .split_once(":::divider\nlabel: 03 · Tech")
+            .map(|(section, _)| section)
+            .or_else(|| {
+                web3_tail
+                    .split_once(":::divider\nlabel: 04 · Read")
+                    .map(|(section, _)| section)
+            })
+            .or_else(|| {
+                web3_tail
+                    .split_once("**参考来源**")
+                    .map(|(section, _)| section)
+            })
+            .unwrap_or(web3_tail);
+
+        assert!(web3_section.contains("https://example.com/robinhood"));
+        assert!(
+            web3_section.contains("https://example.com/aave")
+                || web3_section.contains("https://example.com/polymarket")
+                || web3_section.contains("https://example.com/loopring")
+        );
+    }
+
     #[test]
     fn dedup_and_backfill_reads_skips_plain_github_trending_repos_when_articles_exist() {
         let items = vec![
@@ -3136,6 +3512,367 @@ mod tests {
             .unwrap_or("");
 
         assert!(!tech_section.contains("https://example.com/daisugi"));
+        assert!(tech_section.contains("https://github.com/google/comprehensive-rust"));
+    }
+
+    #[tokio::test]
+    async fn generate_moves_prediction_market_items_out_of_tech_section_after_polish() {
+        let json = r#"{
+            "title_hint":"测试日报",
+            "intro":"测试导语",
+            "focus_text":"Robinhood 预测市场增长",
+            "focus_url":"https://example.com/focus",
+            "ai_items":[],
+            "ai_signals":[],
+            "web3_items":[
+                {
+                    "title":"Sharplink buys ETH",
+                    "url":"https://example.com/eth",
+                    "comment":"Sharplink 恢复 ETH 积累策略",
+                    "source":"Cointelegraph",
+                    "points":120
+                }
+            ],
+            "tech_items":[
+                {
+                    "title":"Robinhood prediction market revenue may overtake crypto in Q2",
+                    "url":"https://example.com/robinhood-prediction",
+                    "comment":"Robinhood 预测市场收入增长迅速，可能在第二季度超过加密货币收入。",
+                    "source":"PANews",
+                    "points":118
+                },
+                {
+                    "title":"Curl fixes 18 security vulnerabilities",
+                    "url":"https://example.com/curl",
+                    "comment":"Curl 修复 18 个安全漏洞。",
+                    "source":"吴说区块链",
+                    "points":117
+                }
+            ],
+            "tech_timeline":[],
+            "reads":[],
+            "summary":"测试总结"
+        }"#;
+        let generator = DailyReportGenerator::new(
+            Arc::new(FakeAi::new(vec![json.to_string()])),
+            Arc::new(FakeNewsSource {
+                items: vec![
+                    PublicNewsItem {
+                        source: "Cointelegraph".to_string(),
+                        title: "Sharplink buys ETH".to_string(),
+                        url: "https://example.com/eth".to_string(),
+                        summary: Some("Sharplink 恢复 ETH 积累策略。".to_string()),
+                        author: None,
+                        published_at: None,
+                        score: Some(120),
+                        comments: None,
+                        ai_score: None,
+                        category: Some("web3".to_string()),
+                    },
+                    PublicNewsItem {
+                        source: "PANews".to_string(),
+                        title: "Robinhood prediction market revenue may overtake crypto in Q2"
+                            .to_string(),
+                        url: "https://example.com/robinhood-prediction".to_string(),
+                        summary: Some(
+                            "Robinhood 预测市场收入增长迅速，可能在第二季度超过加密货币收入。"
+                                .to_string(),
+                        ),
+                        author: None,
+                        published_at: None,
+                        score: Some(118),
+                        comments: None,
+                        ai_score: None,
+                        category: Some("web3".to_string()),
+                    },
+                    PublicNewsItem {
+                        source: "吴说区块链".to_string(),
+                        title: "Curl fixes 18 security vulnerabilities".to_string(),
+                        url: "https://example.com/curl".to_string(),
+                        summary: Some("Curl 修复 18 个安全漏洞。".to_string()),
+                        author: None,
+                        published_at: None,
+                        score: Some(117),
+                        comments: None,
+                        ai_score: None,
+                        category: None,
+                    },
+                ],
+            }),
+            String::new(),
+        );
+
+        let report = generator.generate().await.expect("report");
+        let web3_section = report
+            .split("## 02｜⛓️ Web3 技术")
+            .nth(1)
+            .and_then(|rest| rest.split("## 03｜🔧 技术 & 开源").next())
+            .unwrap_or("");
+        let tech_section = report
+            .split("## 03｜🔧 技术 & 开源")
+            .nth(1)
+            .and_then(|rest| rest.split("## 04｜📚 推荐深读").next())
+            .unwrap_or("");
+
+        assert!(web3_section.contains("https://example.com/robinhood-prediction"));
+        assert!(!tech_section.contains("https://example.com/robinhood-prediction"));
+        assert!(tech_section.contains("https://example.com/curl"));
+    }
+
+    #[tokio::test]
+    async fn generate_moves_chinese_web3_market_item_out_of_tech_section_after_polish() {
+        let json = r#"{
+            "title_hint":"测试日报",
+            "intro":"测试导语",
+            "focus_text":"Robinhood 预测市场增长",
+            "focus_url":"https://example.com/focus",
+            "ai_items":[],
+            "ai_signals":[],
+            "web3_items":[
+                {
+                    "title":"Sharplink buys ETH",
+                    "url":"https://example.com/eth",
+                    "comment":"Sharplink 恢复 ETH 积累策略",
+                    "source":"Cointelegraph",
+                    "points":120
+                }
+            ],
+            "tech_items":[
+                {
+                    "title":"分析：Robinhood预测市场收入有望在第二季度超越加密货币收入",
+                    "url":"https://example.com/robinhood-chinese",
+                    "comment":"Robinhood预测市场业务增长迅速，第二季度收入有望超过加密货币收入。",
+                    "source":"PANews",
+                    "points":118
+                }
+            ],
+            "tech_timeline":[],
+            "reads":[],
+            "summary":"测试总结"
+        }"#;
+        let generator = DailyReportGenerator::new(
+            Arc::new(FakeAi::new(vec![json.to_string()])),
+            Arc::new(FakeNewsSource {
+                items: vec![
+                    PublicNewsItem {
+                        source: "Cointelegraph".to_string(),
+                        title: "Sharplink buys ETH".to_string(),
+                        url: "https://example.com/eth".to_string(),
+                        summary: Some("Sharplink 恢复 ETH 积累策略。".to_string()),
+                        author: None,
+                        published_at: None,
+                        score: Some(120),
+                        comments: None,
+                        ai_score: None,
+                        category: Some("web3".to_string()),
+                    },
+                    PublicNewsItem {
+                        source: "PANews".to_string(),
+                        title: "分析：Robinhood预测市场收入有望在第二季度超越加密货币收入"
+                            .to_string(),
+                        url: "https://example.com/robinhood-chinese".to_string(),
+                        summary: Some(
+                            "Robinhood预测市场业务增长迅速，第二季度收入有望超过加密货币收入。"
+                                .to_string(),
+                        ),
+                        author: None,
+                        published_at: None,
+                        score: Some(118),
+                        comments: None,
+                        ai_score: None,
+                        category: None,
+                    },
+                ],
+            }),
+            String::new(),
+        );
+
+        let report = generator.generate().await.expect("report");
+        let web3_section = report
+            .split("## 02｜⛓️ Web3 技术")
+            .nth(1)
+            .and_then(|rest| rest.split("## 03｜🔧 技术 & 开源").next())
+            .unwrap_or("");
+        let tech_section = report
+            .split("## 03｜🔧 技术 & 开源")
+            .nth(1)
+            .and_then(|rest| rest.split("## 04｜📚 推荐深读").next())
+            .unwrap_or("");
+
+        assert!(web3_section.contains("https://example.com/robinhood-chinese"));
+        assert!(!tech_section.contains("https://example.com/robinhood-chinese"));
+    }
+
+    #[tokio::test]
+    async fn generate_moves_crypto_market_structure_item_out_of_tech_section_after_polish() {
+        let json = r#"{
+            "title_hint":"测试日报",
+            "intro":"测试导语",
+            "focus_text":"监管与市场结构变化",
+            "focus_url":"https://example.com/focus",
+            "ai_items":[],
+            "ai_signals":[],
+            "web3_items":[
+                {
+                    "title":"Aave buybacks live",
+                    "url":"https://example.com/aave",
+                    "comment":"Aave 启动自动回购。",
+                    "source":"The Defiant",
+                    "points":120
+                }
+            ],
+            "tech_items":[
+                {
+                    "title":"Galaxy cuts CLARITY Act odds to 50% as Senate floor time narrows",
+                    "url":"https://example.com/clarity-act",
+                    "comment":"Galaxy 将 CLARITY Act 通过概率下调至 50%，认为参议院投票窗口收窄。",
+                    "source":"Cointelegraph",
+                    "points":118
+                }
+            ],
+            "tech_timeline":[],
+            "reads":[],
+            "summary":"测试总结"
+        }"#;
+        let generator = DailyReportGenerator::new(
+            Arc::new(FakeAi::new(vec![json.to_string()])),
+            Arc::new(FakeNewsSource {
+                items: vec![
+                    PublicNewsItem {
+                        source: "The Defiant".to_string(),
+                        title: "Aave buybacks live".to_string(),
+                        url: "https://example.com/aave".to_string(),
+                        summary: Some("Aave 启动自动回购。".to_string()),
+                        author: None,
+                        published_at: None,
+                        score: Some(120),
+                        comments: None,
+                        ai_score: None,
+                        category: Some("web3".to_string()),
+                    },
+                    PublicNewsItem {
+                        source: "Cointelegraph".to_string(),
+                        title: "Galaxy cuts CLARITY Act odds to 50% as Senate floor time narrows"
+                            .to_string(),
+                        url: "https://example.com/clarity-act".to_string(),
+                        summary: Some(
+                            "Galaxy 将 CLARITY Act 通过概率下调至 50%，认为参议院投票窗口收窄。"
+                                .to_string(),
+                        ),
+                        author: None,
+                        published_at: None,
+                        score: Some(118),
+                        comments: None,
+                        ai_score: None,
+                        category: None,
+                    },
+                ],
+            }),
+            String::new(),
+        );
+
+        let report = generator.generate().await.expect("report");
+        let web3_section = report
+            .split("## 02｜⛓️ Web3 技术")
+            .nth(1)
+            .and_then(|rest| rest.split("## 03｜🔧 技术 & 开源").next())
+            .unwrap_or("");
+        let tech_section = report
+            .split("## 03｜🔧 技术 & 开源")
+            .nth(1)
+            .and_then(|rest| rest.split("## 04｜📚 推荐深读").next())
+            .unwrap_or("");
+
+        assert!(web3_section.contains("https://example.com/clarity-act"));
+        assert!(!tech_section.contains("https://example.com/clarity-act"));
+    }
+
+    #[tokio::test]
+    async fn generate_removes_ai_items_duplicated_in_tech_section_after_migration() {
+        let json = r#"{
+            "title_hint":"测试日报",
+            "intro":"测试导语",
+            "focus_text":"AI 作弊讨论",
+            "focus_url":"https://example.com/focus",
+            "ai_items":[
+                {
+                    "title":"Professor denounces mass AI fraud on an exam at Brown",
+                    "url":"https://example.com/brown-ai",
+                    "comment":"布朗大学教授公开谴责大规模 AI 作弊。",
+                    "source":"Hacker News",
+                    "points":120,
+                    "subsection":"工作方式变革"
+                }
+            ],
+            "ai_signals":[],
+            "web3_items":[],
+            "tech_items":[
+                {
+                    "title":"Professor denounces mass AI fraud on an exam at Brown",
+                    "url":"https://example.com/brown-ai",
+                    "comment":"布朗大学教授公开谴责大规模 AI 作弊。",
+                    "source":"Hacker News",
+                    "points":120
+                },
+                {
+                    "title":"google/comprehensive-rust",
+                    "url":"https://github.com/google/comprehensive-rust",
+                    "comment":"Google 推出的 Rust 综合教程",
+                    "source":"GitHub Trending",
+                    "points":117
+                }
+            ],
+            "tech_timeline":[],
+            "reads":[],
+            "summary":"测试总结"
+        }"#;
+        let generator = DailyReportGenerator::new(
+            Arc::new(FakeAi::new(vec![json.to_string()])),
+            Arc::new(FakeNewsSource {
+                items: vec![
+                    PublicNewsItem {
+                        source: "Hacker News".to_string(),
+                        title: "Professor denounces mass AI fraud on an exam at Brown".to_string(),
+                        url: "https://example.com/brown-ai".to_string(),
+                        summary: Some("布朗大学教授公开谴责大规模 AI 作弊。".to_string()),
+                        author: None,
+                        published_at: None,
+                        score: Some(120),
+                        comments: None,
+                        ai_score: None,
+                        category: None,
+                    },
+                    PublicNewsItem {
+                        source: "GitHub Trending".to_string(),
+                        title: "google/comprehensive-rust".to_string(),
+                        url: "https://github.com/google/comprehensive-rust".to_string(),
+                        summary: Some("Google 推出的 Rust 综合教程。".to_string()),
+                        author: None,
+                        published_at: None,
+                        score: Some(117),
+                        comments: None,
+                        ai_score: None,
+                        category: None,
+                    },
+                ],
+            }),
+            String::new(),
+        );
+
+        let report = generator.generate().await.expect("report");
+        let ai_section = report
+            .split("## 01｜🤖 AI 前沿")
+            .nth(1)
+            .and_then(|rest| rest.split("## 02｜⛓️ Web3 技术").next())
+            .unwrap_or("");
+        let tech_section = report
+            .split("## 03｜🔧 技术 & 开源")
+            .nth(1)
+            .and_then(|rest| rest.split("## 04｜📚 推荐深读").next())
+            .unwrap_or("");
+
+        assert!(ai_section.contains("https://example.com/brown-ai"));
+        assert!(!tech_section.contains("https://example.com/brown-ai"));
         assert!(tech_section.contains("https://github.com/google/comprehensive-rust"));
     }
 

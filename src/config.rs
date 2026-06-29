@@ -583,6 +583,8 @@ fn default_web3_media_urls() -> Vec<String> {
         "https://cryptoslate.com/feed/".to_string(),
         "https://thedefiant.io/feed".to_string(),
         "https://cointelegraph.com/rss".to_string(),
+        "https://www.panewslab.com/rss.xml?lang=zh&type=NEWS".to_string(),
+        "https://www.wublock123.com/feed".to_string(),
     ]
 }
 
@@ -871,6 +873,19 @@ mod tests {
         assert!(config.public_sources.x_rss_urls.is_empty());
         assert_eq!(config.public_sources.x_rss_max_items, 20);
         assert_eq!(config.public_sources.x_rss_timeout_secs, 10);
+        assert!(!config.public_sources.web3_media_enabled);
+        assert_eq!(
+            config.public_sources.web3_media_urls,
+            vec![
+                "https://cryptoslate.com/feed/".to_string(),
+                "https://thedefiant.io/feed".to_string(),
+                "https://cointelegraph.com/rss".to_string(),
+                "https://www.panewslab.com/rss.xml?lang=zh&type=NEWS".to_string(),
+                "https://www.wublock123.com/feed".to_string(),
+            ]
+        );
+        assert_eq!(config.public_sources.web3_media_max_items, 10);
+        assert_eq!(config.public_sources.web3_media_timeout_secs, 15);
         assert!(!config.public_sources.hn_daily_enabled);
         assert_eq!(
             config.public_sources.hn_daily_url,

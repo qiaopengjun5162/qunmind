@@ -136,6 +136,8 @@ web3_media_urls = [
   "https://cryptoslate.com/feed/",
   "https://thedefiant.io/feed",
   "https://cointelegraph.com/rss",
+  "https://www.panewslab.com/rss.xml?lang=zh&type=NEWS",
+  "https://www.wublock123.com/feed",
 ]
 wechat_rss_enabled = true
 wechat_rss_max_items = 10
