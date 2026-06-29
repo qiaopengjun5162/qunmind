@@ -215,6 +215,7 @@ fn rebalance_sections(report: &mut ReportJson, items: &[PublicNewsItem]) {
         report.tech_items = fallback_tech_items(items);
     }
 
+    migrate_ai_items_out_of_tech(report, items);
     migrate_web3_items_out_of_tech(report, items);
 }
 
@@ -253,6 +254,27 @@ fn migrate_web3_items_out_of_tech(report: &mut ReportJson, items: &[PublicNewsIt
 
     report.tech_items = retained_tech;
     dedup_sections(&mut report.web3_items);
+}
+
+fn migrate_ai_items_out_of_tech(report: &mut ReportJson, items: &[PublicNewsItem]) {
+    let mut retained_tech = Vec::new();
+
+    for mut item in report.tech_items.drain(..) {
+        if is_ai_section_item(&item, items) {
+            if item.subsection.trim().is_empty()
+                && let Some(source_item) =
+                    items.iter().find(|source_item| source_item.url == item.url)
+            {
+                item.subsection = infer_ai_subsection(source_item).to_string();
+            }
+            report.ai_items.push(item);
+        } else {
+            retained_tech.push(item);
+        }
+    }
+
+    report.tech_items = retained_tech;
+    dedup_sections(&mut report.ai_items);
 }
 
 fn fallback_title(items: &[PublicNewsItem]) -> String {
@@ -341,6 +363,7 @@ fn fallback_tech_items(items: &[PublicNewsItem]) -> Vec<ReportSection> {
     items
         .iter()
         .filter(|item| !is_web3_item(item))
+        .filter(|item| is_tech_worthy_item(item))
         .filter(|item| is_high_signal_item(item))
         .take(MAX_TECH_ITEMS)
         .map(|item| ReportSection {
@@ -364,7 +387,7 @@ fn fallback_tech_timeline(items: &[PublicNewsItem]) -> Vec<String> {
 }
 
 fn fallback_reads(items: &[PublicNewsItem]) -> Vec<ReportRead> {
-    items
+    let mut preferred = items
         .iter()
         .filter(|item| {
             item.summary
@@ -373,7 +396,6 @@ fn fallback_reads(items: &[PublicNewsItem]) -> Vec<ReportRead> {
         })
         .filter(|item| is_preferred_read_item(item))
         .filter(|item| is_high_signal_item(item))
-        .take(MAX_READS)
         .map(|item| ReportRead {
             title: item.title.trim().to_string(),
             url: item.url.clone(),
@@ -383,7 +405,11 @@ fn fallback_reads(items: &[PublicNewsItem]) -> Vec<ReportRead> {
                 .map(clean_summary)
                 .unwrap_or_else(|| fallback_read_summary(item)),
         })
-        .collect()
+        .collect::<Vec<_>>();
+
+    preferred.sort_by_key(|read| std::cmp::Reverse(read_summary_quality_score(&read.summary)));
+    preferred.truncate(MAX_READS);
+    preferred
 }
 
 fn fallback_summary(items: &[PublicNewsItem]) -> String {
@@ -490,6 +516,76 @@ fn fallback_read_summary(item: &PublicNewsItem) -> String {
     )
 }
 
+fn read_summary_quality_score(summary: &str) -> usize {
+    let trimmed = summary.trim();
+    if trimmed.is_empty() {
+        return 0;
+    }
+    if trimmed == "未生成可靠摘要，请直接阅读原文核对。" {
+        return 0;
+    }
+    if trimmed.chars().count() < 12 {
+        return 1;
+    }
+    trimmed.chars().count()
+}
+
+fn is_tech_worthy_item(item: &PublicNewsItem) -> bool {
+    if item.source.contains("GitHub") || is_ai_item(item) || is_web3_item(item) {
+        return true;
+    }
+
+    let haystack = format!(
+        "{} {} {} {}",
+        item.source,
+        item.title,
+        item.url,
+        item.summary.as_deref().unwrap_or("")
+    )
+    .to_lowercase();
+
+    contains_any_text(
+        &haystack,
+        &[
+            "rust",
+            "database",
+            "programming",
+            "developer",
+            "framework",
+            "tool",
+            "sdk",
+            "infrastructure",
+            "security",
+            "benchmark",
+            "guide",
+            "setup",
+            "open source",
+            "compiler",
+            "distributed",
+            "postgres",
+            "cli",
+            "开发",
+            "开源",
+            "框架",
+            "工具",
+            "数据库",
+            "编程",
+            "工程",
+            "基础设施",
+            "安全",
+            "教程",
+            "指南",
+        ],
+    )
+}
+
+fn tech_section_is_worthy(section: &ReportSection, items: &[PublicNewsItem]) -> bool {
+    items
+        .iter()
+        .find(|item| item.url == section.url)
+        .is_none_or(is_tech_worthy_item)
+}
+
 fn is_high_signal_item(item: &PublicNewsItem) -> bool {
     item.score.unwrap_or(0) >= 50
         || item
@@ -529,6 +625,9 @@ fn polish_sections(report: &mut ReportJson, items: &[PublicNewsItem]) {
     polish_section_items(&mut report.ai_items, items);
     polish_section_items(&mut report.web3_items, items);
     polish_section_items(&mut report.tech_items, items);
+    report
+        .tech_items
+        .retain(|section| tech_section_is_worthy(section, items));
     backfill_fresh_tech_items(&mut report.tech_items, items);
     prioritize_fresh_tech_items(&mut report.tech_items, items);
 
@@ -596,6 +695,7 @@ fn backfill_fresh_tech_items(section_items: &mut Vec<ReportSection>, items: &[Pu
         .filter(|item| !existing_urls.contains(&item.url))
         .filter(|item| !is_ai_item(item))
         .filter(|item| !is_web3_item(item))
+        .filter(|item| is_tech_worthy_item(item))
         .filter(|item| is_high_signal_item(item))
         .filter(|item| is_fresh_tech_candidate(item))
         .map(|item| ReportSection {
@@ -714,6 +814,11 @@ fn dedup_and_backfill_reads(
         });
         used_urls.insert(item.url.clone());
     }
+
+    report
+        .reads
+        .sort_by_key(|read| std::cmp::Reverse(read_summary_quality_score(&read.summary)));
+    report.reads.truncate(MAX_READS);
 
     if report.reads.is_empty() {
         for item in items {
@@ -1046,6 +1151,7 @@ fn is_ai_section_item(item: &ReportSection, source_items: &[PublicNewsItem]) -> 
     if contains_any_text(
         &format!("{} {} {}", item.title, item.comment, item.source).to_lowercase(),
         &[
+            "ai",
             "openai",
             "anthropic",
             "claude",
@@ -1138,6 +1244,7 @@ fn is_ai_item(item: &PublicNewsItem) -> bool {
     contains_any(
         item,
         &[
+            "ai",
             "llm",
             "agent",
             "model",
@@ -2474,6 +2581,46 @@ mod tests {
         assert!(urls.contains(&"https://example.com/fresh-read"));
     }
 
+    #[test]
+    fn dedup_and_backfill_reads_prefers_items_with_reliable_summaries() {
+        let items = vec![
+            PublicNewsItem {
+                source: "Hacker News".to_string(),
+                title: "Bare repo".to_string(),
+                url: "https://example.com/bare-repo".to_string(),
+                summary: Some("repo".to_string()),
+                author: None,
+                published_at: None,
+                score: Some(200),
+                comments: None,
+                ai_score: None,
+                category: None,
+            },
+            PublicNewsItem {
+                source: "The Defiant".to_string(),
+                title: "Detailed article".to_string(),
+                url: "https://example.com/detailed-article".to_string(),
+                summary: Some(
+                    "这篇文章详细解释了稳定币支付基础设施如何进入真实跨境结算场景。".to_string(),
+                ),
+                author: None,
+                published_at: None,
+                score: Some(120),
+                comments: None,
+                ai_score: None,
+                category: Some("web3".to_string()),
+            },
+        ];
+        let mut report = ReportJson::default();
+
+        dedup_and_backfill_reads(&mut report, &items, &std::collections::HashSet::new());
+
+        assert_eq!(
+            report.reads.first().map(|read| read.url.as_str()),
+            Some("https://example.com/detailed-article")
+        );
+    }
+
     #[tokio::test]
     async fn generate_separates_used_refs_from_complete_source_links() {
         let json = r#"{
@@ -2792,6 +2939,203 @@ mod tests {
 
         assert!(web3_section.contains("https://example.com/rlusd"));
         assert!(!tech_section.contains("https://example.com/rlusd"));
+        assert!(tech_section.contains("https://github.com/google/comprehensive-rust"));
+    }
+
+    #[tokio::test]
+    async fn generate_moves_ai_items_out_of_tech_section_after_polish() {
+        let json = r#"{
+            "title_hint":"测试日报",
+            "intro":"测试导语",
+            "focus_text":"Aave 回购升级",
+            "focus_url":"https://example.com/focus",
+            "ai_items":[],
+            "ai_signals":[],
+            "web3_items":[
+                {
+                    "title":"Aave buyback",
+                    "url":"https://example.com/aave",
+                    "comment":"Aave 启动自动回购机制",
+                    "source":"The Defiant",
+                    "points":120
+                }
+            ],
+            "tech_items":[
+                {
+                    "title":"Professor denounces mass AI fraud on an exam at Brown",
+                    "url":"https://example.com/brown-ai",
+                    "comment":"报道布朗大学教职员工指控大规模AI作弊事件。",
+                    "source":"Hacker News",
+                    "points":118
+                },
+                {
+                    "title":"google/comprehensive-rust",
+                    "url":"https://github.com/google/comprehensive-rust",
+                    "comment":"Google 推出的 Rust 综合教程",
+                    "source":"GitHub Trending",
+                    "points":117
+                }
+            ],
+            "tech_timeline":[],
+            "reads":[],
+            "summary":"测试总结"
+        }"#;
+        let generator = DailyReportGenerator::new(
+            Arc::new(FakeAi::new(vec![json.to_string()])),
+            Arc::new(FakeNewsSource {
+                items: vec![
+                    PublicNewsItem {
+                        source: "The Defiant".to_string(),
+                        title: "Aave buyback".to_string(),
+                        url: "https://example.com/aave".to_string(),
+                        summary: Some("Aave 启动自动回购机制。".to_string()),
+                        author: None,
+                        published_at: None,
+                        score: Some(120),
+                        comments: None,
+                        ai_score: None,
+                        category: Some("web3".to_string()),
+                    },
+                    PublicNewsItem {
+                        source: "Hacker News".to_string(),
+                        title: "Professor denounces mass AI fraud on an exam at Brown".to_string(),
+                        url: "https://example.com/brown-ai".to_string(),
+                        summary: Some(
+                            "报道布朗大学教职员工指控大规模 AI 作弊事件，涉及学术诚信问题。"
+                                .to_string(),
+                        ),
+                        author: None,
+                        published_at: None,
+                        score: Some(118),
+                        comments: None,
+                        ai_score: None,
+                        category: None,
+                    },
+                    PublicNewsItem {
+                        source: "GitHub Trending".to_string(),
+                        title: "google/comprehensive-rust".to_string(),
+                        url: "https://github.com/google/comprehensive-rust".to_string(),
+                        summary: Some("Google 推出的 Rust 综合教程。".to_string()),
+                        author: None,
+                        published_at: None,
+                        score: Some(117),
+                        comments: None,
+                        ai_score: None,
+                        category: None,
+                    },
+                ],
+            }),
+            String::new(),
+        );
+
+        let report = generator.generate().await.expect("report");
+        let ai_section = report
+            .split("## 01｜🤖 AI 前沿")
+            .nth(1)
+            .and_then(|rest| rest.split("## 02｜⛓️ Web3 技术").next())
+            .unwrap_or("");
+        let tech_section = report
+            .split("## 03｜🔧 技术 & 开源")
+            .nth(1)
+            .and_then(|rest| rest.split("## 04｜📚 推荐深读").next())
+            .unwrap_or("");
+
+        assert!(ai_section.contains("https://example.com/brown-ai"));
+        assert!(!tech_section.contains("https://example.com/brown-ai"));
+        assert!(tech_section.contains("https://github.com/google/comprehensive-rust"));
+    }
+
+    #[tokio::test]
+    async fn generate_excludes_non_tech_hn_items_from_tech_section_when_real_tech_exists() {
+        let json = r#"{
+            "title_hint":"测试日报",
+            "intro":"测试导语",
+            "focus_text":"Aave 回购升级",
+            "focus_url":"https://example.com/focus",
+            "ai_items":[],
+            "ai_signals":[],
+            "web3_items":[
+                {
+                    "title":"Aave buyback",
+                    "url":"https://example.com/aave",
+                    "comment":"Aave 启动自动回购机制",
+                    "source":"The Defiant",
+                    "points":120
+                }
+            ],
+            "tech_items":[
+                {
+                    "title":"Daisugi, the Japanese technique of growing trees out of other trees (2020)",
+                    "url":"https://example.com/daisugi",
+                    "comment":"关于日本树木种植技艺的文章。",
+                    "source":"Hacker News",
+                    "points":112
+                },
+                {
+                    "title":"google/comprehensive-rust",
+                    "url":"https://github.com/google/comprehensive-rust",
+                    "comment":"Google 推出的 Rust 综合教程",
+                    "source":"GitHub Trending",
+                    "points":117
+                }
+            ],
+            "tech_timeline":[],
+            "reads":[],
+            "summary":"测试总结"
+        }"#;
+        let generator = DailyReportGenerator::new(
+            Arc::new(FakeAi::new(vec![json.to_string()])),
+            Arc::new(FakeNewsSource {
+                items: vec![
+                    PublicNewsItem {
+                        source: "The Defiant".to_string(),
+                        title: "Aave buyback".to_string(),
+                        url: "https://example.com/aave".to_string(),
+                        summary: Some("Aave 启动自动回购机制。".to_string()),
+                        author: None,
+                        published_at: None,
+                        score: Some(120),
+                        comments: None,
+                        ai_score: None,
+                        category: Some("web3".to_string()),
+                    },
+                    PublicNewsItem {
+                        source: "Hacker News".to_string(),
+                        title: "Daisugi, the Japanese technique of growing trees out of other trees (2020)".to_string(),
+                        url: "https://example.com/daisugi".to_string(),
+                        summary: Some("一篇关于日本树木种植技艺的文化文章。".to_string()),
+                        author: None,
+                        published_at: None,
+                        score: Some(112),
+                        comments: None,
+                        ai_score: None,
+                        category: None,
+                    },
+                    PublicNewsItem {
+                        source: "GitHub Trending".to_string(),
+                        title: "google/comprehensive-rust".to_string(),
+                        url: "https://github.com/google/comprehensive-rust".to_string(),
+                        summary: Some("Google 推出的 Rust 综合教程。".to_string()),
+                        author: None,
+                        published_at: None,
+                        score: Some(117),
+                        comments: None,
+                        ai_score: None,
+                        category: None,
+                    },
+                ],
+            }),
+            String::new(),
+        );
+
+        let report = generator.generate().await.expect("report");
+        let tech_section = report
+            .split("## 03｜🔧 技术 & 开源")
+            .nth(1)
+            .and_then(|rest| rest.split("## 04｜📚 推荐深读").next())
+            .unwrap_or("");
+
+        assert!(!tech_section.contains("https://example.com/daisugi"));
         assert!(tech_section.contains("https://github.com/google/comprehensive-rust"));
     }
 
