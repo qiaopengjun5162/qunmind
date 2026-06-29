@@ -106,6 +106,7 @@
 - **深读区避免与焦点/正文撞车** — 推荐深读现在会自动避开已经出现在今日焦点、AI/Web3/技术正文里的同一链接，再从剩余素材池补新的阅读入口，降低同一篇文章在一篇日报里反复出现的重复感。
 - **同日多次重跑开始主动换新** — 当手工 `daily-report --output <path>` 回退到 `public_sources` 生成公众号日报时，系统现在会读取同一路径上一次生成稿中的正文 `原文：https://...` 链接，并把这些 URL 作为本次正文与深读的轻量降权信号。这样连续多次生成今天日报时，技术区/深读区不再总是回到几乎同一组链接，但“完整素材链接”仍会继续保留全部可追溯来源。
 - **深读区开始优先文章型来源** — `推荐深读` 现在会优先选择更像文章、论文、官方说明或手工精选的入口，而不是普通 `GitHub Trending` 榜单仓库；只有在当天素材池确实缺少更好替代项时，才保底保留 1 条仓库链接，避免深读区看起来只是把技术榜单重复了一遍。
+- **Web3 / 技术漏网误分再收紧一层** — 在今天 `2026-06-29` 的真实生成稿里发现 `RLUSD` 这类明显的稳定币 / 支付基础设施动态仍可能被补位逻辑留在“技术 & 开源”区。现已在最终抛光后追加一轮 `tech -> web3` 回迁，确保命中稳定币、交易所、链上协议、RWA 等特征的条目最终回到 `Web3` 板块。
 - **手工精选素材入口落地** — 新增 `[[public_sources.manual_items]]`，用于补入用户明确想推荐大家阅读的一手官方文章、X 原帖、论文或项目公告。它会作为 `PublicNewsSource` 进入日报素材池，优先参与“推荐深读”和“完整素材链接”，避免好内容因为 RSS / X 上游暂时没抓到而丢失。
 - **手工精选 X 原帖过滤修复** — 修复 `CompositePublicNewsSource` 的 topic keyword 过滤误伤：`x.com`、`twitter.com` 和 Nitter 兼容 URL 现在和微信公众号文章、GitHub、arXiv、Web3 媒体一样被视作 curated URL。这样用户临时给出的 X 原帖即使标题没命中 `topic_keywords`，也会进入日报素材池并出现在“完整素材链接”里。
 - **X / Twitter 一手来源入口落地** — 新增 `[public_sources] x_rss_*` 与 `src/source/x_rss.rs`，支持消费 RSSHub、Nitter 兼容源或自建 X List RSS / Atom 上游，并归一成 `X RSS` 公共素材。边界仍然是“主进程消费稳定上游”，不把 X 登录、抓取、代理或反风控逻辑嵌进 QunMind。
@@ -207,6 +208,8 @@
 - `cargo test mcp::tools::tests`
 - `cargo test daily_report::tests::dedup_and_backfill_reads_skips_plain_github_trending_repos_when_articles_exist --lib`
 - `cargo test daily_report::tests::dedup_and_backfill_reads_prefers_urls_not_used_in_previous_report --lib`
+- `cargo test generate_moves_web3_items_out_of_tech_section_after_polish --lib`
+- `cargo test daily_report::tests:: --lib`
 - `cargo clippy --all-targets --all-features --tests --benches -- -D warnings`
 - `cargo nextest run --all-features`：347 passed, 2 skipped
 

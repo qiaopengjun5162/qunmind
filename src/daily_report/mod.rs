@@ -214,6 +214,8 @@ fn rebalance_sections(report: &mut ReportJson, items: &[PublicNewsItem]) {
     if report.tech_items.is_empty() {
         report.tech_items = fallback_tech_items(items);
     }
+
+    migrate_web3_items_out_of_tech(report, items);
 }
 
 fn fill_missing_read_summaries(report: &mut ReportJson, items: &[PublicNewsItem]) {
@@ -236,6 +238,21 @@ fn fill_missing_read_summaries(report: &mut ReportJson, items: &[PublicNewsItem]
             );
         }
     }
+}
+
+fn migrate_web3_items_out_of_tech(report: &mut ReportJson, items: &[PublicNewsItem]) {
+    let mut retained_tech = Vec::new();
+
+    for item in report.tech_items.drain(..) {
+        if is_web3_section_item(&item, items) {
+            report.web3_items.push(item);
+        } else {
+            retained_tech.push(item);
+        }
+    }
+
+    report.tech_items = retained_tech;
+    dedup_sections(&mut report.web3_items);
 }
 
 fn fallback_title(items: &[PublicNewsItem]) -> String {
@@ -2673,6 +2690,109 @@ mod tests {
 
         assert!(!ai_section.contains("Pump.fun"));
         assert!(web3_section.contains("Pump.fun"));
+    }
+
+    #[tokio::test]
+    async fn generate_moves_web3_items_out_of_tech_section_after_polish() {
+        let json = r#"{
+            "title_hint":"测试日报",
+            "intro":"测试导语",
+            "focus_text":"Polymarket 攻击事件",
+            "focus_url":"https://example.com/focus",
+            "ai_items":[],
+            "ai_signals":[],
+            "web3_items":[
+                {
+                    "title":"Aave buyback",
+                    "url":"https://example.com/aave",
+                    "comment":"Aave 启动自动回购机制",
+                    "source":"The Defiant",
+                    "points":120
+                }
+            ],
+            "tech_items":[
+                {
+                    "title":"Ripple launches RLUSD in Japan",
+                    "url":"https://example.com/rlusd",
+                    "comment":"Ripple 的 RLUSD 稳定币在日本上线",
+                    "source":"The Defiant",
+                    "points":118
+                },
+                {
+                    "title":"google / comprehensive-rust",
+                    "url":"https://github.com/google/comprehensive-rust",
+                    "comment":"Google 推出的 Rust 综合教程",
+                    "source":"GitHub Trending",
+                    "points":117
+                }
+            ],
+            "tech_timeline":[],
+            "reads":[],
+            "summary":"测试总结"
+        }"#;
+        let generator = DailyReportGenerator::new(
+            Arc::new(FakeAi::new(vec![json.to_string()])),
+            Arc::new(FakeNewsSource {
+                items: vec![
+                    PublicNewsItem {
+                        source: "The Defiant".to_string(),
+                        title: "Aave buyback".to_string(),
+                        url: "https://example.com/aave".to_string(),
+                        summary: Some("Aave 启动自动回购机制。".to_string()),
+                        author: None,
+                        published_at: None,
+                        score: Some(120),
+                        comments: None,
+                        ai_score: None,
+                        category: Some("web3".to_string()),
+                    },
+                    PublicNewsItem {
+                        source: "The Defiant".to_string(),
+                        title: "Ripple launches RLUSD in Japan".to_string(),
+                        url: "https://example.com/rlusd".to_string(),
+                        summary: Some(
+                            "Ripple 的 RLUSD 稳定币在日本上线，属于稳定币与支付基础设施动态。"
+                                .to_string(),
+                        ),
+                        author: None,
+                        published_at: None,
+                        score: Some(118),
+                        comments: None,
+                        ai_score: None,
+                        category: Some("web3".to_string()),
+                    },
+                    PublicNewsItem {
+                        source: "GitHub Trending".to_string(),
+                        title: "google / comprehensive-rust".to_string(),
+                        url: "https://github.com/google/comprehensive-rust".to_string(),
+                        summary: Some("Google 推出的 Rust 综合教程。".to_string()),
+                        author: None,
+                        published_at: None,
+                        score: Some(117),
+                        comments: None,
+                        ai_score: None,
+                        category: None,
+                    },
+                ],
+            }),
+            String::new(),
+        );
+
+        let report = generator.generate().await.expect("report");
+        let web3_section = report
+            .split("## 02｜⛓️ Web3 技术")
+            .nth(1)
+            .and_then(|rest| rest.split("## 03｜🔧 技术 & 开源").next())
+            .unwrap_or("");
+        let tech_section = report
+            .split("## 03｜🔧 技术 & 开源")
+            .nth(1)
+            .and_then(|rest| rest.split("## 04｜📚 推荐深读").next())
+            .unwrap_or("");
+
+        assert!(web3_section.contains("https://example.com/rlusd"));
+        assert!(!tech_section.contains("https://example.com/rlusd"));
+        assert!(tech_section.contains("https://github.com/google/comprehensive-rust"));
     }
 
     #[test]
