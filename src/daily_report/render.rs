@@ -155,7 +155,9 @@ fn render_overview(report: &ReportJson) -> String {
         return String::new();
     }
 
-    lines.push("3. 最后看链接区：文末会区分“正文引用来源”和“延伸素材”，方便逐条追溯。".to_string());
+    lines.push(
+        "3. 最后看链接区：文末会区分“正文引用来源”和“完整素材链接”，方便逐条追溯。".to_string(),
+    );
 
     format!("## 今日三件事\n\n{}\n\n", lines.join("\n"))
 }
@@ -304,7 +306,10 @@ fn build_refs_block(report: &ReportJson, items: &[PublicNewsItem], section_index
         .map(normalize_story_url)
         .collect::<std::collections::HashSet<_>>();
     let mut seen_normalized_urls = std::collections::HashSet::new();
-    let mut block = format!("## {:02}. 参考来源\n\n", section_index);
+    let mut block = format!(
+        "## {:02}. 参考来源\n\n这里不只放链接，也把来源、用途和原文入口拆开，方便你按需核对。\n\n",
+        section_index
+    );
     let mut referenced_count = 0;
     let mut referenced_entries = String::new();
     for item in items
@@ -314,26 +319,17 @@ fn build_refs_block(report: &ReportJson, items: &[PublicNewsItem], section_index
         .take(MAX_REFERENCE_ITEMS)
     {
         referenced_count += 1;
-        let source_label = display_source_label(item);
-        let score_part = match item.score {
-            Some(s) if s > 0 => format!(" · {s} points"),
-            _ => String::new(),
-        };
-        referenced_entries.push_str(&format!(
-            "{}. [{}]({}) — {}{}\n   原文：{}\n",
+        referenced_entries.push_str(&format_reference_card(
             referenced_count,
-            item.title.replace('\n', " ").trim(),
-            item.url,
-            source_label,
-            score_part,
-            item.url,
+            item,
+            "正文已引用。建议从原文核对上下文、数据口径和作者原意。",
         ));
     }
     if referenced_count == 0 {
         block.push_str("### 正文引用来源（0）\n\n暂无正文直接引用链接。\n");
     } else {
         block.push_str(&format!(
-            "### 正文引用来源（{}）\n\n正文里直接写到的观点，统一收在这里，方便快速核对。\n\n{}",
+            "### 正文引用来源（{}）\n\n正文里直接写到的观点，统一收在这里，优先核对这些原文。\n\n{}",
             referenced_count, referenced_entries
         ));
     }
@@ -346,27 +342,74 @@ fn build_refs_block(report: &ReportJson, items: &[PublicNewsItem], section_index
         .collect::<Vec<_>>();
     if !unreferenced.is_empty() {
         block.push_str(&format!(
-            "\n### 延伸素材（{}）\n\n以下是本次采集但未全部写入正文的素材入口，适合继续扩展阅读。\n\n",
+            "\n### 完整素材链接（{}）\n\n以下是本次采集但未全部写入正文的素材入口，保留完整原文，方便继续追踪。\n\n",
             unreferenced.len()
         ));
         for (i, item) in unreferenced.iter().enumerate() {
-            let source_label = display_source_label(item);
-            let score_part = match item.score {
-                Some(s) if s > 0 => format!(" · {s} points"),
-                _ => String::new(),
-            };
-            block.push_str(&format!(
-                "{}. [{}]({}) — {}{}\n   原文：{}\n",
+            block.push_str(&format_reference_card(
                 i + 1,
-                item.title.replace('\n', " ").trim(),
-                item.url,
-                source_label,
-                score_part,
-                item.url,
+                item,
+                "本次已采集但未写入正文。适合继续扩展阅读或留作后续追踪。",
             ));
         }
     }
     block
+}
+
+fn format_reference_card(index: usize, item: &PublicNewsItem, fallback_note: &str) -> String {
+    let title = sanitize(item.title.replace('\n', " ").trim());
+    let source_label = display_source_label(item);
+    let score_part = match item.score {
+        Some(score) if score > 0 => format!(" · {score} points"),
+        _ => String::new(),
+    };
+    let note = reference_note(item).unwrap_or_else(|| fallback_note.to_string());
+
+    format!(
+        "#### {:02}｜[{}]({})\n\n> 来源：{}{}\n> 说明：{}\n> 原文：{}\n\n",
+        index, title, item.url, source_label, score_part, note, item.url
+    )
+}
+
+fn reference_note(item: &PublicNewsItem) -> Option<String> {
+    let summary = item.summary.as_deref()?.trim();
+    if is_useful_chinese_summary(summary) && !has_ascii_ellipsis_fragment(summary) {
+        return Some(compact_reference_note(summary));
+    }
+    None
+}
+
+fn compact_reference_note(value: &str) -> String {
+    let sanitized = sanitize(value)
+        .replace("...", "……")
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
+    let trimmed = sanitized.trim();
+    if trimmed.is_empty() {
+        return String::new();
+    }
+
+    if let Some(sentence_end) = trimmed
+        .char_indices()
+        .find_map(|(index, ch)| matches!(ch, '。' | '！' | '？').then_some(index + ch.len_utf8()))
+        && sentence_end >= 18
+    {
+        return trimmed[..sentence_end].to_string();
+    }
+
+    let max_chars = 90usize;
+    let chars = trimmed.chars().collect::<Vec<_>>();
+    if chars.len() <= max_chars {
+        return ensure_sentence_end(trimmed);
+    }
+
+    let excerpt = chars[..max_chars]
+        .iter()
+        .collect::<String>()
+        .trim_end_matches(['，', '、', '；', ':', '：', ',', ';', '.', '…'])
+        .to_string();
+    format!("{excerpt}……")
 }
 
 fn normalize_story_url(url: &str) -> String {
@@ -971,8 +1014,8 @@ mod tests {
 
         let refs = build_refs_block(&report, &[item], 5);
 
-        assert!(refs.contains("— Google Blog · 149 points"));
-        assert!(!refs.contains("— Hacker News · 149 points"));
+        assert!(refs.contains("来源：Google Blog · 149 points"));
+        assert!(!refs.contains("来源：Hacker News · 149 points"));
     }
 
     #[test]
@@ -1060,11 +1103,14 @@ mod tests {
             ..Default::default()
         };
         let refs = build_refs_block(&report, &items, 5);
-        let used_refs = refs.split("### 延伸素材").next().unwrap_or(refs.as_str());
-        assert!(refs.contains("1. [item-0]"));
-        assert!(refs.contains("15. [item-14]"));
-        assert!(!used_refs.contains("16. [item-15]"));
-        assert_eq!(used_refs.matches(". [item-").count(), 15);
+        let used_refs = refs
+            .split("### 完整素材链接")
+            .next()
+            .unwrap_or(refs.as_str());
+        assert!(refs.contains("#### 01｜[item-0]"));
+        assert!(refs.contains("#### 15｜[item-14]"));
+        assert!(!used_refs.contains("#### 16｜[item-15]"));
+        assert_eq!(used_refs.matches("#### ").count(), 15);
     }
 
     #[test]
@@ -1089,13 +1135,39 @@ mod tests {
         let refs = build_refs_block(&report, &items, 5);
 
         assert!(refs.contains("## 05. 参考来源"));
-        assert!(refs.contains("1. [used]"));
+        assert!(refs.contains("#### 01｜[used]"));
+        assert!(refs.contains("来源："));
+        assert!(refs.contains("· 10 points"));
+        assert!(refs.contains("说明："));
         assert!(refs.contains("原文：https://example.com/used"));
-        assert!(refs.contains("### 延伸素材（2）"));
-        assert!(refs.contains("1. [unreferenced]"));
+        assert!(refs.contains("> 原文：https://example.com/used"));
+        assert!(refs.contains("### 完整素材链接（2）"));
+        assert!(refs.contains("#### 01｜[unreferenced]"));
         assert!(refs.contains("原文：https://example.com/unreferenced"));
-        assert!(refs.contains("2. [another]"));
+        assert!(refs.contains("#### 02｜[another]"));
         assert!(refs.contains("原文：https://example.com/another"));
+    }
+
+    #[test]
+    fn reference_note_uses_compact_chinese_sentence() {
+        let item = PublicNewsItem {
+            source: "吴说区块链".to_string(),
+            title: "巴西警方冻结资产".to_string(),
+            url: "https://example.com/brazil".to_string(),
+            summary: Some("据彭博社报道，巴西联邦警察 7 月 3 日启动 Operation Exchange 行动，打击涉嫌为国际贩毒资金洗钱的犯罪组织。警方称，相关被调查人员通过非法加密资产转账、大额银行交易...".to_string()),
+            author: None,
+            published_at: None,
+            score: Some(120),
+            comments: None,
+            ai_score: None,
+            category: None,
+        };
+
+        let rendered = format_reference_card(1, &item, "fallback");
+
+        assert!(rendered.contains("说明：据彭博社报道"));
+        assert!(!rendered.contains("..."));
+        assert!(!rendered.contains("警方称"));
     }
 
     #[test]

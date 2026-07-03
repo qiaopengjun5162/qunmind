@@ -166,6 +166,7 @@
 - **日报素材排序改成“编辑优先级”而不是纯分数** — `src/daily_report/mod.rs` 现在不再让 `GitHub Trending` 的历史累计热度天然压过当天新闻；排序会优先考虑是否手工精选、是否文章型来源、是否带发布时间、是否有可靠摘要，以及是否属于“今天发生了什么”的 AI / Web3 / 技术事件。这让同一天生成稿时，焦点与正文更容易落到 PANews、吴说、The Defiant、CryptoSlate、Cointelegraph、OpenAI 或论文更新，而不是被长期热榜仓库抢走版面。
 - **深读区开始严格偏向“有可靠摘要”的文章** — `推荐深读` 现在会继续优先过滤空摘要 X 链接、无摘要文章和泛财经综述；只要本轮存在更可靠的条目，就优先保留那些能直接告诉读者“为什么值得读”的文章。`A股收评` 这类泛市场综述仍会保留在“完整素材链接”里，但不再轻易挤进正文深读区。
 - **引用 / 完整素材链接开始按归一化 URL 去重** — `src/daily_report/render.rs` 现在会忽略 `utm_*`、`fbclid`、`gclid` 等追踪参数来识别同一条新闻，避免 `Cointelegraph` / `PANews` / 其他媒体同一篇文章因为 URL 参数不同，既出现在正文引用，又重复掉进“完整素材链接”。
+- **公众号日报封面与链接区继续优化** — `docs/assets/wechat/render_ai_web3_daily_cover.swift` 现在生成浅色背景、深色主标题的固定封面，解决手机预览里白字不清晰的问题；`src/daily_report/render.rs` 的“参考来源 / 完整素材链接”也改成“标题 + 来源 / 说明 / 原文”的紧凑卡片式结构，不再只是光秃秃的裸链接列表，同时继续保留完整 `原文：https://...` 以保证可追溯。
 - **空板块占位继续收口** — 当技术区只剩无效条目、没有可渲染正文且也缺少足够时间线时，渲染层现在会直接跳过整个 `03｜技术 & 开源` 板块，避免手机预览里出现只有标题没有内容的空壳区域。
 - **公共源拉取失败根因已缩到网络层并开始自动回退代理** — `2026-07-01` 的真实排障里确认：在当前本机网络下，`Hacker News` 直连完整 GET 大约要 `21s`，`GitHub Trending` 直连在 `25s` 内都可能拿不到首字节；但走本机 `http://127.0.0.1:7890` 代理后，两者分别可降到约 `1.4s` 与 `3.8s`。现在 `src/source/hacker_news.rs` 与 `src/source/github_trending.rs` 已改为“本轮先探测一次直连；若失败，则本轮后续请求直接复用本地代理 client”，不再对每个 item 反复先直连超时再回退。
 
@@ -187,6 +188,10 @@
 - `cargo nextest run --all-features daily_report::tests::generate_falls_back_to_non_empty_sections_when_ai_json_is_invalid`
 - `cargo nextest run --all-features daily_report::tests::generate_rebalances_misclassified_sections_and_fills_missing_read_summaries`
 - `cargo nextest run --all-features daily_report::tests::generate_filters_low_signal_items_and_limits_section_sizes`
+- `cargo fmt --all -- --check`
+- `cargo clippy --all-targets --all-features --tests --benches -- -D warnings`
+- `cargo nextest run --all-features`：409 passed, 2 skipped
+- `cargo run -- --config config.toml daily-report --report-name "微信公众号日报" --output /tmp/wechat-report-2026-07-03-v8-link-layout.md`：生成本地样稿，不发布；样稿已确认使用新浅色封面、卡片式“参考来源 / 完整素材链接”和固定“继续交流”结尾
 - `cargo nextest run --all-features daily_report::tests::generate_limits_reference_block_to_used_urls`
 - `cargo nextest run --all-features daily_report::render::tests::skips_empty_section_headers`
 - `cargo nextest run --all-features daily_report::render::tests::refs_block_caps_item_count`

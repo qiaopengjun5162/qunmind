@@ -33,3 +33,10 @@ Use this log whenever work includes drawing, image generation, diagram creation,
 - source: user direction that the account is a personal public account named `寻月隐君`; rendered locally as a deterministic cover template
 - output files: `docs/assets/wechat/ai-web3-daily-cover.png`, `docs/assets/wechat/ai-web3-daily-cover-900x500.png`, `docs/assets/wechat/render_ai_web3_daily_cover.swift`
 - notes: final visual direction is a restrained personal tech-notes cover with moon, signal lines, dark green grid, the fixed column title, and author name; PNG generated via Swift/AppKit for crisp Chinese text; the earlier SVG attempt was removed because local rasterization could not reliably render Chinese text
+
+## 2026-07-03
+
+- purpose: improve WeChat daily cover readability after mobile preview showed white title text was hard to read
+- source: existing deterministic Swift/AppKit cover template `docs/assets/wechat/render_ai_web3_daily_cover.swift`
+- output files: `docs/assets/wechat/ai-web3-daily-cover-900x500.png`
+- notes: changed the cover from dark background with white title text to a warm light background with high-contrast deep green title text; regenerated PNG locally with Swift/AppKit
