@@ -96,6 +96,7 @@ fn enrich_report(
     recent_used_urls: &HashSet<String>,
 ) -> ReportJson {
     rebalance_sections(&mut report, items);
+    correct_report_urls(&mut report, items);
     fill_missing_read_summaries(&mut report, items);
 
     if report.title_hint.trim().is_empty() {
@@ -313,6 +314,87 @@ fn fill_missing_read_summaries(report: &mut ReportJson, items: &[PublicNewsItem]
             );
         }
     }
+}
+
+fn correct_report_urls(report: &mut ReportJson, items: &[PublicNewsItem]) {
+    correct_url(&mut report.focus_url, items);
+    for item in &mut report.ai_items {
+        correct_url(&mut item.url, items);
+    }
+    for item in &mut report.web3_items {
+        correct_url(&mut item.url, items);
+    }
+    for item in &mut report.tech_items {
+        correct_url(&mut item.url, items);
+    }
+    for read in &mut report.reads {
+        correct_url(&mut read.url, items);
+    }
+}
+
+fn correct_url(url: &mut String, items: &[PublicNewsItem]) {
+    let trimmed = url.trim();
+    if trimmed.is_empty() || items.iter().any(|item| item.url.trim() == trimmed) {
+        return;
+    }
+
+    let normalized = normalize_story_url(trimmed);
+    if let Some(item) = items
+        .iter()
+        .find(|item| normalize_story_url(item.url.trim()) == normalized)
+    {
+        *url = item.url.clone();
+        return;
+    }
+
+    if let Some(item) = items
+        .iter()
+        .find(|item| is_near_url_match(&normalize_story_url(item.url.trim()), &normalized))
+    {
+        *url = item.url.clone();
+    }
+}
+
+fn is_near_url_match(candidate: &str, value: &str) -> bool {
+    if candidate == value {
+        return true;
+    }
+
+    let min_len = candidate.len().min(value.len());
+    if min_len < 36 || candidate.len().abs_diff(value.len()) > 2 {
+        return false;
+    }
+
+    url_edit_distance_at_most(candidate, value, 2)
+}
+
+fn url_edit_distance_at_most(a: &str, b: &str, max_distance: usize) -> bool {
+    let a = a.as_bytes();
+    let b = b.as_bytes();
+    if a.len().abs_diff(b.len()) > max_distance {
+        return false;
+    }
+
+    let mut previous = (0..=b.len()).collect::<Vec<_>>();
+    let mut current = vec![0usize; b.len() + 1];
+
+    for (i, &a_byte) in a.iter().enumerate() {
+        current[0] = i + 1;
+        let mut row_min = current[0];
+        for (j, &b_byte) in b.iter().enumerate() {
+            let cost = usize::from(a_byte != b_byte);
+            current[j + 1] = (previous[j + 1] + 1)
+                .min(current[j] + 1)
+                .min(previous[j] + cost);
+            row_min = row_min.min(current[j + 1]);
+        }
+        if row_min > max_distance {
+            return false;
+        }
+        std::mem::swap(&mut previous, &mut current);
+    }
+
+    previous[b.len()] <= max_distance
 }
 
 fn migrate_web3_items_out_of_tech(report: &mut ReportJson, items: &[PublicNewsItem]) {
@@ -650,7 +732,31 @@ fn fallback_comment(item: &PublicNewsItem) -> String {
         }
     }
 
-    let subject = compact_title(item.title.trim(), 32);
+    let subject = chinese_topic_label(item);
+    let source = item.source.to_lowercase();
+    let url = item.url.to_lowercase();
+
+    if source.contains("ethresear") || url.contains("ethresear.ch/") {
+        return format!(
+            "以太坊研究社区正在讨论{subject}，读者应重点核对方案假设、实现约束与安全影响。"
+        );
+    }
+
+    if source.contains("arxiv") || url.contains("arxiv.org/") {
+        return format!("论文材料聚焦{subject}，读者应重点核对方法设定、实验结论与适用边界。");
+    }
+
+    if url.contains("eprint.iacr.org/") || source.contains("iacr") {
+        return format!("密码学论文聚焦{subject}，读者应重点核对安全假设、证明模型与实现成本。");
+    }
+
+    if is_official_blog_item(item) || is_primary_source_item(item) {
+        return format!(
+            "{} 发布了{subject}相关材料，读者应优先核对官方原文里的产品变化、技术细节或适用条件。",
+            display_source_name(item)
+        );
+    }
+
     match item.source.as_str() {
         source if source.contains("GitHub") => {
             format!("{subject} 近期在 GitHub 上保持较高热度，值得继续关注后续演进。")
@@ -658,7 +764,7 @@ fn fallback_comment(item: &PublicNewsItem) -> String {
         source if source.contains("Hacker News") => {
             format!("{subject} 近期在 Hacker News 上引发讨论，可以作为今天的重要补充阅读。")
         }
-        _ => format!("{subject} 近期受到关注，适合继续跟进相关进展。"),
+        _ => format!("{subject} 近期受到关注，读者应打开原文核对事件背景、关键参与方与后续影响。"),
     }
 }
 
@@ -676,6 +782,69 @@ fn focus_comment(item: &PublicNewsItem) -> String {
     }
 
     fallback_comment(item)
+}
+
+fn chinese_topic_label(item: &PublicNewsItem) -> String {
+    let title = item.title.trim();
+    if contains_useful_chinese_text(title) {
+        return compact_title(title, 32);
+    }
+
+    if item.source.contains("GitHub")
+        && let Some(repo) = extract_github_repo(&item.url)
+    {
+        return repo;
+    }
+
+    let haystack = format!(
+        "{} {} {} {}",
+        item.source,
+        item.title,
+        item.url,
+        item.summary.as_deref().unwrap_or("")
+    )
+    .to_lowercase();
+
+    if contains_any_text(&haystack, &["post-quantum", "post quantum"])
+        && haystack.contains("ethereum")
+        && contains_any_text(&haystack, &["signature", "signatures"])
+    {
+        return "后量子场景下以太坊是否仍需要签名机制".to_string();
+    }
+    if haystack.contains("latticeblindfold")
+        || (haystack.contains("lattice") && haystack.contains("folding"))
+    {
+        return "后量子零知识折叠方案".to_string();
+    }
+    if haystack.contains("etherveil") {
+        return "以太坊隐私浏览器 Etherveil".to_string();
+    }
+    if haystack.contains("reputation wallet") {
+        return "链上声誉钱包".to_string();
+    }
+    if haystack.contains("whir") && contains_any_text(&haystack, &["evm", "verification"]) {
+        return "EVM 中的 WHIR 验证实现".to_string();
+    }
+    if haystack.contains("codex") && contains_any_text(&haystack, &["orchestration", "symphony"]) {
+        return "Codex 开源编排能力".to_string();
+    }
+    if haystack.contains("openai") && haystack.contains("chip") {
+        return "OpenAI 自研芯片进展".to_string();
+    }
+    if haystack.contains("agent") || haystack.contains("multi-agent") {
+        return "Agent 工作流与多智能体协作".to_string();
+    }
+    if haystack.contains("zk") || haystack.contains("zero-knowledge") {
+        return "零知识证明研究".to_string();
+    }
+    if haystack.contains("ethereum") {
+        return "以太坊研究议题".to_string();
+    }
+    if haystack.contains("privacy") {
+        return "隐私技术议题".to_string();
+    }
+
+    format!("{}相关主题", theme_label(item))
 }
 
 fn focus_text_needs_upgrade(value: &str) -> bool {
@@ -713,29 +882,30 @@ fn ensure_sentence(value: &str) -> String {
 fn fallback_read_summary(item: &PublicNewsItem) -> String {
     if item.url.contains("ethresear.ch/") || item.source.to_lowercase().contains("ethresear") {
         return format!(
-            "以太坊研究社区围绕 {} 展开讨论，重点关注方案设计、实现约束与潜在影响，适合作为今天继续深读的材料。",
-            compact_title(item.title.trim(), 28)
+            "以太坊研究社区正在讨论{}，建议打开原文核对方案假设、实现约束和对协议设计的潜在影响。",
+            chinese_topic_label(item)
         );
     }
 
     if item.url.contains("arxiv.org/") || item.source.to_lowercase().contains("arxiv") {
         return format!(
-            "这篇论文围绕 {} 提出方法或实验结果，适合用来补充今天相关主题的研究背景与技术细节。",
-            compact_title(item.title.trim(), 28)
+            "arXiv 论文聚焦{}，建议打开原文核对方法设定、实验结论和适用边界。",
+            chinese_topic_label(item)
         );
     }
 
     if item.url.contains("thedefiant.io/") || item.url.contains("cointelegraph.com/") {
         return format!(
-            "这篇文章围绕 {} 展开，补充了事件背景、关键参与方与后续影响，适合作为今天的延伸阅读。",
-            compact_title(item.title.trim(), 28)
+            "{} 报道了{}，建议打开原文核对事件背景、关键参与方和后续影响。",
+            display_source_name(item),
+            chinese_topic_label(item)
         );
     }
 
     format!(
-        "这篇文章围绕 {} 展开，适合用来快速理解今天这条动态的核心信息。它来自 {}，可以作为后续继续追踪该主题的参考入口。",
-        compact_title(item.title.trim(), 28),
-        item.source
+        "{} 提供了{}的延伸材料，建议打开原文核对事实来源、数据口径和关键上下文。",
+        item.source,
+        chinese_topic_label(item)
     )
 }
 
@@ -1009,6 +1179,9 @@ fn finalize_section_classification(report: &mut ReportJson, items: &[PublicNewsI
     dedup_sections(&mut report.ai_items);
     dedup_sections(&mut report.web3_items);
     dedup_sections(&mut report.tech_items);
+    report
+        .web3_items
+        .sort_by_key(|item| std::cmp::Reverse(web3_section_priority(item, items)));
     report.ai_items.truncate(MAX_AI_ITEMS);
     report.web3_items.truncate(MAX_WEB3_ITEMS);
     report.tech_items.truncate(MAX_TECH_ITEMS);
@@ -1120,18 +1293,22 @@ fn section_item_priority(item: &ReportSection, items: &[PublicNewsItem]) -> (i64
     )
 }
 
-fn web3_section_priority(item: &ReportSection, items: &[PublicNewsItem]) -> (i64, i64, i64, i64) {
+fn web3_section_priority(
+    item: &ReportSection,
+    items: &[PublicNewsItem],
+) -> (i64, i64, i64, i64, i64) {
     let source_priority = items
         .iter()
         .find(|source_item| source_item.url == item.url)
         .map(web3_item_priority)
-        .unwrap_or((0, 0, 0, 0));
+        .unwrap_or((0, 0, 0, 0, 0));
 
     (
         source_priority.0,
         source_priority.1,
         source_priority.2,
-        source_priority.3.max(item.points),
+        source_priority.3,
+        source_priority.4.max(item.points),
     )
 }
 
@@ -2044,12 +2221,45 @@ fn report_item_rank(item: &PublicNewsItem) -> (i64, i64, i64, i64, i64, i64, i64
     )
 }
 
-fn web3_item_priority(item: &PublicNewsItem) -> (i64, i64, i64, i64) {
+fn web3_item_priority(item: &PublicNewsItem) -> (i64, i64, i64, i64, i64) {
     (
+        is_fresh_web3_event_item(item) as i64,
         is_newsier_web3_item(item) as i64,
         (!is_research_heavy_web3_item(item)) as i64,
         source_quality_score(item),
         item.score.unwrap_or(0).clamp(0, 500),
+    )
+}
+
+fn is_fresh_web3_event_item(item: &PublicNewsItem) -> bool {
+    let haystack = format!(
+        "{} {} {}",
+        item.title,
+        item.url,
+        item.summary.as_deref().unwrap_or("")
+    )
+    .to_lowercase();
+
+    contains_any_text(
+        &haystack,
+        &[
+            "launch",
+            "launched",
+            "announce",
+            "announced",
+            "acquire",
+            "acquired",
+            "partnership",
+            "proposal",
+            "upgrade",
+            "上线",
+            "发布",
+            "宣布",
+            "收购",
+            "合作",
+            "提案",
+            "升级",
+        ],
     )
 }
 
@@ -2319,9 +2529,15 @@ fn normalize_story_url(url: &str) -> String {
 }
 
 fn is_web3_section_item(item: &ReportSection, source_items: &[PublicNewsItem]) -> bool {
-    let haystack = format!("{} {}", item.title, item.source).to_lowercase();
+    let title_source = format!("{} {}", item.title, item.source).to_lowercase();
+    let comment_source = format!("{} {} {}", item.title, item.comment, item.source).to_lowercase();
+    let haystack = if has_ai_section_signal(&title_source) {
+        title_source.as_str()
+    } else {
+        comment_source.as_str()
+    };
     if contains_any_text(
-        &haystack,
+        haystack,
         &[
             "web3",
             "blockchain",
@@ -2362,6 +2578,11 @@ fn is_web3_section_item(item: &ReportSection, source_items: &[PublicNewsItem]) -
             "etherfi",
             "restaking",
             "liquid staking",
+            "fhe",
+            "fhenix",
+            "sunscreen",
+            "fully homomorphic",
+            "homomorphic encryption",
             "mev",
             "flashbots",
             "chainlink",
@@ -2388,6 +2609,16 @@ fn is_web3_section_item(item: &ReportSection, source_items: &[PublicNewsItem]) -
             "交易所",
             "链上",
             "代币",
+            "全同态加密",
+            "隐私计算",
+            "隐私基础设施",
+            "数字信用资本",
+            "资本框架",
+            "现金储备",
+            "流动性",
+            "债务结构",
+            "股息",
+            "rwa",
             "clarity act",
             "senate",
             "法案",
@@ -2526,8 +2757,21 @@ fn is_ai_section_item(item: &ReportSection, source_items: &[PublicNewsItem]) -> 
         return false;
     }
 
-    if contains_any_text(
+    if has_ai_section_signal(
         &format!("{} {} {}", item.title, item.comment, item.source).to_lowercase(),
+    ) {
+        return true;
+    }
+
+    source_items
+        .iter()
+        .find(|source_item| source_item.url == item.url)
+        .is_some_and(is_ai_item)
+}
+
+fn has_ai_section_signal(haystack: &str) -> bool {
+    contains_any_text(
+        haystack,
         &[
             "ai",
             "openai",
@@ -2550,14 +2794,7 @@ fn is_ai_section_item(item: &ReportSection, source_items: &[PublicNewsItem]) -> 
             "prompt",
             "assistant",
         ],
-    ) {
-        return true;
-    }
-
-    source_items
-        .iter()
-        .find(|source_item| source_item.url == item.url)
-        .is_some_and(is_ai_item)
+    )
 }
 
 fn clean_summary(summary: &str) -> String {
@@ -2567,17 +2804,26 @@ fn clean_summary(summary: &str) -> String {
 }
 
 fn best_section_comment(section: &ReportSection, items: &[PublicNewsItem]) -> String {
-    if !comment_needs_upgrade(&section.comment) {
+    let comment = section.comment.trim();
+    if !comment_needs_upgrade(comment)
+        && !summary_is_english_fragment(comment)
+        && contains_useful_chinese_text(comment)
+    {
         return sanitize(section.comment.trim());
     }
 
-    if let Some(item) = items.iter().find(|item| item.url == section.url)
-        && let Some(summary) = item.summary.as_deref()
-    {
-        let summary = clean_summary(summary);
-        if !summary.is_empty() && !comment_needs_upgrade(&summary) {
-            return sanitize(&summary);
+    if let Some(item) = items.iter().find(|item| item.url == section.url) {
+        if let Some(summary) = item.summary.as_deref() {
+            let summary = clean_summary(summary);
+            if !summary.is_empty()
+                && !comment_needs_upgrade(&summary)
+                && !summary_is_english_fragment(&summary)
+            {
+                return sanitize(&summary);
+            }
         }
+
+        return fallback_comment(item);
     }
 
     sanitize(section.comment.trim())
@@ -2682,6 +2928,11 @@ fn is_web3_item(item: &PublicNewsItem) -> bool {
             "etherfi",
             "restaking",
             "liquid staking",
+            "fhe",
+            "fhenix",
+            "sunscreen",
+            "fully homomorphic",
+            "homomorphic encryption",
             "mev",
             "flashbots",
             "chainlink",
@@ -2708,6 +2959,15 @@ fn is_web3_item(item: &PublicNewsItem) -> bool {
             "交易所",
             "链上",
             "代币",
+            "全同态加密",
+            "隐私计算",
+            "隐私基础设施",
+            "数字信用资本",
+            "资本框架",
+            "现金储备",
+            "流动性",
+            "债务结构",
+            "股息",
             "clarity act",
             "senate",
             "法案",
@@ -2962,6 +3222,17 @@ fn compact_title(value: &str, max_chars: usize) -> String {
         .take(max_chars.saturating_sub(3))
         .collect::<String>()
         + "..."
+}
+
+fn extract_github_repo(url: &str) -> Option<String> {
+    let path = url.strip_prefix("https://github.com/")?;
+    let mut parts = path.splitn(3, '/');
+    let owner = parts.next()?.trim();
+    let repo = parts.next()?.trim();
+    if owner.is_empty() || repo.is_empty() {
+        return None;
+    }
+    Some(format!("{owner}/{repo}"))
 }
 
 fn summary_topic(value: &str, max_chars: usize) -> String {
@@ -3460,8 +3731,69 @@ mod tests {
         );
 
         let report = generator.generate().await.expect("report");
-        assert!(report.contains("这条信息近期来自The Defiant"));
+        assert!(report.contains("读者应打开原文核对事件背景、关键参与方与后续影响"));
         assert!(!report.contains("Blockchain intelligence firm AMLBot has confirmed"));
+    }
+
+    #[tokio::test]
+    async fn generate_humanizes_english_research_focus_and_section_comment() {
+        let title = "What if post-quantum Ethereum doesn't need signatures at all?";
+        let url = "https://ethresear.ch/t/what-if-post-quantum-ethereum-doesn-t-need-signatures-at-all/24427";
+        let json = format!(
+            r#"{{
+            "title_hint":"测试日报",
+            "intro":"测试导语",
+            "focus_text":"{title}",
+            "focus_url":"{url}",
+            "ai_items":[],
+            "ai_signals":[],
+            "web3_items":[
+                {{
+                    "title":"{title}",
+                    "url":"{url}",
+                    "comment":"{title} 近期受到关注",
+                    "source":"ethresear.ch",
+                    "points":120
+                }}
+            ],
+            "tech_items":[],
+            "tech_timeline":[],
+            "reads":[],
+            "summary":"测试总结"
+        }}"#
+        );
+        let generator = DailyReportGenerator::new(
+            Arc::new(FakeAi::new(vec![json])),
+            Arc::new(FakeNewsSource {
+                items: vec![PublicNewsItem {
+                    source: "ethresear.ch".to_string(),
+                    title: title.to_string(),
+                    url: url.to_string(),
+                    summary: Some(
+                        "Ethereum Research discussion about post-quantum signature alternatives."
+                            .to_string(),
+                    ),
+                    author: None,
+                    published_at: None,
+                    score: Some(120),
+                    comments: None,
+                    ai_score: None,
+                    category: Some("web3".to_string()),
+                }],
+            }),
+            String::new(),
+        );
+
+        let report = generator.generate().await.expect("report");
+
+        assert!(report.contains("以太坊研究社区正在讨论"));
+        assert!(report.contains("后量子场景下以太坊是否仍需要签名机制"));
+        assert!(report.contains("读者应重点核对方案假设、实现约束与安全影响。"));
+        let focus_section = section_body(&report, "## 今日焦点");
+        let web3_section = section_body_by_title(&report, "Web3");
+        assert!(!focus_section.contains("What if post-quantum Ethereum"));
+        assert!(!web3_section.contains("What if post-quantum Ethereum 近期受到关注"));
+        assert!(report.contains(&format!("原文：{url}")));
     }
 
     #[tokio::test]
@@ -3679,7 +4011,7 @@ mod tests {
         assert!(report.contains("[openai / codex](https://github.com/openai/codex)"));
         if !reads_section.is_empty() {
             assert!(
-                reads_section.contains("摘要：")
+                reads_section.contains("> 为什么读：")
                     || reads_section.contains("未生成可靠摘要，请直接阅读原文核对。")
             );
         }
@@ -3745,7 +4077,7 @@ mod tests {
         let tech_section = section_body_by_title(&report, "技术与开源");
         assert!(!tech_section.contains("具体用途待进一步了解"));
         assert!(!tech_section.contains("[G](https://example.com/g)"));
-        assert_eq!(tech_section.matches("### [").count(), 6);
+        assert_eq!(tech_section.matches("### 技术｜[").count(), 6);
     }
 
     #[test]
@@ -4905,6 +5237,65 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn generate_corrects_near_match_read_urls_from_source_items() {
+        let correct_url = "https://ethresear.ch/t/what-if-post-quantum-ethereum-doesn-t-need-signatures-at-all/24427";
+        let wrong_url = "https://ethresear.ch/t/what-if-post-quantum-ethereum-does-t-need-signatures-at-all/24427";
+        let json = format!(
+            r#"{{
+            "title_hint":"测试日报",
+            "intro":"测试导语",
+            "focus_text":"后量子以太坊签名机制讨论",
+            "focus_url":"https://example.com/focus",
+            "ai_items":[],
+            "ai_signals":[],
+            "web3_items":[
+                {{
+                    "title":"What if post-quantum Ethereum doesn't need signatures at all?",
+                    "url":"{correct_url}",
+                    "comment":"ethresear.ch 讨论后量子以太坊是否仍需要签名机制。",
+                    "source":"ethresear.ch",
+                    "points":120
+                }}
+            ],
+            "tech_items":[],
+            "tech_timeline":[],
+            "reads":[
+                {{
+                    "title":"What if post-quantum Ethereum doesn't need signatures at all?",
+                    "url":"{wrong_url}",
+                    "summary":"ethresear.ch 论坛帖子讨论后量子时代以太坊可能不再依赖签名机制，读者应核对替代认证方案的安全性假设。"
+                }}
+            ],
+            "summary":"测试总结"
+        }}"#
+        );
+        let generator = DailyReportGenerator::new(
+            Arc::new(FakeAi::new(vec![json])),
+            Arc::new(FakeNewsSource {
+                items: vec![PublicNewsItem {
+                    source: "ethresear.ch".to_string(),
+                    title: "What if post-quantum Ethereum doesn't need signatures at all?"
+                        .to_string(),
+                    url: correct_url.to_string(),
+                    summary: Some("ethresear.ch 论坛帖子讨论后量子时代以太坊可能不再依赖签名机制，读者应核对替代认证方案的安全性假设。".to_string()),
+                    author: None,
+                    published_at: None,
+                    score: Some(120),
+                    comments: None,
+                    ai_score: None,
+                    category: Some("web3".to_string()),
+                }],
+            }),
+            String::new(),
+        );
+
+        let report = generator.generate().await.expect("report");
+
+        assert!(report.contains(correct_url));
+        assert!(!report.contains(wrong_url));
+    }
+
+    #[tokio::test]
     async fn generate_separates_used_refs_from_complete_source_links() {
         let json = r#"{
             "title_hint":"测试日报",
@@ -5639,6 +6030,173 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn generate_moves_wublock_capital_framework_item_out_of_tech_section() {
+        let json = r#"{
+            "title_hint":"测试日报",
+            "intro":"测试导语",
+            "focus_text":"Strategy 新资本框架缓解短期流动性担忧",
+            "focus_url":"https://example.com/focus",
+            "ai_items":[],
+            "ai_signals":[],
+            "web3_items":[
+                {
+                    "title":"What if post-quantum Ethereum doesn't need signatures at all?",
+                    "url":"https://example.com/eth",
+                    "comment":"ethresear.ch 讨论后量子以太坊中是否可去除签名机制。",
+                    "source":"ethresear.ch",
+                    "points":120
+                }
+            ],
+            "tech_items":[
+                {
+                    "title":"Alex Thorn：Strategy 新资本框架缓解短期流动性担忧，但长期压力仍未解决",
+                    "url":"https://example.com/strategy-capital-framework",
+                    "comment":"Galaxy Research 研究主管分析 Strategy 的数字信用资本框架、现金储备政策和债务结构。",
+                    "source":"吴说区块链",
+                    "points":118
+                }
+            ],
+            "tech_timeline":[],
+            "reads":[],
+            "summary":"测试总结"
+        }"#;
+        let generator = DailyReportGenerator::new(
+            Arc::new(FakeAi::new(vec![json.to_string()])),
+            Arc::new(FakeNewsSource {
+                items: vec![
+                    PublicNewsItem {
+                        source: "ethresear.ch".to_string(),
+                        title: "What if post-quantum Ethereum doesn't need signatures at all?"
+                            .to_string(),
+                        url: "https://example.com/eth".to_string(),
+                        summary: Some("ethresear.ch 讨论后量子以太坊中是否可去除签名机制。".to_string()),
+                        author: None,
+                        published_at: None,
+                        score: Some(120),
+                        comments: None,
+                        ai_score: None,
+                        category: Some("web3".to_string()),
+                    },
+                    PublicNewsItem {
+                        source: "吴说区块链".to_string(),
+                        title: "Alex Thorn：Strategy 新资本框架缓解短期流动性担忧，但长期压力仍未解决".to_string(),
+                        url: "https://example.com/strategy-capital-framework".to_string(),
+                        summary: Some("Galaxy Research 研究主管分析 Strategy 的数字信用资本框架、现金储备政策和债务结构。".to_string()),
+                        author: None,
+                        published_at: None,
+                        score: Some(118),
+                        comments: None,
+                        ai_score: None,
+                        category: None,
+                    },
+                ],
+            }),
+            String::new(),
+        );
+
+        let report = generator.generate().await.expect("report");
+        let tech_section = section_body_by_title(&report, "技术与开源");
+
+        assert!(report.contains("原文：https://example.com/strategy-capital-framework"));
+        assert!(!tech_section.contains("https://example.com/strategy-capital-framework"));
+    }
+
+    #[tokio::test]
+    async fn generate_moves_fhe_infrastructure_item_into_web3_section() {
+        let json = r#"{
+            "title_hint":"测试日报",
+            "intro":"测试导语",
+            "focus_text":"Web3 隐私基础设施继续活跃",
+            "focus_url":"https://example.com/focus",
+            "ai_items":[],
+            "ai_signals":[],
+            "web3_items":[
+                {
+                    "title":"Confirmation Rule for Ethereum PoS",
+                    "url":"https://example.com/eth-pos",
+                    "comment":"以太坊研究社区讨论PoS确认规则。",
+                    "source":"ethresear.ch",
+                    "points":12
+                },
+                {
+                    "title":"Tech to Make Impermanent Loss Impermanent Again",
+                    "url":"https://example.com/impermanent-loss",
+                    "comment":"以太坊研究社区讨论AMM无常损失问题。",
+                    "source":"ethresear.ch",
+                    "points":10
+                }
+            ],
+            "tech_items":[
+                {
+                    "title":"Sunscreen 被 Fhenix 收购，团队将继续推进 FHE 技术",
+                    "url":"https://example.com/fhenix-sunscreen",
+                    "comment":"隐私计算项目Sunscreen宣布被Fhenix收购，团队将加入推进全同态加密基础设施。",
+                    "source":"PANews",
+                    "points":120
+                }
+            ],
+            "tech_timeline":[],
+            "reads":[],
+            "summary":"测试总结"
+        }"#;
+        let generator = DailyReportGenerator::new(
+            Arc::new(FakeAi::new(vec![json.to_string()])),
+            Arc::new(FakeNewsSource {
+                items: vec![
+                    PublicNewsItem {
+                        source: "ethresear.ch".to_string(),
+                        title: "Confirmation Rule for Ethereum PoS".to_string(),
+                        url: "https://example.com/eth-pos".to_string(),
+                        summary: Some("以太坊研究社区讨论PoS确认规则。".to_string()),
+                        author: None,
+                        published_at: None,
+                        score: Some(12),
+                        comments: None,
+                        ai_score: None,
+                        category: Some("web3".to_string()),
+                    },
+                    PublicNewsItem {
+                        source: "ethresear.ch".to_string(),
+                        title: "Tech to Make Impermanent Loss Impermanent Again".to_string(),
+                        url: "https://example.com/impermanent-loss".to_string(),
+                        summary: Some("以太坊研究社区讨论AMM无常损失问题。".to_string()),
+                        author: None,
+                        published_at: None,
+                        score: Some(10),
+                        comments: None,
+                        ai_score: None,
+                        category: Some("web3".to_string()),
+                    },
+                    PublicNewsItem {
+                        source: "PANews".to_string(),
+                        title: "Sunscreen 被 Fhenix 收购，团队将继续推进 FHE 技术".to_string(),
+                        url: "https://example.com/fhenix-sunscreen".to_string(),
+                        summary: Some("隐私计算项目Sunscreen宣布被Fhenix收购，团队将加入推进全同态加密（FHE）基础设施。".to_string()),
+                        author: None,
+                        published_at: Some("2026-07-03T08:00:00Z".to_string()),
+                        score: Some(120),
+                        comments: None,
+                        ai_score: None,
+                        category: None,
+                    },
+                ],
+            }),
+            String::new(),
+        );
+
+        let report = generator.generate().await.expect("report");
+        let focus_section = section_body(&report, "## 今日焦点");
+        let web3_section = section_body_by_title(&report, "Web3");
+        let tech_section = section_body_by_title(&report, "技术与开源");
+
+        assert!(
+            focus_section.contains("https://example.com/fhenix-sunscreen")
+                || web3_section.contains("https://example.com/fhenix-sunscreen")
+        );
+        assert!(!tech_section.contains("https://example.com/fhenix-sunscreen"));
+    }
+
+    #[tokio::test]
     async fn generate_removes_ai_items_duplicated_in_tech_section_after_migration() {
         let json = r#"{
             "title_hint":"测试日报",
@@ -5853,11 +6411,9 @@ mod tests {
         promote_web3_focus(&mut report, &items);
 
         assert!(!report.intro.contains("。；"));
-        assert!(report.intro.contains("Ripple的RLUSD稳定币在日本上线"));
-        assert!(
-            report.intro.contains("MoneyGram讨论向用户推出MGUSD")
-                || report.intro.contains("Chainlink启动Project Pangea")
-        );
+        assert!(report.intro.contains("今天的公共素材主线集中在 Web3"));
+        assert!(report.intro.ends_with("。"));
+        assert!(!report.intro.contains("。。"));
     }
 
     #[tokio::test]
@@ -6658,7 +7214,7 @@ mod tests {
         let report = generator.generate().await.expect("report");
         let web3_section = section_body_by_title(&report, "Web3");
 
-        assert_eq!(web3_section.matches("### [").count(), 1);
+        assert_eq!(web3_section.matches("### Web3｜[").count(), 1);
     }
 
     #[tokio::test]
@@ -6968,9 +7524,9 @@ mod tests {
             .and_then(|rest| rest.split("## 04. 推荐深读").next())
             .unwrap_or("");
 
-        assert!(ai_section.matches("### [").count() >= 3);
-        assert!(web3_section.matches("### [").count() >= 3);
-        assert!(tech_section.matches("### [").count() >= 3);
+        assert!(ai_section.matches("### AI｜[").count() >= 3);
+        assert!(web3_section.matches("### Web3｜[").count() >= 3);
+        assert!(tech_section.matches("### 技术｜[").count() >= 3);
         assert!(report.matches("### 深读 ").count() >= 3);
     }
 

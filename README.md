@@ -37,7 +37,7 @@ The project currently supports:
 - The default `web3_media_urls` list now includes a PANews RSS feed, and `panewslab.com` links are treated as curated traceable sources so Chinese Web3 articles can survive topic filtering with full original URLs intact.
 - The default `web3_media_urls` list also includes the WuBlockchain Atom feed, and `wublock123.com` links are treated as curated traceable sources so Chinese Web3 exchange/news flashes can flow into the report pipeline with full original URLs.
 - WeChat public-account report drafts use a fixed personal-account cover for the `AI · Web3 最新日报` column, branded as `寻月隐君`; the cover now uses a light background with dark title text for better mobile-preview contrast, while `moonpub` still owns final rendering and upload.
-- WeChat daily reports render as a review-friendly article layout: intro, "today's three things", a three-part focus callout, numbered AI / Web3 / tech / deep-read sections, "worth watching" item notes, polished source quote lines, and separate referenced-source versus complete-source-link card blocks with source, note, and raw original URL.
+- WeChat daily reports render as a review-friendly article layout: intro, "today's three things", a three-part focus callout, numbered AI / Web3 / tech / deep-read sections, compact body cards with "worth watching", source evidence, and raw original URLs, plus separate referenced-source versus complete-source-link card blocks.
 
 ## Status
 
