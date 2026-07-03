@@ -223,7 +223,30 @@ The command returns structured JSON with the resolved account name, feed URL, ar
 
 The current `wechat_rss` reader also normalizes a few common feed variants so mixed upstream services stay usable: Atom `<author><name>`, RSS `dc:creator`, and `pubDate` / `updated` / `published` / `dc:date` timestamps are mapped into the same `author` and UTC `published_at` fields before they enter the daily-report prompt.
 
+For a single public-account article URL, the preferred future shape is different from the feed-backed path above. If the goal is "take one `mp.weixin.qq.com/s/...` link and turn it into markdown plus downloaded images", treat that as an explicit helper workflow, not as a built-in main-process fetcher. The current best reference is [`jackwener/wechat-article-to-markdown`](https://github.com/jackwener/wechat-article-to-markdown): QunMind should eventually call a tool like that through an opt-in CLI / MCP entry, consume structured output, and keep failures isolated from the normal RSS-backed report pipeline.
+
+That opt-in entry now exists in skeleton form:
+
+```bash
+cargo run -- wechat-article-url \
+  --url 'https://mp.weixin.qq.com/s/xxxxxxxx'
+```
+
+It currently requires an explicit external helper configuration first:
+
+```toml
+[public_sources]
+wechat_article_helper_bin = "wechat-article-to-markdown"
+wechat_article_helper_output_dir = "/tmp/qunmind-wechat-article-helper"
+```
+
+Without that helper, QunMind fails early with a clear config error instead of attempting unstable built-in scraping.
+
+When the helper succeeds and leaves a markdown file behind, QunMind now also best-effort parses the generated article header and first useful body paragraph back into structured JSON fields such as `title`, `account_name`, `published_at`, `source_url`, and `summary`, alongside `article_dir`, `markdown_path`, and `images_dir`. The intent is to make a single WeChat article link immediately reusable as a traceable daily-report source item, while still keeping the actual browser automation and anti-bot surface outside the main process.
+
 For X / Twitter-style first-hand signals, QunMind uses the same lightweight boundary through `[public_sources] x_rss_*`: provide RSSHub, Nitter-compatible, or self-hosted X-list RSS / Atom feeds, and QunMind will normalize them as `X RSS` public news items. The main process does not embed X login, scraping, proxy, or anti-bot logic.
+
+If you want the daily report to absorb more first-hand official context instead of leaning mostly on news flashes, QunMind now also supports `[public_sources] official_blogs_*`. This source boundary is meant for stable RSS / Atom feeds from official publishers such as OpenAI, Google Blog, and Cloudflare Blog, so product releases, research posts, and infrastructure announcements can enter the report pipeline as durable upstream material rather than one-off manual links.
 
 Manual curated items such as `x.com`, `twitter.com`, Nitter-compatible links, and WeChat public-account URLs are treated as explicitly selected material rather than broad-feed noise, so the topic keyword filter will not drop them simply because the title does not contain a configured keyword.
 
@@ -274,6 +297,7 @@ Recent report-quality hardening also now lives inside `src/daily_report/` instea
 The current operational interpretation is:
 - the minimum viable target is complete: generate report -> push draft -> persist receipt -> inspect publish history
 - if a receipt shows `automation_state = "login_required"`, the next operational step is `qunmind report-recover-automation --report-name "微信公众号日报"` or `just report-recover-automation config.toml '微信公众号日报'`
+- if `report-login` fails immediately with `oneshot canceled`, treat that as the current upstream `moonpub login` bug rather than a QR-scan mistake; switch straight to `qunmind report-recover-automation --report-name "微信公众号日报"` or `qunmind report-preview --report-name "微信公众号日报" --headed` so the headed automation path can perform the login step
 - the remaining risk is no longer "can it publish at all", but rather publish-IP drift, automation warnings, and report quality
 
 Notes:

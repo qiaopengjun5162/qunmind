@@ -99,6 +99,10 @@ pub fn login_wechat_backend(moonpub_bin: &str, articles_dir: &str) -> Result<Str
     Ok(stdout)
 }
 
+pub fn wechat_login_recovery_hint() -> &'static str {
+    "当前 moonpub login 上游存在已知问题：浏览器会提前退出并报 oneshot canceled。请改用 qunmind report-recover-automation 或 qunmind report-preview --headed 走可扫码的浏览器自动化入口。"
+}
+
 pub fn configure_wechat_backend(
     moonpub_bin: &str,
     articles_dir: &str,

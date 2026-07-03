@@ -9,6 +9,7 @@ use qunmind::config::{ChannelKind, Config};
 use qunmind::error::QunMindError;
 use qunmind::publisher::{
     configure_wechat_backend, login_wechat_backend, preview_wechat_backend, publish_markdown,
+    wechat_login_recovery_hint,
 };
 use qunmind::reporting::{
     build_ai_client, build_message_store, build_public_news_source, effective_publish_history_name,
@@ -19,6 +20,9 @@ use qunmind::reporting::{
 };
 use qunmind::scheduler::daily_report::DailyReportScheduler;
 use qunmind::source::wechat_rss::{fetch_named_wechat_account_articles, find_wechat_account};
+use qunmind::wechat_article_helper::{
+    run_wechat_article_url_helper, wechat_article_url_response_json,
+};
 use qunmind::wx_cli_commands::run_wx_cli_command;
 use std::path::Path;
 use std::sync::Arc;
@@ -236,10 +240,24 @@ async fn run_diagnostic_command(
                 .into());
             }
 
-            let raw_output = login_wechat_backend(
+            let raw_output = match login_wechat_backend(
                 &report_target.wechat_bin,
                 &report_target.wechat_articles_dir,
-            )?;
+            ) {
+                Ok(raw_output) => raw_output,
+                Err(err) => {
+                    let message = err.to_string();
+                    if message.contains("oneshot canceled") {
+                        return Err(QunMindError::Channel(format!(
+                            "{} 原始错误：{}",
+                            wechat_login_recovery_hint(),
+                            message
+                        ))
+                        .into());
+                    }
+                    return Err(err.into());
+                }
+            };
             println!(
                 "{}",
                 serde_json::to_string_pretty(&serde_json::json!({
@@ -287,7 +305,7 @@ async fn run_diagnostic_command(
         }
         CliCommand::ReportRecoverAutomation {
             report_name,
-            headed,
+            headed: _headed,
         } => {
             let report_target = resolve_manual_daily_report_target(config, &report_name)?;
             if report_target.output != "wechat" {
@@ -298,10 +316,7 @@ async fn run_diagnostic_command(
                 .into());
             }
 
-            let login_output = login_wechat_backend(
-                &report_target.wechat_bin,
-                &report_target.wechat_articles_dir,
-            )?;
+            let headed = true;
             let configure_output = configure_wechat_backend(
                 &report_target.wechat_bin,
                 &report_target.wechat_articles_dir,
@@ -315,8 +330,8 @@ async fn run_diagnostic_command(
                     "output": report_target.output,
                     "wechat_bin": report_target.wechat_bin,
                     "wechat_articles_dir": report_target.wechat_articles_dir,
-                    "headed": headed,
-                    "login_output": login_output,
+                    "headed": true,
+                    "login_strategy": "configure_flow_reuses_setup_editor_login",
                     "configure_output": configure_output,
                 }))?
             );
@@ -397,6 +412,15 @@ async fn run_diagnostic_command(
                     "count": items_json.len(),
                     "items": items_json,
                 }))?
+            );
+            Ok(())
+        }
+        CliCommand::WechatArticleUrl { url, output_dir } => {
+            let result =
+                run_wechat_article_url_helper(&config.public_sources, &url, output_dir.as_deref())?;
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&wechat_article_url_response_json(&result))?
             );
             Ok(())
         }
@@ -744,7 +768,9 @@ mod tests {
             max_links = 3
             "#,
         );
-        let ai = Arc::new(ManualReportAi::new("日报正文"));
+        let ai = Arc::new(ManualReportAi::new(
+            r#"{"title_hint":"群内日报","intro":"今天群里重点讨论日报联调与发布","focus_text":"群里分享了一条与日报联调相关的外部链接","focus_url":"https://example.com/report","ai_items":[],"ai_signals":[],"web3_items":[],"tech_items":[{"title":"日报链接","url":"https://example.com/report","comment":"群内讨论聚焦这条日报联调链接","source":"群聊链接 · example.com","points":130}],"tech_timeline":[],"reads":[{"title":"联调复盘","url":"https://example.com/postmortem","summary":"alice 在群里补充了这篇联调复盘链接，梳理了当天日报发布链路的关键节点、配置依赖和验证结果，适合作为继续优化前的背景材料。"}],"summary":"今天群里围绕日报联调与发布链路做了集中沟通。"}"#,
+        ));
         let store = Arc::new(RecordingPublishReceiptStoreWithMessages {
             messages: vec![StoredMessage {
                 message_id: "m1".to_string(),
@@ -756,16 +782,28 @@ mod tests {
                 text: Some("今天完成了日报联调".to_string()),
                 received_at: chrono::Utc::now(),
             }],
-            links: vec![StoredLink {
-                message_id: "m1".to_string(),
-                channel: "wx_cli".to_string(),
-                chat_id: "group-1".to_string(),
-                from: "alice".to_string(),
-                url: "https://example.com/report".to_string(),
-                normalized_url: "https://example.com/report".to_string(),
-                title: Some("日报链接".to_string()),
-                received_at: chrono::Utc::now(),
-            }],
+            links: vec![
+                StoredLink {
+                    message_id: "m1".to_string(),
+                    channel: "wx_cli".to_string(),
+                    chat_id: "group-1".to_string(),
+                    from: "alice".to_string(),
+                    url: "https://example.com/report".to_string(),
+                    normalized_url: "https://example.com/report".to_string(),
+                    title: Some("日报链接".to_string()),
+                    received_at: chrono::Utc::now(),
+                },
+                StoredLink {
+                    message_id: "m1".to_string(),
+                    channel: "wx_cli".to_string(),
+                    chat_id: "group-1".to_string(),
+                    from: "alice".to_string(),
+                    url: "https://example.com/postmortem".to_string(),
+                    normalized_url: "https://example.com/postmortem".to_string(),
+                    title: Some("联调复盘".to_string()),
+                    received_at: chrono::Utc::now(),
+                },
+            ],
             receipts: Mutex::new(Vec::new()),
         });
 
@@ -786,12 +824,26 @@ mod tests {
             "manual daily report markdown",
         );
 
-        assert_eq!(markdown, "日报正文");
+        assert!(markdown.contains("title: \"AI · Web3 最新日报｜"));
+        assert!(markdown.contains("今日三件事"));
+        assert!(markdown.contains("### 正文引用来源（"));
+        assert!(markdown.contains("### 深读 01"));
+        assert!(markdown.contains("原文：https://example.com/report"));
+        assert!(markdown.contains("原文：https://example.com/postmortem"));
         let requests = ai.requests.lock().await;
         assert_eq!(requests.len(), 1);
         assert!(requests[0][0].content.contains("请总结群聊"));
         assert!(requests[0][0].content.contains("今天完成了日报联调"));
-        assert!(requests[0][0].content.contains("日报链接"));
+        assert!(
+            requests[0][0]
+                .content
+                .contains("URL: https://example.com/report")
+        );
+        assert!(
+            requests[0][0]
+                .content
+                .contains("URL: https://example.com/postmortem")
+        );
     }
 
     #[tokio::test]

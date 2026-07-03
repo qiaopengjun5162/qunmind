@@ -1,6 +1,9 @@
 use crate::source::PublicNewsItem;
 
-pub(super) fn build_json_prompt(items: &[PublicNewsItem]) -> String {
+pub(super) fn build_json_prompt_with_context(
+    items: &[PublicNewsItem],
+    extra_context: Option<&str>,
+) -> String {
     let mut news_list = String::new();
     for (i, item) in items.iter().enumerate() {
         let score_display = item
@@ -27,8 +30,16 @@ pub(super) fn build_json_prompt(items: &[PublicNewsItem]) -> String {
         ));
     }
 
+    let extra_context = extra_context
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| format!("额外要求：\n{value}\n\n"))
+        .unwrap_or_default();
+
     format!(
         r#"你的角色：信息通道，不是观点作者。你只做一件事——把新闻列表中最重要的技术动态筛选、归类、转述出来。不编造任何内容，不表达个人观点，不做预测和判断。每一条输出都必须能从新闻列表中找到出处，并且必须能通过对应 URL 追溯到原始资料。
+
+{extra_context} 
 
 根据以下新闻列表，输出一个 JSON 对象（不要输出任何其他内容，不要用代码块包裹，直接输出裸 JSON）。
 

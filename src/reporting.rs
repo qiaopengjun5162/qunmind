@@ -1,13 +1,12 @@
+use crate::ai::AiClient;
 use crate::ai::hermes::HermesClient;
 use crate::ai::openai::OpenAiClient;
-use crate::ai::{AiClient, ChatMessage};
 use crate::config::{AiProvider, Config};
 use crate::daily_report::DailyReportGenerator;
 use crate::error::QunMindError;
 use crate::publisher::{PublishReceipt, PublishTarget};
-use crate::scheduler::daily_report::build_group_report_prompt;
 use crate::source;
-use crate::source::PublicNewsSource;
+use crate::source::{PublicNewsItem, PublicNewsSource};
 use crate::storage::postgres::PostgresMessageStore;
 use crate::storage::{MessageStore, StoredLink, StoredMessage, StoredPublishReceipt};
 use std::collections::HashSet;
@@ -470,6 +469,8 @@ pub async fn generate_manual_daily_report_markdown(
             max_messages: report_target.max_messages,
             max_links: report_target.max_links,
         },
+        &report_target.daily_quote,
+        previous_markdown,
     )
     .await?
     {
@@ -537,6 +538,8 @@ pub async fn generate_group_report_from_store(
     ai_client: Arc<dyn AiClient>,
     message_store: Arc<dyn MessageStore>,
     request: &ReportContentRequest,
+    daily_quote: &str,
+    previous_markdown: Option<&str>,
 ) -> anyhow::Result<Option<String>> {
     let lookback_hours = request.lookback_hours.max(1);
     let max_messages = request.max_messages.max(1);
@@ -548,18 +551,177 @@ pub async fn generate_group_report_from_store(
         load_report_messages(message_store.as_ref(), request, since, until, max_messages).await?;
     let links = load_report_links(message_store.as_ref(), request, since, until, max_links).await?;
 
-    if !messages.is_empty() {
-        let prompt = build_group_report_prompt(&request.prompt, &messages, &links, since, until);
-        let markdown = ai_client
-            .chat(&[ChatMessage {
-                role: "user".to_string(),
-                content: prompt,
-            }])
-            .await?;
+    let items = group_report_items(&messages, &links, since, until);
+    if !items.is_empty() {
+        let generator = DailyReportGenerator::new(
+            ai_client,
+            Arc::new(source::manual::ManualSource::new(&Default::default())),
+            daily_quote.to_string(),
+        )
+        .with_recent_used_urls(previous_report_urls(previous_markdown))
+        .with_extra_prompt_context(Some(request.prompt.clone()));
+        let markdown = generator.generate_from_curated_items(items).await?;
         return Ok(Some(markdown));
     }
 
     Ok(None)
+}
+
+fn group_report_items(
+    messages: &[StoredMessage],
+    links: &[StoredLink],
+    since: chrono::DateTime<chrono::Utc>,
+    until: chrono::DateTime<chrono::Utc>,
+) -> Vec<PublicNewsItem> {
+    let mut items = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+
+    for link in links {
+        let url = link.url.trim();
+        if url.is_empty() || !seen.insert(link.normalized_url.trim().to_string()) {
+            continue;
+        }
+
+        let related_message = messages
+            .iter()
+            .find(|message| message.message_id == link.message_id);
+        let context = related_message
+            .and_then(|message| message.text.as_deref())
+            .map(compact_message_text)
+            .filter(|text| !text.is_empty());
+        let title = link
+            .title
+            .as_deref()
+            .filter(|title| !title.trim().is_empty())
+            .map(str::trim)
+            .map(ToOwned::to_owned)
+            .or_else(|| context.clone())
+            .unwrap_or_else(|| url.to_string());
+
+        let summary = context.as_ref().map(|text| {
+            format!(
+                "群内在 {} 到 {} 之间分享了这条链接，发送者是 {}。相关上下文：{}",
+                since.format("%H:%M"),
+                until.format("%H:%M"),
+                display_sender(&link.from),
+                text
+            )
+        });
+
+        items.push(PublicNewsItem {
+            source: format!("群聊链接 · {}", source_label_from_url(url)),
+            title,
+            url: url.to_string(),
+            summary,
+            author: Some(link.from.clone()).filter(|value| !value.trim().is_empty()),
+            published_at: Some(link.received_at.to_rfc3339()),
+            score: Some(group_story_score(
+                related_message.is_some(),
+                &link.title,
+                &context,
+            )),
+            comments: None,
+            ai_score: None,
+            category: Some("manual:group_link".to_string()),
+        });
+    }
+
+    if items.is_empty() {
+        for message in messages {
+            let Some(text) = message.text.as_deref().map(compact_message_text) else {
+                continue;
+            };
+            if text.is_empty() {
+                continue;
+            }
+
+            items.push(PublicNewsItem {
+                source: "群聊消息".to_string(),
+                title: compact_group_message_title(&text),
+                url: format!("qunmind://message/{}", message.message_id),
+                summary: Some(format!(
+                    "群内在 {} 到 {} 之间讨论了这条消息，发送者是 {}。相关上下文：{}",
+                    since.format("%H:%M"),
+                    until.format("%H:%M"),
+                    display_sender(&message.from),
+                    text
+                )),
+                author: Some(message.from.clone()).filter(|value| !value.trim().is_empty()),
+                published_at: Some(message.received_at.to_rfc3339()),
+                score: Some(group_message_score(&text)),
+                comments: None,
+                ai_score: None,
+                category: Some("manual:group_message".to_string()),
+            });
+        }
+    }
+
+    items
+}
+
+fn compact_message_text(text: &str) -> String {
+    text.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+fn compact_group_message_title(text: &str) -> String {
+    let mut chars = text.chars();
+    let shortened = chars.by_ref().take(36).collect::<String>();
+    if chars.next().is_some() {
+        format!("{shortened}...")
+    } else {
+        shortened
+    }
+}
+
+fn display_sender(sender: &str) -> &str {
+    let sender = sender.trim();
+    if sender.is_empty() {
+        "群成员"
+    } else {
+        sender
+    }
+}
+
+fn source_label_from_url(url: &str) -> String {
+    let without_scheme = url
+        .trim()
+        .split_once("://")
+        .map(|(_, rest)| rest)
+        .unwrap_or(url.trim());
+    without_scheme
+        .split('/')
+        .next()
+        .unwrap_or("外部来源")
+        .trim()
+        .to_string()
+}
+
+fn group_story_score(
+    has_related_message: bool,
+    title: &Option<String>,
+    context: &Option<String>,
+) -> i64 {
+    let mut score = 80;
+    if has_related_message {
+        score += 30;
+    }
+    if title
+        .as_deref()
+        .is_some_and(|value| !value.trim().is_empty())
+    {
+        score += 20;
+    }
+    if context
+        .as_deref()
+        .is_some_and(|value| value.chars().count() >= 16)
+    {
+        score += 20;
+    }
+    score
+}
+
+fn group_message_score(text: &str) -> i64 {
+    70 + (text.chars().count() as i64 / 8).clamp(0, 25)
 }
 
 async fn load_report_messages(
@@ -605,6 +767,7 @@ pub fn has_enabled_public_sources(config: &Config) -> bool {
         || sources.slerf_blog_enabled
         || sources.wechat_rss_enabled
         || sources.x_rss_enabled
+        || sources.official_blogs_enabled
         || sources.web3_media_enabled
         || sources.hn_daily_enabled
         || sources.arxiv_enabled
@@ -810,7 +973,19 @@ fn report_status_recommended_tool_calls(status: &str, report_name: &str) -> Vec<
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ai::ChatMessage;
+    use crate::channel::MsgType;
+    use crate::storage::NewMessage;
+    use async_trait::async_trait;
     use chrono::Utc;
+    use std::sync::{Mutex, MutexGuard, OnceLock};
+
+    fn env_lock() -> MutexGuard<'static, ()> {
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| Mutex::new(()))
+            .lock()
+            .expect("env lock")
+    }
 
     fn config_from(input: &str) -> Config {
         match toml::from_str(input) {
@@ -877,6 +1052,7 @@ mod tests {
 
     #[test]
     fn report_status_blockers_detect_wechat_prerequisites() {
+        let _lock = env_lock();
         let _appid_guard = EnvVarGuard::remove("WECHAT_APPID");
         let _secret_guard = EnvVarGuard::remove("WECHAT_SECRET");
         let config = config_from(
@@ -903,6 +1079,7 @@ mod tests {
 
     #[test]
     fn report_status_blockers_detect_missing_runtime_dependencies() {
+        let _lock = env_lock();
         let _appid_guard = EnvVarGuard::set("WECHAT_APPID", "wx-test");
         let _secret_guard = EnvVarGuard::remove("WECHAT_SECRET");
         let config = config_from(
@@ -928,6 +1105,7 @@ mod tests {
 
     #[test]
     fn report_status_blockers_accept_real_paths_without_public_sources() {
+        let _lock = env_lock();
         let _appid_guard = EnvVarGuard::set("WECHAT_APPID", "wx-test");
         let _secret_guard = EnvVarGuard::set("WECHAT_SECRET", "secret-test");
         let dir =
@@ -970,8 +1148,111 @@ mod tests {
         assert!(has_enabled_public_sources(&config));
     }
 
+    struct ReportingAi {
+        reply: String,
+    }
+
+    #[async_trait]
+    impl AiClient for ReportingAi {
+        async fn chat(&self, _messages: &[ChatMessage]) -> crate::error::Result<String> {
+            Ok(self.reply.clone())
+        }
+    }
+
+    struct ReportingStore {
+        messages: Vec<StoredMessage>,
+        links: Vec<StoredLink>,
+    }
+
+    #[async_trait]
+    impl MessageStore for ReportingStore {
+        async fn save(&self, _message: NewMessage) -> crate::error::Result<()> {
+            Ok(())
+        }
+
+        async fn text_messages(
+            &self,
+            _chat_id: &str,
+            _since: chrono::DateTime<chrono::Utc>,
+            _until: chrono::DateTime<chrono::Utc>,
+            _limit: i64,
+        ) -> crate::error::Result<Vec<StoredMessage>> {
+            Ok(self.messages.clone())
+        }
+
+        async fn recent_links(
+            &self,
+            _chat_id: &str,
+            _since: chrono::DateTime<chrono::Utc>,
+            _until: chrono::DateTime<chrono::Utc>,
+            _limit: i64,
+        ) -> crate::error::Result<Vec<StoredLink>> {
+            Ok(self.links.clone())
+        }
+    }
+
+    #[tokio::test]
+    async fn group_report_from_store_uses_unified_markdown_renderer() {
+        let now = chrono::Utc::now();
+        let markdown = generate_group_report_from_store(
+            Arc::new(ReportingAi {
+                reply: r#"{"title_hint":"群内日报","intro":"群里分享了一条值得核对的日报链接","focus_text":"群成员分享了日报联调链接","focus_url":"https://example.com/report","ai_items":[],"ai_signals":[],"web3_items":[],"tech_items":[{"title":"日报链接","url":"https://example.com/report","comment":"这条链接对应当天的日报联调进展","source":"群聊链接 · example.com","points":130}],"tech_timeline":[],"reads":[{"title":"联调复盘","url":"https://example.com/postmortem","summary":"alice 在群里补充了这篇联调复盘链接，系统梳理了当天日报发布链路的关键节点和验证结果，适合作为继续优化前的阅读入口。"}],"summary":"今天群里集中讨论了日报联调。"}"#.to_string(),
+            }),
+            Arc::new(ReportingStore {
+                messages: vec![StoredMessage {
+                    message_id: "m1".to_string(),
+                    channel: "wx_cli".to_string(),
+                    chat_id: "group-1".to_string(),
+                    from: "alice".to_string(),
+                    is_group: true,
+                    msg_type: MsgType::Text,
+                    text: Some("今天完成了日报联调".to_string()),
+                    received_at: now,
+                }],
+                links: vec![StoredLink {
+                    message_id: "m1".to_string(),
+                    channel: "wx_cli".to_string(),
+                    chat_id: "group-1".to_string(),
+                    from: "alice".to_string(),
+                    url: "https://example.com/report".to_string(),
+                    normalized_url: "https://example.com/report".to_string(),
+                    title: Some("日报链接".to_string()),
+                    received_at: now,
+                }, StoredLink {
+                    message_id: "m1".to_string(),
+                    channel: "wx_cli".to_string(),
+                    chat_id: "group-1".to_string(),
+                    from: "alice".to_string(),
+                    url: "https://example.com/postmortem".to_string(),
+                    normalized_url: "https://example.com/postmortem".to_string(),
+                    title: Some("联调复盘".to_string()),
+                    received_at: now,
+                }],
+            }),
+            &ReportContentRequest {
+                chat_id: "group-1".to_string(),
+                prompt: "请总结群聊".to_string(),
+                lookback_hours: 24,
+                max_messages: 20,
+                max_links: 10,
+            },
+            "",
+            None,
+        )
+        .await
+        .unwrap()
+        .expect("markdown");
+
+        assert!(markdown.contains("## 今日焦点"));
+        assert!(markdown.contains("### 正文引用来源（"));
+        assert!(markdown.contains("### 深读 01"));
+        assert!(markdown.contains("原文：https://example.com/report"));
+        assert!(markdown.contains("原文：https://example.com/postmortem"));
+    }
+
     #[test]
     fn report_status_json_marks_blocked_reports_with_actionable_next_steps() {
+        let _lock = env_lock();
         let _appid_guard = EnvVarGuard::remove("WECHAT_APPID");
         let _secret_guard = EnvVarGuard::remove("WECHAT_SECRET");
         let config = config_from(
@@ -1027,6 +1308,7 @@ mod tests {
 
     #[test]
     fn report_status_json_keeps_wechat_target_ready_without_public_sources() {
+        let _lock = env_lock();
         let _appid_guard = EnvVarGuard::set("WECHAT_APPID", "wx-test");
         let _secret_guard = EnvVarGuard::set("WECHAT_SECRET", "secret-test");
         let dir = std::env::temp_dir().join(format!(
@@ -1095,6 +1377,7 @@ mod tests {
 
     #[test]
     fn report_status_json_marks_recently_published_when_receipts_exist() {
+        let _lock = env_lock();
         let _appid_guard = EnvVarGuard::set("WECHAT_APPID", "wx-test");
         let _secret_guard = EnvVarGuard::set("WECHAT_SECRET", "secret-test");
         let dir = std::env::temp_dir().join(format!(
@@ -1156,6 +1439,7 @@ mod tests {
 
     #[test]
     fn report_status_json_marks_recently_published_with_warnings_when_receipt_has_warning() {
+        let _lock = env_lock();
         let _appid_guard = EnvVarGuard::set("WECHAT_APPID", "wx-test");
         let _secret_guard = EnvVarGuard::set("WECHAT_SECRET", "secret-test");
         let dir = std::env::temp_dir().join(format!(

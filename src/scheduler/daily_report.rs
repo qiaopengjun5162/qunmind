@@ -150,6 +150,8 @@ impl DailyReportScheduler {
                 max_messages: target.max_messages,
                 max_links: target.max_links,
             },
+            &target.daily_quote,
+            None,
         )
         .await
         {

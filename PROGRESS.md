@@ -68,6 +68,22 @@
 5. 用户明确批准后，再执行 `just report-publish config.toml '微信公众号日报' '/tmp/wechat-report.md'`
 6. `just report-history config.toml '微信公众号日报'`
 
+## 2026-07-01
+
+### Done
+
+- **官方博客开始真正进入正文且来源标签纠正为一手来源** — 这轮继续把 `official_blogs` 从“只进素材池”推进到“更容易进入正文 / 深读”。`src/daily_report/mod.rs` 现在会把 `official_blog` 视为强一手来源，在排序、焦点候选和推荐深读上提高权重；`src/source/mod.rs` 也开始在同 URL 去重时优先保留官方博客 / 手工精选版本，而不是被 `Hacker News` 这类聚合源覆盖。与此同时，`src/daily_report/render.rs` 会按原文域名把来源标签纠正成 `OpenAI`、`Google Blog`、`Cloudflare Blog` 等 canonical 名称，避免“原文明明是 Google 官方博客，正文却写成 Hacker News”的观感错误。实跑生成的 `/tmp/wechat-report-2026-07-02-official-v4.md` 已确认 `Opening up 'Zero-Knowledge Proof' technology to promote privacy in age assurance` 进入正文深读，参考链接区显示为 `Google Blog · 149 points`。
+- **深读区开始明确排斥 `/news/` 快讯并优先保留官方博客** — 这轮继续把 `推荐深读` 从“有摘要就上”收紧为“更像可持续阅读的文章再上”。`src/daily_report/mod.rs` 现在会把 `PANews` / `吴说区块链` 等媒体的 `/news/` 型快讯视作深读降权候选，只要当天存在更像官方博客、论文或文章型条目，就把这些快讯留在正文或参考链接区，不再占用深读位；同时 `official_blogs` 即便上游 RSS 摘要偏英文，也会自动生成一段可用的中文深读说明。实跑生成的 `/tmp/wechat-report-2026-07-02-official-v7.md` 已确认 `深读 01` 变为 Google Blog 的零知识证明官方文章，吴说 `/news/` 快讯被挤出深读区。
+- **确认并修复 `moonpub` 微信 API 不走代理的问题** — 为了尽快把 `2026-07-02` 这份日报发出去，这轮直接排查了 `/Users/qiaopengjun/Code/Rust/moonpub/src/wechat.rs`。根因确认是 `moonpub` 原版微信客户端全程使用 `ureq::get/post` 直连，没有读取 `HTTP_PROXY` / `HTTPS_PROXY` / `ALL_PROXY`，导致即使 shell 层显式带代理，微信 `get_access_token` 仍会命中原出口 IP 白名单。现在本地已补上基于环境变量的代理 agent 选择，并通过 `cargo test proxy_url_prefers_https_proxy_for_https_requests` 与 `cargo test proxy_url_falls_back_to_http_proxy_for_http_requests` 验证。随后用修过的本地 `moonpub` 带代理真实试发，微信侧看到的出口 IP 已从原来的 `1.80.24.182` 变化为 `1.80.25.70`，证明代码层代理修复生效；当前剩余阻塞只剩“把新出口 IP 加进公众号白名单”这一外部条件。
+- **定位并收敛公共源失败根因** — 重新实跑 `daily-report` 后确认，当前剩余告警并不是通用“decode response body”问题，而是 `web3_media` 默认源里的 `https://thedefiant.io/feed` 会 301 到 `https://thedefiant.io/api/feed`，随后被 Cloudflare challenge 直接拦成 `403 Forbidden`。这意味着问题在站点策略，不在日报渲染链路本身。
+- **默认 Web3 精选源改成真实可用组合** — 将默认 `web3_media_urls` 中的 `thedefiant.io/feed` 替换为实测可访问、返回 `200 application/xml` 的 `https://decrypt.co/feed`，同时同步到 `config.example.toml` 和配置默认值测试，避免每次生成日报都带着已知坏源告警。
+- **补强中文 Web3 分类信号** — 日报分类逻辑新增“币安、稳定币、比特币、以太坊、链桥、永续合约、现货交易对”等中文 Web3 关键词。这样像“币安今日移除 12 个现货交易对”这类中文快讯会稳定归入 Web3，不再漏进“技术 & 开源”分区。
+- **新增中文误分回归测试** — 补了一条生成层测试，明确覆盖“吴说 / PANews 两条中文币安交易对新闻都应留在 Web3 区，技术区不应残留同题误分”的场景，避免后续再回归。
+- **公众号单链接 helper 方案定稿** — 已确认 `jackwener/wechat-article-to-markdown` 更适合被当作“外部可选 helper”，而不是并入 `QunMind` 主进程。现在项目内方案已经明确：长期订阅继续走 `wechat_rss_*` / `wechat_accounts`，单篇 `mp.weixin.qq.com/s/...` 链接则未来通过显式 CLI / MCP 入口调用外部工具，返回 markdown / 图片目录 / 元数据并保持失败隔离。
+- **公众号单链接入口骨架已落地** — 现在已经补上 `qunmind wechat-article-url --url <mp_url>` 和 MCP `wechat_article_url` 入口，以及 `public_sources.wechat_article_helper_bin` / `wechat_article_helper_output_dir` 配置项。当前它仍然依赖外部 helper，可在未配置时提前报清晰错误；这一步的意义是先把接口语义和失败边界钉住，而不是把不稳定抓取直接揉进主流程。
+- **公众号单链接返回结果开始带可复用元数据** — `src/wechat_article_helper.rs` 现在会在 helper 成功生成 markdown 后，继续解析标题、公众号名、发布时间、原文链接和正文首段摘要，并把这些字段直接并入 CLI / MCP 的结构化 JSON。这样后续如果要把单篇公众号文章转成日报素材，不需要再从 markdown 文本里二次硬拆一次。
+- **公众号日报固定结尾改回生成层内建** — 这轮确认之前稳定链路不依赖微信后台模板，问题是后来把临时 `moonpub` 配置注入和模板插入重新塞回了发布链路。现在已回退 `src/publisher.rs` 里的临时模板介入逻辑，改为由 `src/daily_report/render.rs` 直接把“关注与交流 / 回复加群”写进 markdown 尾部，并补上“分区编号连续”和“固定结尾存在”的回归测试。这样本地预览稿、手工发布和定时发布终于重新共用同一份正文，`moonpub` 只负责渲染与推草稿。
+
 ## 2026-06-24
 
 ### Done
@@ -128,6 +144,12 @@
 - **手工发布结果开始直接给后续动作** — 现在 `daily-report --publish` 和 MCP `report_publish` 成功后，也会继续返回 `follow_up_status`、`recommended_commands` 和 `recommended_tool_calls`。如果这次草稿发布干净成功，结果会直接建议去看 `publish_history`；如果带有 `automation: ...` warning，则会直接建议优先 `report-recover-automation` 再复查历史，不需要再额外跑一次 `report-status` 才知道下一步。
 - **ZK 手工精选日报完成真实发布** — 基于用户给出的 LatticeBlindFold、Etherveil、Reputation Wallet、WHIR、IACR ePrint 和 ZK Insights 等完整来源链接，已通过临时配置 `/tmp/qunmind-report-manual-2026-06-27-zk.toml` 生成 `/tmp/wechat-report-2026-06-27-zk.md` 并真实推送到公众号草稿箱。该版强调“每个观点可追溯到完整原文 URL”，最新回执显示 `published = true`、`publish_receipt_saved = true`、`automation_state = "ok"`、`warnings = []`，说明这次不只是草稿主路径成功，浏览器自动化也没有留下 warning。
 - **命名公众号文章源入口落地** — 新增 `[[public_sources.wechat_accounts]]`，用于把公众号 `name` / `aliases` 显式绑定到 RSS / Atom `feed_url`；同时新增 `qunmind wechat-articles --account-name <name> --limit <n>` 和 MCP `wechat_articles` tool，按已绑定公众号名拉取文章列表并输出结构化 JSON。这个入口延续 `PublicNewsSource` / RSS 上游边界：如果只给公众号名字但未绑定 feed，命令会明确报错要求先配置来源，不在 QunMind 主进程里硬爬微信历史文章。
+- **定位 `moonpub login` 上游缺陷并收敛恢复路径** — 在 `2026-06-30` 的真实排障中，已经确认 `moonpub --articles ... login` 会直接失败为 `push failed: oneshot canceled`，根因不在 QunMind，而在 `moonpub login` 自己打开浏览器后过早丢弃浏览器会话。QunMind 侧现在把 `report-recover-automation` / MCP `report_recover_automation` 统一改为直接复用 `configure` 的可扫码登录入口，并在 `report-login` 命中 `oneshot canceled` 时明确返回恢复提示，避免再把操作者引到坏掉的上游命令。
+- **日报素材排序改成“编辑优先级”而不是纯分数** — `src/daily_report/mod.rs` 现在不再让 `GitHub Trending` 的历史累计热度天然压过当天新闻；排序会优先考虑是否手工精选、是否文章型来源、是否带发布时间、是否有可靠摘要，以及是否属于“今天发生了什么”的 AI / Web3 / 技术事件。这让同一天生成稿时，焦点与正文更容易落到 PANews、吴说、The Defiant、CryptoSlate、Cointelegraph、OpenAI 或论文更新，而不是被长期热榜仓库抢走版面。
+- **深读区开始严格偏向“有可靠摘要”的文章** — `推荐深读` 现在会继续优先过滤空摘要 X 链接、无摘要文章和泛财经综述；只要本轮存在更可靠的条目，就优先保留那些能直接告诉读者“为什么值得读”的文章。`A股收评` 这类泛市场综述仍会保留在“完整素材链接”里，但不再轻易挤进正文深读区。
+- **引用 / 完整素材链接开始按归一化 URL 去重** — `src/daily_report/render.rs` 现在会忽略 `utm_*`、`fbclid`、`gclid` 等追踪参数来识别同一条新闻，避免 `Cointelegraph` / `PANews` / 其他媒体同一篇文章因为 URL 参数不同，既出现在正文引用，又重复掉进“完整素材链接”。
+- **空板块占位继续收口** — 当技术区只剩无效条目、没有可渲染正文且也缺少足够时间线时，渲染层现在会直接跳过整个 `03｜技术 & 开源` 板块，避免手机预览里出现只有标题没有内容的空壳区域。
+- **公共源拉取失败根因已缩到网络层并开始自动回退代理** — `2026-07-01` 的真实排障里确认：在当前本机网络下，`Hacker News` 直连完整 GET 大约要 `21s`，`GitHub Trending` 直连在 `25s` 内都可能拿不到首字节；但走本机 `http://127.0.0.1:7890` 代理后，两者分别可降到约 `1.4s` 与 `3.8s`。现在 `src/source/hacker_news.rs` 与 `src/source/github_trending.rs` 已改为“本轮先探测一次直连；若失败，则本轮后续请求直接复用本地代理 client”，不再对每个 item 反复先直连超时再回退。
 
 ### Verified
 
@@ -208,6 +230,9 @@
 - `cargo run -- --config /tmp/qunmind-report-manual-2026-06-27-zk.toml publish-history --report-name '微信公众号日报' --limit 5`：最新回执为 `2026-06-27T11:30:40.051977+00:00`，`automation_state = "ok"`，`warnings = []`
 - PR #44 CI：`test = pass`，`docker = pass`
 - `cargo test config::tests::parses_named_wechat_accounts`
+- `cargo test wechat_article_url --lib`
+- `cargo test parses_helper_markdown_metadata_and_summary --lib`
+- `cargo test errors_when_helper_markdown_has_no_title --lib`
 - `cargo test source::wechat_rss::tests`
 - `cargo test cli::tests::parses_wechat_articles_command`
 - `cargo test mcp::tools::tests`
@@ -217,6 +242,25 @@
 - `cargo test generate_moves_web3_items_out_of_tech_section_after_polish --lib`
 - `cargo test generate_moves_ai_items_out_of_tech_section_after_polish --lib`
 - `cargo test generate_excludes_non_tech_hn_items_from_tech_section_when_real_tech_exists --lib`
+- `cargo test generate_prefers_fresh_curated_article_over_stale_plain_github_repo_for_focus --lib`
+- `cargo test generate_reads_prefer_reliable_article_summaries_over_empty_x_posts --lib`
+- `cargo test generate_deprioritizes_recent_stable_github_repos_in_tech_section --lib`
+- `cargo test dedup_and_backfill_reads_prefers_items_with_reliable_summaries --lib`
+- `cargo test dedup_and_backfill_reads_skips_generic_market_wrap_when_thematic_items_exist --lib`
+- `cargo test dedup_and_backfill_reads_prefers_reliable_summaries_over_article_links_without_summary --lib`
+- `cargo test daily_report::render::tests::overview_lists_focus_counts_and_links --lib`
+- `cargo test daily_report::render::tests::reads_renders_summary_when_present --lib`
+- `cargo test daily_report::render::tests::refs_block_includes_unreferenced_source_links --lib`
+- `cargo test daily_report::render::tests::skips_tech_section_when_only_invalid_items_exist --lib`
+- `cargo run -- --config config.toml daily-report --report-name '微信公众号日报' --output /tmp/wechat-report-2026-07-01-v4.md`：生成 2026-07-01 优化版本地预览稿，公共源告警包括 HN 与 GitHub Trending 请求失败，但最终成功落稿；当前重点变化是正文更偏 Web3 当天事件、深读去掉泛市场综述、引用区按归一化 URL 去重
+- `curl --max-time 25 -sS -A 'qunmind/0.1' -o /dev/null -w 'hn body get: code=%{http_code} start=%{time_starttransfer} total=%{time_total} size=%{size_download}\n' https://hacker-news.firebaseio.com/v0/topstories.json`：直连 `HN` 完整响应约 `21.37s`
+- `curl --max-time 25 -sS -A 'qunmind/0.1' -o /dev/null -w 'gh trending body get: code=%{http_code} start=%{time_starttransfer} total=%{time_total} size=%{size_download}\n' 'https://github.com/trending/rust?since=daily'`：直连 `GitHub Trending` 在 `25s` 内超时无首字节
+- `curl --proxy http://127.0.0.1:7890 --max-time 20 -sS -A 'qunmind/0.1' -o /dev/null -w 'hn via 7890: code=%{http_code} start=%{time_starttransfer} total=%{time_total}\n' https://hacker-news.firebaseio.com/v0/topstories.json`：代理下 `HN` 约 `1.4s`
+- `curl --proxy http://127.0.0.1:7890 --max-time 20 -sS -A 'qunmind/0.1' -o /dev/null -w 'gh via 7890: code=%{http_code} start=%{time_starttransfer} total=%{time_total}\n' 'https://github.com/trending/rust?since=daily'`：代理下 `GitHub Trending` 约 `3.8s`
+- `cargo test source::http_client::tests::builds_default_client --lib`
+- `cargo test source::http_client::tests::builds_local_proxy_client --lib`
+- `cargo test source::hacker_news::tests::builds_source_from_config --lib`
+- `cargo test source::github_trending::tests::parses_github_trending_repositories --lib`
 - `cargo test daily_report::tests:: --lib`
 - `cargo clippy --all-targets --all-features --tests --benches -- -D warnings`
 - `cargo nextest run --all-features`：347 passed, 2 skipped
@@ -247,6 +291,7 @@
 - **单目标手工日报默认跟随正式配置** — 如果配置里只有一个 `schedule.daily_reports` 目标，`qunmind daily-report` 现在会直接复用这一个正式日报目标，而不需要再额外传 `--report-name`。只有在存在多个日报目标时，命令才会明确要求显式 `--report-name`，避免手工联调误退回成脱离正式配置的空白 markdown 路径。
 - **手工日报内容来源与正式目标对齐** — `qunmind daily-report` 现在不再一上来就强依赖 `public_sources`。如果目标群在回看窗口里已经有保存的群消息和链接情报，手工日报会优先按正式日报目标的 prompt、lookback、message/link limit 生成；只有群消息为空时，才回退到公共来源。这让“今天临时手工跑一版日报”和“真正定时跑出去的日报”终于使用同一套主要素材语义。
 - **定时公众号日报也对齐到群消息优先语义** — `schedule.daily_reports[].output = "wechat"` 之前还保留着“只走公共来源生成 markdown”的旧路径。现在 scheduler 会和手工 `daily-report` 一样，先尝试读取目标群的已保存消息与链接情报；只有群消息为空时，才回退到 `public_sources`。这把“手工演练”和“真正定时推公众号草稿”收敛到同一套日报素材语义。
+- **群消息无外链时也不再掉回旧成稿路径** — 这轮继续修正了一个容易漏掉的边界：如果目标群在回看窗口内确实有群消息，但这些消息暂时没有被抽出任何 URL，公众号日报现在仍会把群消息本身转换成统一素材项，再继续走 `src/daily_report/` 的 JSON 成稿、分区排版、参考来源和延伸素材逻辑。这样新版排版与可追溯约束不再只在“有 `message_links`”或“回退到 public_sources”时生效。
 - **日报生成共享层再收口** — 新增 `src/reporting.rs` 中的共享群消息日报生成 helper，把“按目标 prompt/lookback/message limit/link limit 从消息库生成日报正文”的逻辑从 CLI 和 scheduler 两边抽到一处，减少之后继续调日报时的行为漂移风险。
 - **公众号日报 readiness 口径修正** — `report-status` / `wx-cli doctor` 现在不再把“未启用 `public_sources`”视为一刀切的硬 blocker。更准确的语义是：`moonpub` 二进制和 articles 目录仍是硬前提，而 `public_sources` 只是在“群消息为空时无法回退生成”的风险提示。这样状态页终于和代码的真实运行条件一致，不会再把“群消息充足、其实能正常出稿”的目标误判成 blocked。
 - **公众号 RSS 日报联调模板补齐** — `config.example.toml` 与 `config.docker.example.toml` 现在直接给出 RSS-backed 微信公众号日报示例，默认展示 `wechat_rss_enabled = true` 和示例 `wechat_rss_urls`，更贴近“拿到 RSS 上游后立刻联调公众号日报”的真实使用场景。

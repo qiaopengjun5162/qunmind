@@ -31,6 +31,7 @@
 - 微信公众号日报发布前会注入固定个人号封面：栏目是 `AI · Web3 最新日报`，署名是 `寻月隐君`，最终仍由 `moonpub --render` 负责渲染和上传。
 - 微信公众号日报标题当前固定为 `AI · Web3 最新日报｜YYYY-MM-DD`，当天主线放在 `digest`、导语和焦点模块里，方便在草稿箱中快速辨认最新一条。
 - 微信公众号日报正文现在按“导语 -> 今日三件事 -> 今日焦点 -> AI / Web3 / 技术 / 深读编号分区 -> 参考来源 / 完整素材链接”组织，焦点拆成“发生了什么 / 为什么重要 / 后续关注”，条目用“值得关注 + 独立依据行 + 裸原文链接”呈现，更适合先快速浏览再追原文。
+- 微信公众号日报现在会在 `QunMind` 生成层固定补上“继续交流”结尾：正文尾部直接写入加群提示和点赞/推荐引导，不再依赖微信后台模板插入；`report-markdown` 本地稿和真实推到 `moonpub` 的正文保持同一份尾部内容。
 - 同一天内多次手工试发公众号日报时，QunMind 现在会为每次发布生成唯一临时稿件名，避免 `moonpub` 复用旧 `draft.json` 后出现“时间更新了，但正文还是上一版”的错觉。
 
 ## 当前状态
@@ -231,7 +232,30 @@ cargo run -- wechat-articles --account-name '寻月隐君' --limit 20
 
 当前这层 `wechat_rss` 也补了几种常见 feed 字段兼容：Atom 的 `<author><name>`、RSS 的 `dc:creator`，以及 `pubDate` / `updated` / `published` / `dc:date` 时间字段都会尽量归一成统一的 `author` 和 UTC `published_at`，减少不同上游服务接入后摘要 prompt 字段风格漂移。
 
+如果需求变成“给一个单独的 `mp.weixin.qq.com/s/...` 链接，尽量把正文转成 markdown 并下载图片”，推荐的接入形态和 RSS 长期订阅不同。当前更适合参考 [`jackwener/wechat-article-to-markdown`](https://github.com/jackwener/wechat-article-to-markdown) 这类外部工具，把它作为显式调用的 helper：未来由 QunMind 提供单独的 CLI / MCP 入口去调用外部命令、读取 markdown / 图片目录 / 元数据并返回结构化结果，而不是把浏览器抓取、反检测和登录态复杂度直接内嵌进主进程。
+
+这条显式入口现在已经有了骨架：
+
+```bash
+cargo run -- wechat-article-url \
+  --url 'https://mp.weixin.qq.com/s/xxxxxxxx'
+```
+
+使用前需要先显式配置外部 helper：
+
+```toml
+[public_sources]
+wechat_article_helper_bin = "wechat-article-to-markdown"
+wechat_article_helper_output_dir = "/tmp/qunmind-wechat-article-helper"
+```
+
+如果 helper 没配置，QunMind 会在执行前直接报配置错误，而不是假装自己能在主进程里稳定抓正文。
+
+如果外部 helper 成功产出 markdown，QunMind 现在还会最佳努力解析其中的头部信息和正文第一段，直接在结构化 JSON 里补出 `title`、`account_name`、`published_at`、`source_url`、`summary`，并继续返回 `article_dir`、`markdown_path`、`images_dir`。这样单篇公众号链接不只是“下载到一个目录里”，还可以更自然地被后续日报素材链路复用，同时继续把浏览器抓取和反风控复杂度隔离在主进程外。
+
 X / Twitter 这类一手信息也走同样的轻量边界：通过 `[public_sources] x_rss_*` 配置 RSSHub、Nitter 兼容源或自建 X List RSS / Atom 上游，QunMind 会把它们归一成 `X RSS` 公共素材。主进程不内嵌 X 登录、抓取、代理或反风控逻辑。
+
+如果你想让日报不只是“快讯聚合”，而是更多吸收官网 / 官方博客 / 正式技术公告，现在也可以直接启用 `[public_sources] official_blogs_*`。这条来源边界默认面向 OpenAI、Google Blog、Cloudflare Blog 这类稳定可抓取的 RSS / Atom 上游，适合补充模型发布、研究博客、基础设施公告与官方技术文章，让日报更容易产出“高层面”的内容，而不是只剩市场快讯。
 
 如果临时看到特别值得推荐大家阅读的原文，但 RSS / X 上游还没稳定抓到，可以直接加到 `[[public_sources.manual_items]]`。它适合放 OpenAI 官方文章、项目公告、论文链接、X 原帖等“人工精选”素材；这些条目会进入日报素材池，并优先出现在“推荐深读”或“完整素材链接”里。
 
@@ -288,6 +312,7 @@ just report-history config.toml '微信公众号日报'
 - **最小可用目标已完成**：日报能生成、能推公众号草稿、能保存回执、能查历史
 - **仍需人工关注的点**：微信白名单出口 IP 可能漂移、`moonpub` 仍可能返回自动化 warning、日报内容质量还需要继续打磨
 - **如果回执里看到 `automation_state = "login_required"`**：优先执行 `qunmind report-recover-automation --report-name "微信公众号日报"` 或 `just report-recover-automation config.toml '微信公众号日报'`，而不是再手动拆成多步命令或误判成“系统没有走到自动化”
+- **如果 `report-login` 直接报 `oneshot canceled`**：这通常不是你的扫码问题，而是当前上游 `moonpub login` 的已知缺陷。此时不要继续重复 `report-login`，直接改用 `qunmind report-recover-automation --report-name "微信公众号日报"` 或 `qunmind report-preview --report-name "微信公众号日报" --headed` 走可扫码的浏览器自动化入口。
 
 这里的语义要记清：
 - `wechat_bin` / `wechat_articles_dir` 缺失是硬 blocker

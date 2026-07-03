@@ -134,7 +134,7 @@ web3_media_max_items = 10
 web3_media_timeout_secs = 15
 web3_media_urls = [
   "https://cryptoslate.com/feed/",
-  "https://thedefiant.io/feed",
+  "https://decrypt.co/feed",
   "https://cointelegraph.com/rss",
   "https://www.panewslab.com/rss.xml?lang=zh&type=NEWS",
   "https://www.wublock123.com/feed",
@@ -153,6 +153,11 @@ wechat_rss_urls = [
 # feed_url = "http://127.0.0.1:8080/xunyue/rss.xml"
 # name = "寻月隐君"
 
+# 单篇公众号文章 helper：适合“给一个 mp.weixin.qq.com/s/... 链接，最佳努力转 markdown + 下载图片”。
+# 这是显式调用的外部 helper，不属于 RSS 长期订阅主路径。
+wechat_article_helper_bin = ""
+wechat_article_helper_output_dir = "/tmp/qunmind-wechat-article-helper"
+
 x_rss_enabled = false
 x_rss_max_items = 20
 x_rss_timeout_secs = 10
@@ -160,6 +165,15 @@ x_rss_urls = [
   # "https://rsshub.example/x/user/openai",
   # "https://nitter.example/a16zcrypto/rss",
 ] # X/Twitter 一手信息入口；只消费 RSS / Atom 上游，不在 QunMind 主进程内做登录抓取或反风控
+
+official_blogs_enabled = false
+official_blogs_max_items = 12
+official_blogs_timeout_secs = 15
+official_blogs_urls = [
+  "https://openai.com/news/rss.xml",
+  "https://blog.google/innovation-and-ai/technology/ai/rss/",
+  "https://blog.cloudflare.com/rss/",
+] # 官网 / 官方博客一手来源；适合补 OpenAI、Google、Cloudflare 这类更高层面的正式发布与技术博客
 
 # 手工精选入口：适合临时补入你明确想推荐大家阅读的一手原文、X 原帖或官方文章。
 # 这些条目会进入日报素材池，优先出现在“推荐深读”或“完整素材链接”里。
