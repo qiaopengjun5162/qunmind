@@ -320,9 +320,10 @@ fn wechat_daily_cover_filename(markdown_path: &std::path::Path) -> Result<String
 fn inject_wechat_frontmatter_fields(markdown: &str, cover_filename: &str) -> String {
     let cover_line = format!("cover: ./{cover_filename}");
     let author_line = "wechat_author: 寻月隐君";
+    let theme_line = "theme: newsletter";
 
     if !markdown.starts_with("---\n") {
-        return format!("---\n{cover_line}\n{author_line}\n---\n\n{markdown}");
+        return format!("---\n{cover_line}\n{author_line}\n{theme_line}\n---\n\n{markdown}");
     }
 
     let body_start = "---\n".len();
@@ -353,6 +354,16 @@ fn inject_wechat_frontmatter_fields(markdown: &str, cover_filename: &str) -> Str
             fields.push('\n');
         }
         fields.push_str(author_line);
+        fields.push('\n');
+    }
+    if !frontmatter
+        .lines()
+        .any(|line| line.trim_start().starts_with("theme:"))
+    {
+        if !fields.ends_with('\n') && !fields.is_empty() {
+            fields.push('\n');
+        }
+        fields.push_str(theme_line);
         fields.push('\n');
     }
 
@@ -501,6 +512,7 @@ mod tests {
                 .contains("cover: ./daily.ai-web3-daily-cover-900x500.png")
         );
         assert!(prepared.markdown.contains("wechat_author"));
+        assert!(prepared.markdown.contains("theme: newsletter"));
         assert_eq!(
             prepared.cover_path,
             dir.join("daily.ai-web3-daily-cover-900x500.png")
@@ -519,6 +531,8 @@ mod tests {
         assert_eq!(prepared.matches("cover:").count(), 1);
         assert!(prepared.contains("cover: ./custom.png"));
         assert_eq!(prepared.matches("wechat_author:").count(), 1);
+        assert_eq!(prepared.matches("theme:").count(), 1);
+        assert!(prepared.contains("theme: newsletter"));
     }
 
     #[test]
@@ -551,6 +565,7 @@ mod tests {
 
         assert!(prepared.contains("cover: ./wechat-report.ai-web3-daily-cover-900x500.png"));
         assert!(prepared.contains("wechat_author: 寻月隐君"));
+        assert!(prepared.contains("theme: newsletter"));
         assert!(
             dir.join("wechat-report.ai-web3-daily-cover-900x500.png")
                 .is_file()

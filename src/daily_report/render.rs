@@ -123,7 +123,7 @@ fn render_overview(report: &ReportJson) -> String {
     if !report.focus_text.trim().is_empty() {
         let focus = humanize_focus_text(&report.focus_text);
         lines.push(format!(
-            "1. 先看焦点：{}，原文与解读见下方“今日焦点”。",
+            "**先看焦点**：{}，原文与解读见下方“今日焦点”。",
             ensure_sentence_end(&truncate_str(
                 trim_sentence_end(&sanitize(&focus)),
                 OVERVIEW_FOCUS_PREVIEW_CHARS
@@ -146,7 +146,7 @@ fn render_overview(report: &ReportJson) -> String {
     }
     if !counts.is_empty() {
         lines.push(format!(
-            "2. 再按板块浏览：{}，正文只保留更像当天增量、且能追到原文的条目。",
+            "**再按板块浏览**：{}，正文只保留更像当天增量、且能追到原文的条目。",
             counts.join(" / ")
         ));
     }
@@ -156,7 +156,7 @@ fn render_overview(report: &ReportJson) -> String {
     }
 
     lines.push(
-        "3. 最后看链接区：文末会区分“正文引用来源”和“完整素材链接”，方便逐条追溯。".to_string(),
+        "**最后看链接区**：文末会区分“正文引用来源”和“完整素材链接”，方便逐条追溯。".to_string(),
     );
 
     format!("## 今日三件事\n\n{}\n\n", lines.join("\n"))
@@ -211,9 +211,8 @@ fn render_ai_section(items: &[ReportSection], signals: &[String], section_index:
             if sig.is_empty() {
                 continue;
             }
-            s.push_str(&format!("{}. {}\n", i + 1, sanitize(sig)));
+            s.push_str(&format!("**信号 {}**：{}\n\n", i + 1, sanitize(sig)));
         }
-        s.push('\n');
     }
     s
 }
@@ -830,7 +829,8 @@ mod tests {
         let md = assemble_markdown(&report, &[], "");
 
         assert!(md.contains("## 今日三件事"));
-        assert!(md.contains("1. 先看焦点"));
+        assert!(md.contains("**先看焦点**"));
+        assert!(!md.contains("1. 先看焦点"));
         assert!(md.contains("AI 1 条"));
         assert!(md.contains("Web3 1 条"));
         assert!(md.contains("技术 1 条"));
