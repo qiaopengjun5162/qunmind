@@ -8,8 +8,8 @@ use qunmind::cli::{Args, CliCommand};
 use qunmind::config::{ChannelKind, Config};
 use qunmind::error::QunMindError;
 use qunmind::publisher::{
-    configure_wechat_backend, login_wechat_backend, preview_wechat_backend, publish_markdown,
-    wechat_login_recovery_hint,
+    configure_wechat_backend, login_wechat_backend, prepare_report_output_markdown,
+    preview_wechat_backend, publish_markdown, wechat_login_recovery_hint,
 };
 use qunmind::reporting::{
     build_ai_client, build_message_store, build_public_news_source, effective_publish_history_name,
@@ -141,7 +141,9 @@ async fn run_diagnostic_command(
                 previous_markdown.as_deref(),
             )
             .await?;
-            std::fs::write(&output, &markdown)
+            let output_markdown =
+                prepare_report_output_markdown(&markdown, &report_target.output, &output)?;
+            std::fs::write(&output, &output_markdown)
                 .with_context(|| format!("写入日报文件失败: {}", output.display()))?;
             let publish_receipt = if publish {
                 let target = manual_daily_report_publish_target(&report_target)?;

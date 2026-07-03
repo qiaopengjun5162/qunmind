@@ -4,8 +4,8 @@ use crate::channel::wx_cli::{WxCliChannel, write_wx_cli_capture_file};
 use crate::config::Config;
 use crate::diagnostic;
 use crate::publisher::{
-    configure_wechat_backend, login_wechat_backend, preview_wechat_backend, publish_markdown,
-    wechat_login_recovery_hint,
+    configure_wechat_backend, login_wechat_backend, prepare_report_output_markdown,
+    preview_wechat_backend, publish_markdown, wechat_login_recovery_hint,
 };
 use crate::reporting::{
     build_ai_client, build_message_store, build_public_news_source, effective_publish_history_name,
@@ -566,7 +566,9 @@ async fn tool_report_markdown(config: &Config, args: &serde_json::Value) -> anyh
         None,
     )
     .await?;
-    std::fs::write(&output_path, &markdown)
+    let output_markdown =
+        prepare_report_output_markdown(&markdown, &report_target.output, &output_path)?;
+    std::fs::write(&output_path, &output_markdown)
         .map_err(|err| anyhow::anyhow!("写入日报文件失败: {}", err))?;
 
     Ok(serde_json::to_string_pretty(&serde_json::json!({
@@ -606,7 +608,9 @@ async fn tool_report_publish(config: &Config, args: &serde_json::Value) -> anyho
         None,
     )
     .await?;
-    std::fs::write(&output_path, &markdown)
+    let output_markdown =
+        prepare_report_output_markdown(&markdown, &report_target.output, &output_path)?;
+    std::fs::write(&output_path, &output_markdown)
         .map_err(|err| anyhow::anyhow!("写入日报文件失败: {}", err))?;
 
     let target = manual_daily_report_publish_target(&report_target)?;
