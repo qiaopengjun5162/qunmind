@@ -97,6 +97,26 @@ pub enum CliCommand {
         #[arg(long)]
         headed: bool,
     },
+    /// 按已绑定公众号名称拉取文章列表
+    #[command(name = "wechat-articles")]
+    WechatArticles {
+        /// 公众号名称或别名，必须先在 public_sources.wechat_accounts 中绑定 feed_url
+        #[arg(long)]
+        account_name: String,
+        /// 最多返回多少篇文章
+        #[arg(long, default_value_t = 20)]
+        limit: usize,
+    },
+    /// 按单篇公众号文章链接调用外部 helper 提取 markdown / 图片 / 元数据
+    #[command(name = "wechat-article-url")]
+    WechatArticleUrl {
+        /// 单篇公众号文章链接，必须是 https://mp.weixin.qq.com/s/... 形式
+        #[arg(long)]
+        url: String,
+        /// 可选输出目录；未传时使用 public_sources.wechat_article_helper_output_dir
+        #[arg(long)]
+        output_dir: Option<PathBuf>,
+    },
 }
 
 #[derive(Debug, Subcommand)]
@@ -740,6 +760,49 @@ mod tests {
                 assert!(headed);
             }
             _ => panic!("report-preview command should parse"),
+        }
+    }
+
+    #[test]
+    fn parses_wechat_articles_command() {
+        let args = parse_args(&[
+            "qunmind",
+            "wechat-articles",
+            "--account-name",
+            "寻月隐君",
+            "--limit",
+            "20",
+        ]);
+
+        match args.command {
+            Some(CliCommand::WechatArticles {
+                account_name,
+                limit,
+            }) => {
+                assert_eq!(account_name, "寻月隐君");
+                assert_eq!(limit, 20);
+            }
+            _ => panic!("wechat-articles command should parse"),
+        }
+    }
+
+    #[test]
+    fn parses_wechat_article_url_command() {
+        let args = parse_args(&[
+            "qunmind",
+            "wechat-article-url",
+            "--url",
+            "https://mp.weixin.qq.com/s/example",
+            "--output-dir",
+            "/tmp/wechat-helper",
+        ]);
+
+        match args.command {
+            Some(CliCommand::WechatArticleUrl { url, output_dir }) => {
+                assert_eq!(url, "https://mp.weixin.qq.com/s/example");
+                assert_eq!(output_dir, Some(PathBuf::from("/tmp/wechat-helper")));
+            }
+            _ => panic!("wechat-article-url command should parse"),
         }
     }
 }

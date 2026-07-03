@@ -4,7 +4,8 @@ use crate::channel::wx_cli::{WxCliChannel, write_wx_cli_capture_file};
 use crate::config::Config;
 use crate::diagnostic;
 use crate::publisher::{
-    configure_wechat_backend, login_wechat_backend, preview_wechat_backend, publish_markdown,
+    configure_wechat_backend, login_wechat_backend, prepare_report_output_markdown,
+    preview_wechat_backend, publish_markdown, wechat_login_recovery_hint,
 };
 use crate::reporting::{
     build_ai_client, build_message_store, build_public_news_source, effective_publish_history_name,
@@ -13,8 +14,12 @@ use crate::reporting::{
     persist_manual_publish_receipt, publish_receipt_json, report_status_json,
     resolve_manual_daily_report_target,
 };
+use crate::source::wechat_rss::{fetch_named_wechat_account_articles, find_wechat_account};
 use crate::storage::MessageStore;
 use crate::storage::postgres::PostgresMessageStore;
+use crate::wechat_article_helper::{
+    run_wechat_article_url_helper, wechat_article_url_response_json,
+};
 use crate::wx_cli_runtime;
 
 #[derive(Debug, Clone, serde::Serialize)]
@@ -169,6 +174,42 @@ pub fn list_tools() -> Vec<Tool> {
                     }
                 },
                 "required": ["output", "confirm_publish"]
+            }),
+        },
+        Tool {
+            name: "wechat_articles".into(),
+            description: "Fetch recent articles for a named WeChat public account from a configured RSS/Atom upstream. Does not scrape WeChat directly.".into(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "account_name": {
+                        "type": "string",
+                        "description": "WeChat public account name or alias configured in public_sources.wechat_accounts."
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "Max articles to return (default: 20)."
+                    }
+                },
+                "required": ["account_name"]
+            }),
+        },
+        Tool {
+            name: "wechat_article_url".into(),
+            description: "Call an explicitly configured external helper to extract one mp.weixin.qq.com article into markdown/images. This is opt-in and not built into the main process.".into(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "url": {
+                        "type": "string",
+                        "description": "Single WeChat public-account article URL, e.g. https://mp.weixin.qq.com/s/..."
+                    },
+                    "output_dir": {
+                        "type": "string",
+                        "description": "Optional output directory override for the external helper."
+                    }
+                },
+                "required": ["url"]
             }),
         },
         Tool {
@@ -331,6 +372,8 @@ pub async fn call_tool(
         "report_preview" => tool_report_preview(config, arguments),
         "report_markdown" => tool_report_markdown(config, arguments).await,
         "report_publish" => tool_report_publish(config, arguments).await,
+        "wechat_articles" => tool_wechat_articles(config, arguments).await,
+        "wechat_article_url" => tool_wechat_article_url(config, arguments),
         "wxcli_doctor" => tool_doctor(config, arguments),
         "wxcli_capture" => tool_capture(config, config_path, arguments).await,
         "wxcli_test_plan" => tool_test_plan(config, config_path, arguments),
@@ -394,10 +437,19 @@ fn tool_report_login(config: &Config, args: &serde_json::Value) -> anyhow::Resul
         .and_then(|v| v.as_str())
         .unwrap_or("");
     let report_target = require_wechat_manual_report_target(config, report_name, "report-login")?;
-    let raw_output = login_wechat_backend(
+    let raw_output = match login_wechat_backend(
         &report_target.wechat_bin,
         &report_target.wechat_articles_dir,
-    )?;
+    ) {
+        Ok(raw_output) => raw_output,
+        Err(err) => {
+            let message = err.to_string();
+            if message.contains("oneshot canceled") {
+                anyhow::bail!("{} 原始错误：{}", wechat_login_recovery_hint(), message);
+            }
+            return Err(err.into());
+        }
+    };
 
     Ok(serde_json::to_string_pretty(&serde_json::json!({
         "ok": true,
@@ -445,16 +497,9 @@ fn tool_report_recover_automation(
         .get("report_name")
         .and_then(|v| v.as_str())
         .unwrap_or("");
-    let headed = args
-        .get("headed")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
     let report_target =
         require_wechat_manual_report_target(config, report_name, "report-recover-automation")?;
-    let login_output = login_wechat_backend(
-        &report_target.wechat_bin,
-        &report_target.wechat_articles_dir,
-    )?;
+    let headed = true;
     let configure_output = configure_wechat_backend(
         &report_target.wechat_bin,
         &report_target.wechat_articles_dir,
@@ -468,7 +513,7 @@ fn tool_report_recover_automation(
         "wechat_bin": report_target.wechat_bin,
         "wechat_articles_dir": report_target.wechat_articles_dir,
         "headed": headed,
-        "login_output": login_output,
+        "login_strategy": "configure_flow_reuses_setup_editor_login",
         "configure_output": configure_output,
     }))?)
 }
@@ -518,9 +563,12 @@ async fn tool_report_markdown(config: &Config, args: &serde_json::Value) -> anyh
         ai_client,
         message_store,
         public_news_source,
+        None,
     )
     .await?;
-    std::fs::write(&output_path, &markdown)
+    let output_markdown =
+        prepare_report_output_markdown(&markdown, &report_target.output, &output_path)?;
+    std::fs::write(&output_path, &output_markdown)
         .map_err(|err| anyhow::anyhow!("写入日报文件失败: {}", err))?;
 
     Ok(serde_json::to_string_pretty(&serde_json::json!({
@@ -557,9 +605,12 @@ async fn tool_report_publish(config: &Config, args: &serde_json::Value) -> anyho
         ai_client,
         message_store.clone(),
         public_news_source,
+        None,
     )
     .await?;
-    std::fs::write(&output_path, &markdown)
+    let output_markdown =
+        prepare_report_output_markdown(&markdown, &report_target.output, &output_path)?;
+    std::fs::write(&output_path, &output_markdown)
         .map_err(|err| anyhow::anyhow!("写入日报文件失败: {}", err))?;
 
     let target = manual_daily_report_publish_target(&report_target)?;
@@ -575,6 +626,61 @@ async fn tool_report_publish(config: &Config, args: &serde_json::Value) -> anyho
             &publish_persistence,
             &publish_receipt,
         ),
+    )?)
+}
+
+async fn tool_wechat_articles(config: &Config, args: &serde_json::Value) -> anyhow::Result<String> {
+    let account_name = required_string(args, "account_name")?;
+    let limit = args.get("limit").and_then(|v| v.as_u64()).unwrap_or(20) as usize;
+    let account = find_wechat_account(&config.public_sources.wechat_accounts, &account_name)
+        .ok_or_else(|| {
+            crate::error::QunMindError::Config(format!(
+                "未找到公众号来源：{}。请先配置 [[public_sources.wechat_accounts]] 的 name / feed_url / aliases",
+                account_name
+            ))
+        })?;
+    let feed_url = account.feed_url.clone();
+    let resolved_account_name = account.name.clone();
+    let items =
+        fetch_named_wechat_account_articles(&config.public_sources, &account_name, limit).await?;
+    let items_json = items
+        .into_iter()
+        .map(|item| {
+            serde_json::json!({
+                "source": item.source,
+                "title": item.title,
+                "url": item.url,
+                "summary": item.summary,
+                "author": item.author,
+                "published_at": item.published_at,
+                "score": item.score,
+                "comments": item.comments,
+                "ai_score": item.ai_score,
+                "category": item.category,
+            })
+        })
+        .collect::<Vec<_>>();
+
+    Ok(serde_json::to_string_pretty(&serde_json::json!({
+        "ok": true,
+        "account_name": resolved_account_name,
+        "requested_account_name": account_name,
+        "feed_url": feed_url,
+        "count": items_json.len(),
+        "items": items_json,
+    }))?)
+}
+
+fn tool_wechat_article_url(config: &Config, args: &serde_json::Value) -> anyhow::Result<String> {
+    let url = required_string(args, "url")?;
+    let output_dir = args
+        .get("output_dir")
+        .and_then(|value| value.as_str())
+        .map(PathBuf::from);
+    let result =
+        run_wechat_article_url_helper(&config.public_sources, &url, output_dir.as_deref())?;
+    Ok(serde_json::to_string_pretty(
+        &wechat_article_url_response_json(&result),
     )?)
 }
 
@@ -783,17 +889,20 @@ mod tests {
     }
 
     #[test]
-    fn list_tools_returns_fifteen_tools() {
+    fn list_tools_returns_seventeen_tools() {
         let tools = list_tools();
-        assert_eq!(tools.len(), 15);
+        assert_eq!(tools.len(), 17);
         let names: Vec<&str> = tools.iter().map(|t| t.name.as_str()).collect();
         assert!(names.contains(&"publish_history"));
         assert!(names.contains(&"report_status"));
         assert!(names.contains(&"report_login"));
         assert!(names.contains(&"report_configure"));
         assert!(names.contains(&"report_recover_automation"));
+        assert!(names.contains(&"report_preview"));
         assert!(names.contains(&"report_markdown"));
         assert!(names.contains(&"report_publish"));
+        assert!(names.contains(&"wechat_articles"));
+        assert!(names.contains(&"wechat_article_url"));
         assert!(names.contains(&"wxcli_doctor"));
         assert!(names.contains(&"wxcli_capture"));
         assert!(names.contains(&"wxcli_test_plan"));
@@ -925,6 +1034,74 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn tool_wechat_articles_rejects_missing_account_name() {
+        let config = test_config();
+
+        let err = call_tool(
+            &config,
+            std::path::Path::new("test-config.toml"),
+            "wechat_articles",
+            &serde_json::json!({}),
+        )
+        .await
+        .unwrap_err();
+
+        assert!(err.to_string().contains("account_name"));
+    }
+
+    #[tokio::test]
+    async fn tool_wechat_articles_errors_before_network_when_account_is_not_bound() {
+        let config = config_from("");
+
+        let err = call_tool(
+            &config,
+            std::path::Path::new("test-config.toml"),
+            "wechat_articles",
+            &serde_json::json!({"account_name": "未绑定公众号"}),
+        )
+        .await
+        .unwrap_err();
+
+        assert!(err.to_string().contains("未找到公众号来源"));
+        assert!(
+            err.to_string()
+                .contains("[[public_sources.wechat_accounts]]")
+        );
+    }
+
+    #[tokio::test]
+    async fn tool_wechat_article_url_rejects_missing_url() {
+        let config = test_config();
+
+        let err = call_tool(
+            &config,
+            std::path::Path::new("test-config.toml"),
+            "wechat_article_url",
+            &serde_json::json!({}),
+        )
+        .await
+        .unwrap_err();
+
+        assert!(err.to_string().contains("url"));
+    }
+
+    #[tokio::test]
+    async fn tool_wechat_article_url_errors_before_execution_when_helper_not_configured() {
+        let config = config_from("");
+
+        let err = call_tool(
+            &config,
+            std::path::Path::new("test-config.toml"),
+            "wechat_article_url",
+            &serde_json::json!({"url": "https://mp.weixin.qq.com/s/example"}),
+        )
+        .await
+        .unwrap_err();
+
+        assert!(err.to_string().contains("wechat_article_helper_bin"));
+    }
+
+    #[tokio::test]
     async fn tool_report_login_rejects_non_wechat_target() {
         let config = config_from(
             r#"
@@ -1019,7 +1196,7 @@ mod tests {
         .await
         .unwrap_err();
 
-        assert!(err.to_string().contains("moonpub login"));
+        assert!(err.to_string().contains("moonpub configure"));
     }
 
     #[tokio::test]

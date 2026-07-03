@@ -33,6 +33,11 @@ The project currently supports:
 - Daily reports generated from recently stored group messages and link intelligence.
 - Per-group daily report targets with optional cron, prompt, lookback, message, and link overrides.
 - Optional Hacker News, CoinMarketCap, CoinGecko, DeFi Llama, Dune, GitHub Trending, and Slerf Blog fallback reports when a report group has no messages.
+- Manual curated source items for one-off official articles, X posts, or other links you explicitly want readers to continue reading.
+- The default `web3_media_urls` list now includes a PANews RSS feed, and `panewslab.com` links are treated as curated traceable sources so Chinese Web3 articles can survive topic filtering with full original URLs intact.
+- The default `web3_media_urls` list also includes the WuBlockchain Atom feed, and `wublock123.com` links are treated as curated traceable sources so Chinese Web3 exchange/news flashes can flow into the report pipeline with full original URLs.
+- WeChat public-account report drafts use a fixed personal-account cover for the `AI · Web3 最新日报` column, branded as `寻月隐君`, while `moonpub` still owns final rendering and upload.
+- WeChat daily reports render as a review-friendly article layout: intro, "today's three things", a three-part focus callout, numbered AI / Web3 / tech / deep-read sections, "worth watching" item notes, polished source quote lines, and separate referenced-source versus complete-source-link blocks.
 
 ## Status
 
@@ -83,6 +88,7 @@ Immediate next step:
 The WeChat public-account report path currently depends on local `moonpub`, not on a standalone internal publisher:
 
 - Call path: `moonpub --articles <dir> push <temp_markdown_file> --render`
+- Before handing markdown to `moonpub --render`, QunMind writes a per-draft local cover PNG and injects a relative `cover:` frontmatter field so the public-account draft uses the fixed `AI · Web3 最新日报` cover for the personal account `寻月隐君`
 - Upstream state: local `moonpub` is currently Beta / early adopter ready, better suited for draft generation plus manual review than for promising unattended publishing
 - `wx-cli doctor` now marks `output = "wechat"` report targets with `config_ready` and `dependency_blockers`, including whether `moonpub` is actually resolvable on this machine and whether `wechat_articles_dir` is a real directory
 
@@ -97,6 +103,9 @@ Current working timeline has shifted:
 - June 24, 2026: first real public-account draft push succeeded
 - June 25, 2026: second real public-account draft push succeeded and confirmed the minimum viable path
 - June 25, 2026: third real public-account draft push succeeded with the latest content-quality-tuned v5 preview
+- June 26, 2026: a fixed personal-account cover was added for `AI · Web3 最新日报`
+- June 27, 2026: the public-account report layout was tightened with quick overview, numbered sections, lighter item spacing, and clearer source-link blocks
+- June 28, 2026: the layout was further polished into "today's three things", a three-part focus block, "worth watching" item notes, and Chinese fallback summaries to avoid clipped English fragments
 - June 25-26, 2026: internal gray rollout and repeated rehearsals are realistic
 - it is still not recommended to describe the path as fully unattended stable production yet
 
@@ -197,7 +206,49 @@ For an actual learning order instead of a flat list, use [docs/research-tools.md
 
 For WeChat public-account article material, QunMind now prefers a lighter integration shape: consuming RSS / Atom style upstream output through `[public_sources] wechat_rss_*`, instead of embedding a full login/proxy/anti-bot service into the main bot process.
 
+Named public-account lookup is built on that same boundary. Bind a public-account name to a known upstream feed with `[[public_sources.wechat_accounts]]`, then query it by name:
+
+```toml
+[[public_sources.wechat_accounts]]
+name = "寻月隐君"
+feed_url = "http://127.0.0.1:8080/xunyue/rss.xml"
+aliases = ["xunyue", "寻月"]
+```
+
+```bash
+cargo run -- wechat-articles --account-name '寻月隐君' --limit 20
+```
+
+The command returns structured JSON with the resolved account name, feed URL, article count, and each article's title, author, publish time, summary, and full original URL. MCP / agent callers can use the same behavior through the `wechat_articles` tool with `account_name` and optional `limit`. If a name has not been bound to a feed, QunMind fails explicitly and asks for `[[public_sources.wechat_accounts]]` configuration instead of attempting unstable WeChat scraping inside the main process.
+
 The current `wechat_rss` reader also normalizes a few common feed variants so mixed upstream services stay usable: Atom `<author><name>`, RSS `dc:creator`, and `pubDate` / `updated` / `published` / `dc:date` timestamps are mapped into the same `author` and UTC `published_at` fields before they enter the daily-report prompt.
+
+For a single public-account article URL, the preferred future shape is different from the feed-backed path above. If the goal is "take one `mp.weixin.qq.com/s/...` link and turn it into markdown plus downloaded images", treat that as an explicit helper workflow, not as a built-in main-process fetcher. The current best reference is [`jackwener/wechat-article-to-markdown`](https://github.com/jackwener/wechat-article-to-markdown): QunMind should eventually call a tool like that through an opt-in CLI / MCP entry, consume structured output, and keep failures isolated from the normal RSS-backed report pipeline.
+
+That opt-in entry now exists in skeleton form:
+
+```bash
+cargo run -- wechat-article-url \
+  --url 'https://mp.weixin.qq.com/s/xxxxxxxx'
+```
+
+It currently requires an explicit external helper configuration first:
+
+```toml
+[public_sources]
+wechat_article_helper_bin = "wechat-article-to-markdown"
+wechat_article_helper_output_dir = "/tmp/qunmind-wechat-article-helper"
+```
+
+Without that helper, QunMind fails early with a clear config error instead of attempting unstable built-in scraping.
+
+When the helper succeeds and leaves a markdown file behind, QunMind now also best-effort parses the generated article header and first useful body paragraph back into structured JSON fields such as `title`, `account_name`, `published_at`, `source_url`, and `summary`, alongside `article_dir`, `markdown_path`, and `images_dir`. The intent is to make a single WeChat article link immediately reusable as a traceable daily-report source item, while still keeping the actual browser automation and anti-bot surface outside the main process.
+
+For X / Twitter-style first-hand signals, QunMind uses the same lightweight boundary through `[public_sources] x_rss_*`: provide RSSHub, Nitter-compatible, or self-hosted X-list RSS / Atom feeds, and QunMind will normalize them as `X RSS` public news items. The main process does not embed X login, scraping, proxy, or anti-bot logic.
+
+If you want the daily report to absorb more first-hand official context instead of leaning mostly on news flashes, QunMind now also supports `[public_sources] official_blogs_*`. This source boundary is meant for stable RSS / Atom feeds from official publishers such as OpenAI, Google Blog, and Cloudflare Blog, so product releases, research posts, and infrastructure announcements can enter the report pipeline as durable upstream material rather than one-off manual links.
+
+Manual curated items such as `x.com`, `twitter.com`, Nitter-compatible links, and WeChat public-account URLs are treated as explicitly selected material rather than broad-feed noise, so the topic keyword filter will not drop them simply because the title does not contain a configured keyword.
 
 If you already have a WeChat public-account RSS / Atom upstream, the shortest rehearsal flow is:
 
@@ -226,9 +277,10 @@ MCP can now also drive the manual report rehearsal path itself. `report_markdown
 
 Manual publish results now also carry their own follow-up hints. After a successful `daily-report --publish` or MCP `report_publish`, the JSON response no longer stops at "published = true": it also includes `follow_up_status`, plus the same `recommended_commands` and `recommended_tool_calls` pattern used by `report-status`, so operators and agents can immediately tell whether the next step is just `publish_history` or a recovery flow such as `report_recover_automation`.
 
-This path has now been verified with three real draft pushes:
+This path has now been verified with at least four real draft pushes:
 - `report-status` can advance to `recently_published_with_warnings`
-- `publish-history` now returns the three latest successful receipts
+- `publish-history` now returns recent successful receipts
+- the latest ZK manual-curation run on `2026-06-27T11:30:40.051977+00:00` returned `published = true`, `publish_receipt_saved = true`, `automation_state = "ok"`, and `warnings = []`
 - even when `moonpub` reports `automation: login timeout: QR code not scanned within 120s`, that warning did not block either draft from reaching the WeChat draft box
 - these post-publish automation hints are now surfaced as structured `warnings` in receipt JSON instead of living only inside `raw_output`
 - receipt JSON and `report-status` now also classify that warning as `automation_state = "login_required"`, which means the draft push succeeded but the browser automation path did not get past login into the preview/configuration steps
@@ -238,11 +290,14 @@ Recent report-quality hardening also now lives inside `src/daily_report/` instea
 - obvious misclassification is rebalanced, such as `openai/codex` no longer being pulled into Web3 just because `codex` contains `dex`
 - low-signal comments are filtered or rewritten from source summaries
 - empty section headers are suppressed
-- the reference block is capped and restricted to URLs actually used in the rendered body
+- every rendered focus, section item, deep read, referenced source, and complete-source entry exposes a visible `原文：https://...` URL instead of relying only on Markdown link text
+- when reliable article text or summaries are unavailable, the report should show the title, source, and full original URL instead of presenting unverifiable claims as system analysis
+- the reference block is split into URLs used by the rendered body and a longer "complete source links" list for the remaining material pool
 
 The current operational interpretation is:
 - the minimum viable target is complete: generate report -> push draft -> persist receipt -> inspect publish history
 - if a receipt shows `automation_state = "login_required"`, the next operational step is `qunmind report-recover-automation --report-name "微信公众号日报"` or `just report-recover-automation config.toml '微信公众号日报'`
+- if `report-login` fails immediately with `oneshot canceled`, treat that as the current upstream `moonpub login` bug rather than a QR-scan mistake; switch straight to `qunmind report-recover-automation --report-name "微信公众号日报"` or `qunmind report-preview --report-name "微信公众号日报" --headed` so the headed automation path can perform the login step
 - the remaining risk is no longer "can it publish at all", but rather publish-IP drift, automation warnings, and report quality
 
 Notes:

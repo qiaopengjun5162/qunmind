@@ -7,7 +7,7 @@ use regex::Regex;
 use reqwest::Client;
 
 use super::{PublicNewsItem, PublicNewsSource};
-use crate::config::PublicSourcesConfig;
+use crate::config::{PublicSourcesConfig, WechatAccountSourceConfig};
 use crate::error::Result;
 
 pub struct WechatRssSource {
@@ -44,6 +44,36 @@ impl WechatRssSource {
     }
 }
 
+pub async fn fetch_named_wechat_account_articles(
+    config: &PublicSourcesConfig,
+    account_name: &str,
+    limit: usize,
+) -> Result<Vec<PublicNewsItem>> {
+    let account = find_wechat_account(&config.wechat_accounts, account_name).ok_or_else(|| {
+        crate::error::QunMindError::Config(format!(
+            "未找到公众号来源：{}。请先配置 [[public_sources.wechat_accounts]] 的 name / feed_url / aliases",
+            account_name
+        ))
+    })?;
+    let client = Client::builder()
+        .timeout(Duration::from_secs(config.wechat_rss_timeout_secs))
+        .user_agent("qunmind/0.1")
+        .build()?;
+    let xml = client
+        .get(&account.feed_url)
+        .send()
+        .await?
+        .error_for_status()?
+        .text()
+        .await?;
+
+    Ok(parse_wechat_account_feed(
+        &account.name,
+        &xml,
+        limit.min(config.wechat_rss_max_items.max(1)).max(1),
+    ))
+}
+
 #[async_trait]
 impl PublicNewsSource for WechatRssSource {
     async fn fetch_top_items(&self) -> Result<Vec<PublicNewsItem>> {
@@ -76,6 +106,34 @@ pub fn parse_wechat_feed(xml: &str, max_items: usize) -> Vec<PublicNewsItem> {
         .collect::<Vec<_>>();
 
     parse_fragments(entry_fragments, max_items)
+}
+
+pub fn parse_wechat_account_feed(
+    account_name: &str,
+    xml: &str,
+    max_items: usize,
+) -> Vec<PublicNewsItem> {
+    parse_wechat_feed(xml, max_items)
+        .into_iter()
+        .map(|mut item| {
+            item.source = format!("微信公众号：{}", account_name);
+            item
+        })
+        .collect()
+}
+
+pub fn find_wechat_account<'a>(
+    accounts: &'a [WechatAccountSourceConfig],
+    name: &str,
+) -> Option<&'a WechatAccountSourceConfig> {
+    let needle = name.trim();
+    if needle.is_empty() {
+        return None;
+    }
+
+    accounts.iter().find(|account| {
+        account.name == needle || account.aliases.iter().any(|alias| alias == needle)
+    })
 }
 
 fn parse_fragments(fragments: Vec<&str>, max_items: usize) -> Vec<PublicNewsItem> {
@@ -426,5 +484,54 @@ mod tests {
         assert!(summary.starts_with("Hello Rust Agent"));
         assert!(!summary.contains("<strong>"));
         assert!(summary.ends_with("..."));
+    }
+
+    #[test]
+    fn finds_named_account_by_name_or_alias() {
+        let accounts = vec![crate::config::WechatAccountSourceConfig {
+            name: "寻月隐君".to_string(),
+            feed_url: "http://127.0.0.1:8080/xunyue/rss.xml".to_string(),
+            aliases: vec!["xunyue".to_string(), "寻月".to_string()],
+        }];
+
+        let account = find_wechat_account(&accounts, "寻月").expect("account");
+
+        assert_eq!(account.name, "寻月隐君");
+        assert_eq!(account.feed_url, "http://127.0.0.1:8080/xunyue/rss.xml");
+    }
+
+    #[test]
+    fn parse_named_account_feed_marks_source_as_account_name() {
+        let xml = r#"
+        <rss><channel>
+          <item>
+            <title>ZK Weekly</title>
+            <link>https://mp.weixin.qq.com/s/zk-weekly</link>
+          </item>
+        </channel></rss>
+        "#;
+
+        let items = parse_wechat_account_feed("寻月隐君", xml, 10);
+
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].source, "微信公众号：寻月隐君");
+        assert_eq!(items[0].title, "ZK Weekly");
+        assert_eq!(items[0].url, "https://mp.weixin.qq.com/s/zk-weekly");
+        assert_eq!(items[0].category.as_deref(), Some("wechat_article"));
+    }
+
+    #[tokio::test]
+    async fn fetch_named_account_errors_before_network_when_account_is_not_bound() {
+        let config = PublicSourcesConfig::default();
+
+        let err = fetch_named_wechat_account_articles(&config, "未绑定公众号", 10)
+            .await
+            .expect_err("missing account should fail");
+
+        assert!(err.to_string().contains("未找到公众号来源"));
+        assert!(
+            err.to_string()
+                .contains("[[public_sources.wechat_accounts]]")
+        );
     }
 }

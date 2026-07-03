@@ -7,13 +7,17 @@ pub mod ethresear;
 pub mod github_trending;
 pub mod hacker_news;
 pub mod hn_daily;
+pub mod http_client;
+pub mod manual;
+pub mod official_blogs;
 pub mod registry;
 pub mod slerf_blog;
 pub mod web3_media;
 pub mod wechat_rss;
+pub mod x_rss;
 
 use async_trait::async_trait;
-use std::collections::HashSet;
+use std::collections::HashMap;
 use std::sync::Arc;
 use tracing::warn;
 
@@ -66,13 +70,13 @@ impl CompositePublicNewsSource {
 impl PublicNewsSource for CompositePublicNewsSource {
     async fn fetch_top_items(&self) -> Result<Vec<PublicNewsItem>> {
         let mut items = Vec::new();
-        let mut seen = HashSet::new();
+        let mut seen = HashMap::new();
 
-        for source in &self.sources {
+        for (index, source) in self.sources.iter().enumerate() {
             let fetched = match source.fetch_top_items().await {
                 Ok(items) => items,
                 Err(err) => {
-                    warn!("public news source failed: {}", err);
+                    warn!(source_index = index, error = %err, "public news source failed");
                     continue;
                 }
             };
@@ -83,9 +87,12 @@ impl PublicNewsSource for CompositePublicNewsSource {
                     continue;
                 }
 
-                // Different feeds may point to the same story; keeping the first source makes prompts compact.
-                // dedup by URL only — same story from different feeds counts once
-                if seen.insert(item.url.clone()) {
+                if let Some(existing_index) = seen.get(&item.url).copied() {
+                    if should_replace_duplicate_item(&items[existing_index], &item) {
+                        items[existing_index] = item;
+                    }
+                } else {
+                    seen.insert(item.url.clone(), items.len());
                     items.push(item);
                 }
             }
@@ -101,10 +108,7 @@ fn matches_topics(item: &PublicNewsItem, topic_keywords: &[String]) -> bool {
         return true;
     }
 
-    // Items from curated sources that the user explicitly opted into are always
-    // relevant — the user enabling the source IS the relevance signal.  Keyword
-    // filtering is for broad feeds (Hacker News, etc.) where most items are noise.
-    if is_curated_source_url(&item.url) {
+    if is_manual_item(item) || is_official_blog_item(item) || is_curated_source_url(&item.url) {
         return true;
     }
 
@@ -119,9 +123,59 @@ fn is_curated_source_url(url: &str) -> bool {
         || url.contains("arxiv.org")
         || url.contains("ethresear.ch")
         || url.contains("mp.weixin.qq.com")
+        || url.contains("x.com/")
+        || url.contains("twitter.com/")
+        || url.contains("nitter.")
         || url.contains("thedefiant.io")
         || url.contains("cointelegraph.com")
         || url.contains("cryptoslate.com")
+        || url.contains("panewslab.com")
+        || url.contains("wublock123.com")
+        || url.contains("openai.com/")
+        || url.contains("blog.google/")
+        || url.contains("blog.cloudflare.com/")
+}
+
+fn is_manual_item(item: &PublicNewsItem) -> bool {
+    item.category
+        .as_deref()
+        .is_some_and(|category| category == "manual" || category.starts_with("manual:"))
+}
+
+fn is_official_blog_item(item: &PublicNewsItem) -> bool {
+    item.category
+        .as_deref()
+        .is_some_and(|category| category == "official_blog")
+}
+
+fn source_preference_score(item: &PublicNewsItem) -> i64 {
+    let mut score = 0;
+
+    if is_manual_item(item) {
+        score += 4;
+    }
+    if is_official_blog_item(item) {
+        score += 3;
+    }
+    if item.url.contains("openai.com/")
+        || item.url.contains("blog.google/")
+        || item.url.contains("blog.cloudflare.com/")
+    {
+        score += 2;
+    }
+    if item
+        .summary
+        .as_deref()
+        .is_some_and(|summary| !summary.trim().is_empty())
+    {
+        score += 1;
+    }
+
+    score
+}
+
+fn should_replace_duplicate_item(existing: &PublicNewsItem, incoming: &PublicNewsItem) -> bool {
+    source_preference_score(incoming) > source_preference_score(existing)
 }
 
 #[cfg(test)]
@@ -195,6 +249,164 @@ mod tests {
 
         assert_eq!(items.len(), 1);
         assert_eq!(items[0].title, "Rust ZKP library");
+    }
+
+    #[tokio::test]
+    async fn composite_keeps_curated_x_links_even_without_keyword_match() {
+        let source = Arc::new(StaticSource {
+            items: vec![PublicNewsItem {
+                source: "X".to_string(),
+                title: "Easycompany333 on X".to_string(),
+                url: "https://x.com/Easycompany333/status/2069019238283849954".to_string(),
+                summary: Some("用户精选的一手 X 原帖。".to_string()),
+                author: Some("Easycompany333".to_string()),
+                published_at: None,
+                score: Some(1900),
+                comments: None,
+                ai_score: None,
+                category: Some("x_post".to_string()),
+            }],
+        });
+        let composite = CompositePublicNewsSource::new(vec![source], vec!["rust".to_string()], 10);
+
+        let items = match composite.fetch_top_items().await {
+            Ok(items) => items,
+            Err(err) => panic!("items: {err}"),
+        };
+
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].source, "X");
+    }
+
+    #[tokio::test]
+    async fn composite_keeps_manual_items_even_without_keyword_or_curated_domain_match() {
+        let source = Arc::new(StaticSource {
+            items: vec![PublicNewsItem {
+                source: "ICME Blog".to_string(),
+                title: "LatticeBlindFold".to_string(),
+                url: "https://blog.icme.io/latticeblindfold-towards-the-first-zero-knowledge-lattice-based-folding-scheme/".to_string(),
+                summary: Some("用户精选的 ZK folding 文章。".to_string()),
+                author: Some("Luca Dall’Ava".to_string()),
+                published_at: None,
+                score: Some(2400),
+                comments: None,
+                ai_score: None,
+                category: Some("manual:zk".to_string()),
+            }],
+        });
+        let composite = CompositePublicNewsSource::new(vec![source], vec!["rust".to_string()], 10);
+
+        let items = match composite.fetch_top_items().await {
+            Ok(items) => items,
+            Err(err) => panic!("items: {err}"),
+        };
+
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].source, "ICME Blog");
+    }
+
+    #[tokio::test]
+    async fn composite_prefers_official_blog_when_url_is_duplicated_by_aggregator() {
+        let hn_source = Arc::new(StaticSource {
+            items: vec![PublicNewsItem {
+                source: "Hacker News".to_string(),
+                title: "HN thread".to_string(),
+                url: "https://blog.google/innovation-and-ai/technology/safety-security/opening-up-zero-knowledge-proof-technology-to-promote-privacy-in-age-assurance/".to_string(),
+                summary: None,
+                author: None,
+                published_at: None,
+                score: Some(149),
+                comments: None,
+                ai_score: None,
+                category: None,
+            }],
+        });
+        let official_source = Arc::new(StaticSource {
+            items: vec![PublicNewsItem {
+                source: "Google Blog".to_string(),
+                title: "Opening up 'Zero-Knowledge Proof' technology to promote privacy in age assurance".to_string(),
+                url: "https://blog.google/innovation-and-ai/technology/safety-security/opening-up-zero-knowledge-proof-technology-to-promote-privacy-in-age-assurance/".to_string(),
+                summary: Some("Google 官方文章介绍如何开放零知识证明能力来支持隐私保护型年龄验证。".to_string()),
+                author: Some("Google".to_string()),
+                published_at: Some("2026-07-01T00:00:00Z".to_string()),
+                score: Some(180),
+                comments: None,
+                ai_score: None,
+                category: Some("official_blog".to_string()),
+            }],
+        });
+        let composite = CompositePublicNewsSource::new(
+            vec![hn_source, official_source],
+            vec!["rust".to_string()],
+            10,
+        );
+
+        let items = composite.fetch_top_items().await.expect("items");
+
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].source, "Google Blog");
+        assert_eq!(items[0].category.as_deref(), Some("official_blog"));
+    }
+
+    #[tokio::test]
+    async fn composite_keeps_curated_panews_links_even_without_keyword_match() {
+        let source = Arc::new(StaticSource {
+            items: vec![PublicNewsItem {
+                source: "PANews".to_string(),
+                title: "USDC隐私功能现已在Starknet上线".to_string(),
+                url: "https://www.panewslab.com/zh/articles/019f01d4-429f-74e8-8cda-057403ce44f6"
+                    .to_string(),
+                summary: Some(
+                    "USDC 在 Starknet 上线隐私能力，适合纳入稳定币与隐私支付跟踪。".to_string(),
+                ),
+                author: Some("PA一线".to_string()),
+                published_at: Some("2026-06-26T02:48:00.000Z".to_string()),
+                score: Some(120),
+                comments: None,
+                ai_score: None,
+                category: Some("web3".to_string()),
+            }],
+        });
+        let composite = CompositePublicNewsSource::new(vec![source], vec!["rust".to_string()], 10);
+
+        let items = match composite.fetch_top_items().await {
+            Ok(items) => items,
+            Err(err) => panic!("items: {err}"),
+        };
+
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].source, "PANews");
+    }
+
+    #[tokio::test]
+    async fn composite_keeps_curated_wublock_links_even_without_keyword_match() {
+        let source = Arc::new(StaticSource {
+            items: vec![PublicNewsItem {
+                source: "吴说区块链".to_string(),
+                title: "Coinbase 将 Grove（GROVE）加入资产上线路线图".to_string(),
+                url: "https://www.wublock123.com/news/coinbase-adds-grove-grove-token-listing-roadmap-63354"
+                    .to_string(),
+                summary: Some(
+                    "Coinbase 已将 GROVE 纳入上线路线图，正式交易时间待后续公布。"
+                        .to_string(),
+                ),
+                author: Some("吴说".to_string()),
+                published_at: Some("2026-06-23T21:38:27.000Z".to_string()),
+                score: Some(120),
+                comments: None,
+                ai_score: None,
+                category: Some("web3".to_string()),
+            }],
+        });
+        let composite = CompositePublicNewsSource::new(vec![source], vec!["rust".to_string()], 10);
+
+        let items = match composite.fetch_top_items().await {
+            Ok(items) => items,
+            Err(err) => panic!("items: {err}"),
+        };
+
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].source, "吴说区块链");
     }
 
     struct FailingSource;

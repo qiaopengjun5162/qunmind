@@ -22,6 +22,7 @@
 
 - [ ] No real WeChat send was triggered during testing
 - [ ] Real-send commands were checked with `--dry-run` or `--no-send` first
+- [ ] If this PR changes WeChat report visuals or any cover-generation path, `docs/visual-operations.md` records the generated asset path, source, and whether the asset is still part of the active publish flow
 
 ## Notes
 

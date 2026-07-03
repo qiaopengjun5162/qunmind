@@ -9,25 +9,23 @@ use super::{PublicNewsItem, PublicNewsSource};
 use crate::config::PublicSourcesConfig;
 use crate::error::Result;
 
-/// Curated Web3 media RSS feeds (The Block, CoinDesk, Decrypt, etc.).
-/// RSS 2.0 is simple enough that a small manual parser keeps us dependency-free.
-pub struct Web3MediaSource {
+pub struct OfficialBlogsSource {
     client: Client,
     urls: Vec<String>,
     max_items: usize,
 }
 
-impl Web3MediaSource {
+impl OfficialBlogsSource {
     pub fn new(config: &PublicSourcesConfig) -> Result<Self> {
         let client = Client::builder()
-            .timeout(Duration::from_secs(config.web3_media_timeout_secs))
+            .timeout(Duration::from_secs(config.official_blogs_timeout_secs))
             .user_agent("qunmind/0.1")
             .build()?;
 
         Ok(Self {
             client,
-            urls: config.web3_media_urls.clone(),
-            max_items: config.web3_media_max_items.max(1),
+            urls: config.official_blogs_urls.clone(),
+            max_items: config.official_blogs_max_items.max(1),
         })
     }
 
@@ -46,7 +44,7 @@ impl Web3MediaSource {
 }
 
 #[async_trait]
-impl PublicNewsSource for Web3MediaSource {
+impl PublicNewsSource for OfficialBlogsSource {
     async fn fetch_top_items(&self) -> Result<Vec<PublicNewsItem>> {
         let mut batches = Vec::new();
         for url in &self.urls {
@@ -56,8 +54,8 @@ impl PublicNewsSource for Web3MediaSource {
                         batches.push(feed_items);
                     }
                 }
-                Err(e) => {
-                    tracing::warn!(url = %url, error = %e, "Web3 media feed 拉取失败，跳过");
+                Err(err) => {
+                    tracing::warn!(url = %url, error = %err, "Official blog feed 拉取失败，跳过");
                 }
             }
         }
@@ -71,8 +69,8 @@ fn interleave_feed_batches(
     max_items: usize,
 ) -> Vec<PublicNewsItem> {
     let mut items = Vec::new();
-    let max_items = max_items.max(1);
     let mut index = 0;
+    let max_items = max_items.max(1);
 
     while items.len() < max_items {
         let mut progressed = false;
@@ -124,10 +122,10 @@ fn parse_feed_items(xml: &str, feed_url: &str, max_items: usize) -> Vec<PublicNe
                 summary,
                 author,
                 published_at,
-                score: Some(120),
+                score: Some(180),
                 comments: None,
                 ai_score: None,
-                category: None,
+                category: Some("official_blog".to_string()),
             })
         })
         .take(max_items)
@@ -161,10 +159,10 @@ fn parse_feed_items(xml: &str, feed_url: &str, max_items: usize) -> Vec<PublicNe
                 summary,
                 author,
                 published_at,
-                score: Some(120),
+                score: Some(180),
                 comments: None,
                 ai_score: None,
-                category: None,
+                category: Some("official_blog".to_string()),
             })
         })
         .take(max_items)
@@ -173,26 +171,16 @@ fn parse_feed_items(xml: &str, feed_url: &str, max_items: usize) -> Vec<PublicNe
 
 fn feed_source_name(feed_url: &str) -> String {
     let lower = feed_url.to_lowercase();
-    if lower.contains("theblock") {
-        "The Block".to_string()
-    } else if lower.contains("coindesk") {
-        "CoinDesk".to_string()
-    } else if lower.contains("decrypt") {
-        "Decrypt".to_string()
-    } else if lower.contains("bankless") {
-        "Bankless".to_string()
-    } else if lower.contains("thedefiant") {
-        "The Defiant".to_string()
-    } else if lower.contains("cointelegraph") {
-        "Cointelegraph".to_string()
-    } else if lower.contains("cryptoslate") {
-        "CryptoSlate".to_string()
-    } else if lower.contains("panewslab") {
-        "PANews".to_string()
-    } else if lower.contains("wublock123") || lower.contains("wublockchain") {
-        "吴说区块链".to_string()
+    if lower.contains("openai.com") {
+        "OpenAI".to_string()
+    } else if lower.contains("blog.google") || lower.contains("googleblog") {
+        "Google Blog".to_string()
+    } else if lower.contains("blog.cloudflare.com") {
+        "Cloudflare Blog".to_string()
+    } else if lower.contains("mistral.ai") {
+        "Mistral".to_string()
     } else {
-        "Web3 Media".to_string()
+        "Official Blog".to_string()
     }
 }
 
@@ -206,7 +194,6 @@ fn extract_tag_text(xml: &str, tag: &str) -> Option<String> {
     if raw.is_empty() {
         return None;
     }
-    // 剥离 CDATA 包装：<![CDATA[...]]>
     let text = if let Some(inner) = raw
         .strip_prefix("<![CDATA[")
         .and_then(|s| s.strip_suffix("]]>"))
@@ -285,56 +272,25 @@ mod tests {
         <rss>
           <channel>
             <item>
-              <title>Ethereum Layer-2 Race Heats Up</title>
-              <link>https://example.com/l2</link>
-              <description>Arbitrum and Optimism rollups are &lt;strong&gt;competing&lt;/strong&gt; for users.</description>
-              <pubDate>Mon, 26 Jun 2026 00:00:00 GMT</pubDate>
-              <author>Alice</author>
-            </item>
-            <item>
-              <title>Solana Firedancer Update</title>
-              <link>https://example.com/firedancer</link>
-              <description></description>
+              <title>OpenAI ships new orchestration primitives</title>
+              <link>https://openai.com/index/orchestration/</link>
+              <description><![CDATA[<p>OpenAI explains new multi-agent orchestration primitives.</p>]]></description>
+              <pubDate>Wed, 01 Jul 2026 00:00:00 GMT</pubDate>
+              <author>OpenAI</author>
             </item>
           </channel>
         </rss>"#;
 
-        let items = parse_feed_items(xml, "https://www.theblock.co/rss", 10);
-
-        assert_eq!(items.len(), 2);
-        assert_eq!(items[0].title, "Ethereum Layer-2 Race Heats Up");
-        assert_eq!(items[0].url, "https://example.com/l2");
-        assert_eq!(
-            items[0].summary,
-            Some("Arbitrum and Optimism rollups are competing for users.".to_string())
-        );
-        assert_eq!(items[0].author, Some("Alice".to_string()));
-        assert_eq!(items[0].source, "The Block");
-    }
-
-    #[test]
-    fn parses_cdata_wrapped_rss_items() {
-        let xml = r#"<?xml version="1.0"?>
-        <rss>
-          <channel>
-            <item>
-              <title><![CDATA[DeFi Protocol Raises $50M]]></title>
-              <link><![CDATA[https://thedefiant.io/defi-raise]]></link>
-              <description><![CDATA[<p>The protocol secured funding from leading VCs.</p>]]></description>
-            </item>
-          </channel>
-        </rss>"#;
-
-        let items = parse_feed_items(xml, "https://thedefiant.io/feed", 10);
+        let items = parse_feed_items(xml, "https://openai.com/news/rss.xml", 10);
 
         assert_eq!(items.len(), 1);
-        assert_eq!(items[0].title, "DeFi Protocol Raises $50M");
-        assert_eq!(items[0].url, "https://thedefiant.io/defi-raise");
+        assert_eq!(items[0].source, "OpenAI");
+        assert_eq!(items[0].url, "https://openai.com/index/orchestration/");
         assert_eq!(
             items[0].summary,
-            Some("The protocol secured funding from leading VCs.".to_string())
+            Some("OpenAI explains new multi-agent orchestration primitives.".to_string())
         );
-        assert_eq!(items[0].source, "The Defiant");
+        assert_eq!(items[0].category.as_deref(), Some("official_blog"));
     }
 
     #[test]
@@ -342,118 +298,42 @@ mod tests {
         let xml = r#"<?xml version="1.0" encoding="utf-8"?>
         <feed xmlns="http://www.w3.org/2005/Atom">
           <entry>
-            <title type="html"><![CDATA[Coinbase 将 Grove（GROVE）加入资产上线路线图]]></title>
-            <link href="https://www.wublock123.com/news/coinbase-adds-grove-grove-token-listing-roadmap-63354"/>
-            <updated>2026-06-23T21:38:27.000Z</updated>
-            <summary type="html"><![CDATA[吴说获悉，Coinbase 将 Grove（GROVE）加入资产上线路线图。]]></summary>
-            <author><name>吴说</name></author>
+            <title>Privacy-preserving AI verification</title>
+            <link href="https://blog.google/innovation-and-ai/technology/ai/privacy-post"/>
+            <updated>2026-07-01T12:00:00.000Z</updated>
+            <summary type="html"><![CDATA[Google details a new privacy-preserving verification flow.]]></summary>
+            <author><name>Google</name></author>
           </entry>
         </feed>"#;
 
-        let items = parse_feed_items(xml, "https://www.wublock123.com/feed", 10);
+        let items = parse_feed_items(
+            xml,
+            "https://blog.google/innovation-and-ai/technology/ai/rss/",
+            10,
+        );
 
         assert_eq!(items.len(), 1);
-        assert_eq!(
-            items[0].title,
-            "Coinbase 将 Grove（GROVE）加入资产上线路线图"
-        );
-        assert_eq!(
-            items[0].url,
-            "https://www.wublock123.com/news/coinbase-adds-grove-grove-token-listing-roadmap-63354"
-        );
+        assert_eq!(items[0].source, "Google Blog");
+        assert_eq!(items[0].author.as_deref(), Some("Google"));
         assert_eq!(
             items[0].summary,
-            Some("吴说获悉，Coinbase 将 Grove（GROVE）加入资产上线路线图。".to_string())
+            Some("Google details a new privacy-preserving verification flow.".to_string())
         );
-        assert_eq!(items[0].author, Some("吴说".to_string()));
-        assert_eq!(items[0].source, "吴说区块链");
     }
 
     #[test]
-    fn feed_source_name_maps_default_urls() {
+    fn feed_source_name_maps_curated_urls() {
         assert_eq!(
-            feed_source_name("https://thedefiant.io/feed"),
-            "The Defiant"
-        );
-        assert_eq!(
-            feed_source_name("https://cointelegraph.com/rss"),
-            "Cointelegraph"
+            feed_source_name("https://openai.com/news/rss.xml"),
+            "OpenAI"
         );
         assert_eq!(
-            feed_source_name("https://cryptoslate.com/feed/"),
-            "CryptoSlate"
+            feed_source_name("https://blog.google/innovation-and-ai/technology/ai/rss/"),
+            "Google Blog"
         );
         assert_eq!(
-            feed_source_name("https://www.panewslab.com/rss.xml?lang=zh&type=NEWS"),
-            "PANews"
+            feed_source_name("https://blog.cloudflare.com/rss/"),
+            "Cloudflare Blog"
         );
-        assert_eq!(
-            feed_source_name("https://www.wublock123.com/feed"),
-            "吴说区块链"
-        );
-        assert_eq!(feed_source_name("https://unknown.io/rss"), "Web3 Media");
-    }
-
-    #[test]
-    fn interleaves_feed_batches_to_preserve_source_diversity() {
-        let item = |source: &str, title: &str, url: &str| PublicNewsItem {
-            source: source.to_string(),
-            title: title.to_string(),
-            url: url.to_string(),
-            summary: None,
-            author: None,
-            published_at: None,
-            score: Some(120),
-            comments: None,
-            ai_score: None,
-            category: Some("web3".to_string()),
-        };
-
-        let items = interleave_feed_batches(
-            vec![
-                vec![
-                    item("The Defiant", "A1", "https://thedefiant.io/a1"),
-                    item("The Defiant", "A2", "https://thedefiant.io/a2"),
-                ],
-                vec![
-                    item("PANews", "P1", "https://www.panewslab.com/p1"),
-                    item("PANews", "P2", "https://www.panewslab.com/p2"),
-                ],
-                vec![
-                    item("吴说区块链", "W1", "https://www.wublock123.com/w1"),
-                    item("吴说区块链", "W2", "https://www.wublock123.com/w2"),
-                ],
-            ],
-            4,
-        );
-
-        assert_eq!(items.len(), 4);
-        assert_eq!(items[0].source, "The Defiant");
-        assert_eq!(items[1].source, "PANews");
-        assert_eq!(items[2].source, "吴说区块链");
-        assert_eq!(items[3].title, "A2");
-    }
-
-    #[tokio::test]
-    #[ignore = "real network smoke test"]
-    async fn fetches_real_web3_feeds() {
-        let config = PublicSourcesConfig {
-            web3_media_enabled: true,
-            web3_media_urls: vec![
-                "https://thedefiant.io/feed".to_string(),
-                "https://cointelegraph.com/rss".to_string(),
-            ],
-            web3_media_max_items: 6,
-            web3_media_timeout_secs: 15,
-            ..Default::default()
-        };
-        let source = Web3MediaSource::new(&config).unwrap();
-        let items = source.fetch_top_items().await.unwrap();
-        assert!(!items.is_empty(), "should fetch Web3 media items");
-        for item in &items {
-            assert!(!item.title.is_empty());
-            assert!(!item.url.is_empty());
-            assert!(item.score.is_some());
-        }
     }
 }

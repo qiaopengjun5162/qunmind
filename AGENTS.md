@@ -14,7 +14,13 @@
 
 项目初心是微信/微信群 AI 中枢；公共投研来源只是日报缺少群消息时的辅助素材，不应压过微信收发、消息归一化、群配置、上下文记忆和真实联调。
 
-当前已有 PostgreSQL 消息持久化。`BotHandler` 会在 mention 过滤前保存入站消息；命中回复时会按 `bot.context_messages` 读取最近同会话文本作为基础对话上下文，默认 8 条，配置为 0 时只使用当前消息；`PostgresMessageStore` 会从文本消息中抽取 URL 并写入 `message_links`；`scheduler` 的日报会按 `schedule.daily_report_lookback_hours`、`schedule.daily_report_max_messages` 和 `schedule.daily_report_max_links` 读取已保存群消息与链接情报后再调用模型生成。群消息为空且 `[public_sources]` 中至少一个来源启用时，会读取 Hacker News、CoinMarketCap、CoinGecko、DeFi Llama、Dune、GitHub Trending、Slerf Blog 作为公共信息参考日报素材，并按 `topic_keywords` 聚焦 Rust、Web3、crypto、AI、ZKP 等前沿技术。当前还没有前端 UI。
+当前已有 PostgreSQL 消息持久化。`BotHandler` 会在 mention 过滤前保存入站消息；命中回复时会按 `bot.context_messages` 读取最近同会话文本作为基础对话上下文，默认 8 条，配置为 0 时只使用当前消息；`PostgresMessageStore` 会从文本消息中抽取 URL 并写入 `message_links`；`scheduler` 的日报会按 `schedule.daily_report_lookback_hours`、`schedule.daily_report_max_messages` 和 `schedule.daily_report_max_links` 读取已保存群消息与链接情报后再调用模型生成。群消息为空且 `[public_sources]` 中至少一个来源启用时，会读取 Hacker News、CoinMarketCap、CoinGecko、DeFi Llama、Dune、GitHub Trending、Slerf Blog、WeChat RSS、X RSS、Web3 Media 等公共信息参考日报素材，并按 `topic_keywords` 聚焦 Rust、Web3、crypto、AI、ZKP 等前沿技术。当前还没有前端 UI。
+
+`PANews` 当前先沿 `web3_media` RSS 边界接入，默认 feed 使用 `https://www.panewslab.com/rss.xml?lang=zh&type=NEWS`。同时 `panewslab.com` 域名被视作精选可追溯来源，避免中文 Web3 原文因为标题没命中 `topic_keywords` 而在聚合层被误过滤。
+
+`吴说区块链` 当前也沿 `web3_media` 边界接入，默认使用其 Atom feed `https://www.wublock123.com/feed`。由于 `web3_media` 现在已兼容 Atom `entry`，像 `wublock123.com/news/...` 这类中文快讯也能稳定进入日报素材池；`wublock123.com` 同样被视作精选可追溯来源域名。
+
+`web3_media` 默认精选源要按真实可抓取性维护，不要机械保留“理论上不错、实际上长期 403/Cloudflare challenge”的 feed。当前 `thedefiant.io/feed` 已确认会跳到 `https://thedefiant.io/api/feed` 并返回 Cloudflare 403，默认列表已改为可稳定访问的 `https://decrypt.co/feed`；后续若再遇到同类站点，要先实测 HTTP 状态与可持续性，再决定是否保留在默认源里。
 
 `[[groups]]` 目前用于群级运行覆盖：`enabled = false` 时该群入站消息仍会保存但不会回复；`mention_names` 和 `context_messages` 可覆盖全局 `[bot]` 配置；`system_prompt` 会作为群级 persona 插入到 AI 消息最前面。未配置群覆盖时继续使用全局 `[bot]`。
 
@@ -44,6 +50,9 @@
 
 如果定时 `output = "wechat"` 日报与手工 `daily-report` 的内容生成语义发生分叉，优先把“群消息 + 链接情报 -> AI”这段共享逻辑抽到 `src/reporting.rs` 或其他纯 helper 中复用，不要让 scheduler 和 CLI 各自维护一份日报素材选择逻辑。
 
+当目标群在回看窗口内存在群消息时，公众号日报也必须继续走 `src/daily_report/` 的统一 JSON 成稿链路。不要再回退成“把群消息 prompt 直接交给 AI 输出整篇 markdown”，否则 `render.rs` 里的新版排版、引用区、深读区和可追溯约束会只在 public_sources 回退场景生效，导致同一天不同入口生成出两套版式。
+即使这批群消息里暂时没有提取出任何外链，也要继续把群消息本身转成统一素材项后走同一套成稿与排版逻辑；不要因为 `message_links` 为空就退回旧版 markdown 直出路径。
+
 `qunmind daily-report` 不再只是一条“随便生成一份 markdown”的孤立命令；如果传 `--report-name`，应尽量复用已配置日报目标的 `daily_quote` / `output` / 发布参数，作为手工联调正式日报目标的入口。涉及这条手工链路的行为变更时，同步检查 README / PROGRESS 对“如何手工跑一次日报”的描述是否一致。
 
 手工 `daily-report --report-name ... --publish` 一旦发布成功，应尽量沿用与 scheduler 相同的发布回执落库边界，让 `report-status` / `publish-history` 立刻看到最新结果；如果回执保存失败，也要把“外部发布成功但内部状态保存失败”明确暴露出来，不要把两者混成同一个失败语义。
@@ -54,15 +63,53 @@
 
 `src/source/hn_daily.rs` 抓取 HN Daily 每日 top 10 文章作为日报素材源，HTML 解析逻辑保持无依赖（纯字符串匹配），不需要额外 HTML parser。新增类似轻量抓取来源时参考其模式。
 
-公众号文章这类外部内容入口优先走 `PublicNewsSource` 边界。当前更推荐的第一步是消费 RSS / Atom 上游输出（例如 `wechat-download-api` 提供的 RSS），而不是把登录、代理和反风控逻辑直接嵌进 `QunMind` 主进程。
+当前本机网络环境下，`Hacker News` 与 `GitHub Trending` 直连经常超过 10 秒，甚至 `GitHub Trending` 会在 25 秒内都拿不到首字节。`src/source/hacker_news.rs` 与 `src/source/github_trending.rs` 现在已经内置“本轮先探测一次直连；若失败，则本轮后续请求直接复用 `http://127.0.0.1:7890` 本地代理 client”的回退策略。后续如果再优化公共源稳定性，优先沿这个“单轮探测 + 整轮复用代理 client”边界演进，不要退回成“每个 item 都先直连超时一次再回退”的低效模式。
+
+公众号文章这类外部内容入口优先走 `PublicNewsSource` 边界。当前更推荐的第一步是消费 RSS / Atom 上游输出（例如 `wechat-download-api` 提供的 RSS），而不是把登录、代理和反风控逻辑直接嵌进 `QunMind` 主进程。按公众号名字拉文章时，优先使用 `[[public_sources.wechat_accounts]]` 把 `name` / `aliases` 绑定到 `feed_url`，再走 `qunmind wechat-articles --account-name <name>` 或 MCP `wechat_articles` 输出结构化 JSON；如果未绑定上游，应该明确报错要求先配置来源，不要假装可以只凭名字稳定获取全量历史文章。
+
+如果需求是“给一个 `mp.weixin.qq.com/s/...` 链接，尽量提取正文 markdown、图片和元数据”，优先把它设计成 **可选外部 helper**，而不是主进程内建抓取器。当前更适合参考 `jackwener/wechat-article-to-markdown` 这类单篇链接转 markdown 工具：`QunMind` 只负责显式调用、读取结构化结果和失败隔离，不负责内嵌 `Camoufox`、浏览器反检测、验证码或登录态维护。
+
+X / Twitter 这类一手信息入口也优先走 `PublicNewsSource` 边界。当前落地形态是 `[public_sources] x_rss_*`，消费 RSSHub、Nitter 兼容源或自建 X List RSS / Atom 上游；不要把 X 登录态、反爬、代理池或绕风控逻辑直接塞进 `QunMind` 主进程。需要更强实时性时，优先建设独立采集上游，再把稳定输出接成 RSS/Atom 或后续 connector。
+
+官网 / 官方博客这类“更高层面”的一手来源也应优先走 `PublicNewsSource` 边界。当前推荐形态是 `[public_sources] official_blogs_*`：统一消费 OpenAI、Google Blog、Cloudflare Blog 一类稳定可访问的 RSS / Atom 上游，把正式发布、研究博客、技术公告沉淀成长期来源；不要每次都退回成靠 `manual_items` 临时补几条官方链接。
+
+如果同一篇原文同时被 `Hacker News`、聚合媒体和 `official_blogs` / `manual_items` 抓到，聚合层必须优先保留官方 / 手工精选版本，不能因为抓取顺序把一手原文显示成二手来源。日报正文与参考链接里的来源标签也应优先按原始官网域名纠正成 `OpenAI`、`Google Blog`、`Cloudflare Blog` 等 canonical 名称。
+
+当用户临时给出明确想推荐大家阅读的优质链接（例如 OpenAI 官方文章、项目公告、论文、X 原帖、ZK / cryptography 资料）时，优先接到 `[[public_sources.manual_items]]` 手工精选入口，而不是临时硬编码进日报正文。`manual_items` 仍属于 `PublicNewsSource` 素材边界，适合作为“RSS 尚未覆盖但人工确认值得推荐”的补充来源；如果 X 原帖正文暂时拿不到，也可以先放 URL、标题、作者和人工摘要，让它进入“完整素材链接”或“推荐深读”候选。`ManualSource` 会把这类条目标记为 `manual:*`，聚合层必须把它们视为用户显式精选并跳过 topic keyword 过滤，不要再靠不断追加 URL 域名白名单来保留手工来源。
 
 `src/publisher.rs` 是日报发布边界。`QunMind` 负责“生成什么、何时发、目标是否 ready”；平台侧项目或适配器负责“按平台规则怎么发”。当前只落地了 `PublishTarget::WechatDraft`，通过本地 `moonpub` 推公众号草稿。后续即使接抖音、小红书，也优先新增 publisher target 或独立发布子系统，不把平台鉴权、素材渲染和风控逻辑塞回 scheduler。
 
-截至 `2026-06-25`，`微信公众号日报` 的最小可用链路已经完成三次真实验证：`daily-report --publish` 可成功推送到公众号草稿箱，`publish-history` 可查到最新回执，回执 warning 会继续保留为结构化字段。后续再回答“现在能不能用”时，不要再把它描述成“还没打通”，而要准确说成“最小可用链路已打通，但仍有白名单 IP 漂移、自动化 warning 和内容质量问题需要继续收敛”。
+公众号日报的固定结尾现在属于 `src/daily_report/render.rs` 的生成边界：标准结尾与加群信息必须直接写进生成出的 markdown 尾部，保证 `daily-report --output`、MCP `report_markdown` 和真实发布看到的是同一份正文。不要再把“标准结尾 / 加群信息”交给微信后台模板步骤，也不要让 `moonpub` 模板介入日报主链路。
+
+`QunMind -> moonpub` 的手工/定时日报临时 Markdown 文件名不能只按日期命名。`moonpub push --render` 在同 slug 的 `.draft.json` 已存在时会直接复用旧渲染产物，因此 `src/publisher.rs` 这里必须继续使用带时间戳的唯一 slug，避免同一天多次试发时“发布时间更新了，但正文还是旧稿”。
+
+截至 `2026-06-27`，`微信公众号日报` 的最小可用链路已经完成至少四次真实验证：`daily-report --publish` 可成功推送到公众号草稿箱，`publish-history` 可查到最新回执，回执 warning 会继续保留为结构化字段。其中 `2026-06-27` 的 ZK 手工精选版已确认 `published = true`、`publish_receipt_saved = true`、`automation_state = "ok"`、`warnings = []`。后续再回答“现在能不能用”时，不要再把它描述成“还没打通”，而要准确说成“最小可用链路已打通，但仍有白名单 IP 漂移、自动化 warning 和内容质量问题需要继续收敛”。
 
 当前 `QunMind -> moonpub` 的真实语义要说清楚：`push --render` 已经会在“草稿推送成功后”顺手尝试一轮浏览器自动化配置，但这一步是软失败策略。像 `automation: login timeout: QR code not scanned within 120s` 这类 warning，不是“完全没走自动化”，而是“草稿已推成功，但浏览器自动化没能真正进入后续预览/配置步骤”。后续状态、文档和对用户的解释都要区分这两层。
 
-`src/daily_report/` 当前除了“模型生成正文”之外，还承担一层质量兜底：如果 AI 返回的 JSON 非法、字段过空、板块误分或摘要质量过低，优先在 Rust 侧补齐非空板块、修正 AI/Web3/技术分类、过滤低信号条目，并只保留正文里真正引用过的参考链接。后续继续优化日报质量时，优先沿这条“AI 生成 + Rust 兜底收敛”边界演进，不要把容错逻辑散回 CLI、scheduler 或 publisher。
+如果微信公众号发布命中 `errcode=40164 invalid ip`，先区分是 `QunMind` 侧还是 `moonpub` 侧的问题。当前本地 `moonpub` 原版 `src/wechat.rs` 默认用 `ureq` 直连微信 API，不会自动继承 shell 里设置的代理语义；需要显式在 `moonpub` 微信客户端里接入 `HTTP_PROXY` / `HTTPS_PROXY` / `ALL_PROXY` 环境变量，修复后微信侧看到的出口 IP 会改变。若出口 IP 已变化但仍未进白名单，说明剩余阻塞纯粹是公众号后台白名单，而不是代码没走代理。
+
+`src/daily_report/` 当前除了“模型生成正文”之外，还承担一层质量兜底：如果 AI 返回的 JSON 非法、字段过空、板块误分或摘要质量过低，优先在 Rust 侧补齐非空板块、修正 AI/Web3/技术分类、过滤低信号条目，并把链接区分为“正文实际引用的参考来源”和“未写入正文但来自本次素材池的完整素材链接”。后续继续优化日报质量时，优先沿这条“AI 生成 + Rust 兜底收敛”边界演进，不要把容错逻辑散回 CLI、scheduler 或 publisher。
+
+手工 `daily-report --output <path>` 在回退到 `public_sources` 生成公众号日报时，会优先读取同一路径上一次生成的 markdown，并提取其中正文 `原文：https://...` URL 作为“近期已用链接”降权信号。该信号只影响本次正文板块与推荐深读的选材新鲜度，不会删除“完整素材链接”区里的可追溯来源。优化同一天多次重跑体验时，优先沿这个轻量降权边界演进，不要急着引入复杂的跨日状态库。
+
+`推荐深读` 当前优先选择更像文章、论文、官方说明或手工精选的入口；普通 `GitHub Trending` 榜单仓库只有在缺少更好替代项时才作为保底保留 1 条。目标是减少“深读区看起来像又重复了一遍技术榜单”的问题，但不能把深读区直接过滤成空白。
+
+对 `PANews`、`吴说区块链`、`Cointelegraph` 一类媒体源，`/news/` 路径快讯默认不应进入 `推荐深读`，除非当天实在缺少更像文章、论文、官方博客或手工精选的候选。像 `official_blogs` 这类官网 RSS 即使上游摘要是英文，也应优先生成可用的中文深读说明，而不是把深读位让给中文快讯。
+
+日报正文在 `polish_sections(...)` 之后仍要防一类漏网误分：如果技术区里残留了明显命中稳定币、交易所、链上协议、RWA、支付轨等 Web3 特征的条目，生成层应在最终渲染前把它们迁回 `Web3` 区，而不是因为 AI 初稿或补位逻辑顺序问题把链上新闻留在“技术 & 开源”里。
+
+同一轮最终抛光里，技术区也要继续防两类误分：一类是明显命中 `AI` / `LLM` / `agent` / `arxiv` / 学术诚信讨论等信号的条目，应迁回 `AI` 区；另一类是来自 Hacker News 但本质上并非技术、工程、开源、数据库、基础设施、安全或开发工具主题的泛文化/泛生活文章，不应因为热度高就进入“技术 & 开源”正文。它们可以留在完整素材链接或其他更合适的位置，但不要破坏日报的技术感。
+
+中文 Web3 条目分类不能只依赖英文关键词。像“币安”“稳定币”“比特币”“以太坊”“现货交易对”“永续合约”这类中文标题，若落进技术区通常就是误分；优化日报分类时优先补中文 Web3 信号，而不是只在渲染阶段做事后去重。
+
+当同一天重复生成公众号日报时，`src/daily_report/` 现在会主动压制“长期稳定霸榜但缺少今天新事件”的 GitHub Trending 仓库：技术区最多保留少量这类熟面孔，其余优先让位给安全事件、发布公告、部署指南、工程复盘等更像“今天发生了什么”的技术项；被挤出的稳定榜单继续留在“完整素材链接”，不要再让正文技术区被 `rust/rustdesk/zed` 一类条目反复占满。
+
+公众号日报排版优先使用 `moonpub` 已支持的 block fence，例如 `intro`、`tip`、`callout`、`divider`、`steps`、`timeline` 和 `summary`。当前正文结构是“导语 -> 今日三件事 -> 今日焦点 -> 编号 AI / Web3 / 技术 / 深读分区 -> 参考来源 / 完整素材链接”；`今日焦点` 采用“发生了什么 / 为什么重要 / 后续关注”三段式，正文条目用 `值得关注` 引导读者先读摘要，再看独立依据行和原文链接。条目依据用独立引用行，参考链接区用 `divider` 标识，避免回退成普通 Markdown 横线或括号堆叠。每个正文观点、焦点、深读推荐、参考来源和完整素材链接都必须直接显示裸 `原文：https://...`，正文条目必须显示 `该观点依据：...`，不能只依赖 Markdown 链接文字或公众号渲染后的可点击标题；如果拿不到可靠摘要或正文，就明确提示读者“请直接阅读原文核对”，不要假装已经理解全文。日报的可追溯性优先级高于版面简洁；如果模型无法把观点追溯到具体 URL，宁可只展示标题和完整原文链接，也不要写成不可核验的“系统观点”。后续优化排版时先确认 `moonpub` renderer 支持对应 block，不要随手造新语法导致草稿渲染退化。
+
+公众号日报当前面向个人公众号 `寻月隐君` 使用固定封面母版。`QunMind` 在 `publish_markdown(...)` 的 WeChat publisher 边界写出随本次临时稿件命名的 PNG，并向交给 `moonpub --render` 的临时 markdown frontmatter 注入相对 `cover:`，再由 `moonpub` 负责上传为公众号草稿封面。不要把本机绝对路径写进正文 markdown，也不要只改 `moonpub-data` 里的旧 `thumb_media_id`，否则手工生成稿和真实发布会再次分叉。
+手工 `daily-report --output <path>` 与 MCP `report_markdown` 对 `output = "wechat"` 的目标，也必须先走同一层微信稿准备逻辑，再把 markdown 落盘。也就是说，本地输出稿要和后续真实 `publish_markdown(...)` 看到的 frontmatter 形态保持一致；不要再让“本地写出的稿”和“发布时临时补过封面/作者的稿”分叉成两份。
+为了让公众号草稿箱里的“最新一条”更容易辨认，日报主标题当前优先固定为 `AI · Web3 最新日报｜YYYY-MM-DD`。当天真正变化的主线信息应继续放在 `digest`、`intro` 和 `今日焦点`，不要再把公共素材主线直接塞回 `title`，否则草稿箱里会重新出现“像同一篇又像不同篇”的识别噪音。
 
 发布适配器成功后优先返回结构化 `PublishReceipt`（目标、目的地、时间、摘要、原始输出），不要只在 scheduler 里打印一句成功日志。这样后续补持久化、失败重试或多平台对账时不用重新拆接口。
 
@@ -106,7 +153,7 @@ MCP 侧的 `report_markdown` / `report_publish` 也应继续复用 `src/reportin
 
 如果只是补齐默认本地日报试发环境，优先使用 `just db-create` 创建缺失的 `qunmind` 数据库，再跑 `just report-status` / `just report-markdown`；不要把这条入口泛化成修改任意生产数据库的通用脚本。
 
-部署工程化已包含 `Dockerfile`、`docker-compose.yml`、`config.docker.example.toml` 和 `DEPLOYMENT.md`。Compose 默认启动 QunMind + PostgreSQL，并把本地 `config.toml` 只读挂载到 `/app/config.toml`；不要把 `config.toml` 复制进镜像或提交到仓库。Docker/Compose 更适合企业微信内部群、日报和 PG 持久化；普通微信 wx-cli 通道通常依赖宿主机 WeChat session 和宿主 CLI/daemon，容器化前必须先确认 socket、HTTP endpoint 或二进制挂载方案，不要默认认为容器能访问本机微信数据。
+部署工程化已包含 `Dockerfile`、`docker-compose.yml`、`config.docker.example.toml` 和 `DEPLOYMENT.md`。Compose 默认启动 QunMind + PostgreSQL，并把本地 `config.toml` 只读挂载到 `/app/config.toml`；不要把 `config.toml` 复制进镜像或提交到仓库。Docker build 阶段必须复制 `docs/assets/wechat/`，因为 `src/publisher.rs` 通过 `include_bytes!` 编译期嵌入公众号固定封面；如果新增类似编译期资产，也要同步 Dockerfile。Docker/Compose 更适合企业微信内部群、日报和 PG 持久化；普通微信 wx-cli 通道通常依赖宿主机 WeChat session 和宿主 CLI/daemon，容器化前必须先确认 socket、HTTP endpoint 或二进制挂载方案，不要默认认为容器能访问本机微信数据。
 
 重要边界：企业微信智能机器人只能按企业微信内部群通道使用，不要假定它可以进入企业微信外部群/客户群。外部群和普通微信群需要单独评估客户群 API、会话内容存档、客户端采集、托管微信号或其他非智能机器人入口。
 
@@ -185,6 +232,7 @@ MCP 侧的 `report_markdown` / `report_publish` 也应继续复用 `src/reportin
 - wx-cli 普通微信 PoC 要优先兼容常见导出字段名，例如 `msg_content`、`plain_text`、`conversation_id`、`room_name`、`client_msg_id`、`is_group`、`is_chatroom`，避免真实联调时被字段差异卡住。
 - 新增公共信息网站时优先实现为 `PublicNewsSource`，放在 Rust `src/source/` 中，配置默认关闭；HTML/JSON 解析逻辑必须有纯 Rust 单测，不把抓取逻辑写进 scheduler。
 - `CompositePublicNewsSource` 会隔离单个公共源失败；新增来源时要保持“某个网站失败不影响其他来源继续补日报素材”的行为，并补聚合层测试。
+- `CompositePublicNewsSource` 的 topic keyword 过滤只用于宽泛公共 feed 降噪；用户显式给出的精选 URL 不应因为标题没命中关键词而被过滤。`mp.weixin.qq.com`、`x.com`、`twitter.com`、Nitter 兼容源、GitHub、arXiv、EthResearch 和主流 Web3 媒体这类明确来源要继续视作 curated URL，新增同类入口时补聚合层回归测试。
 - 依赖真实外网的 `PublicNewsSource` smoke test 不要放进默认 `cargo nextest run --all-features` 路径；这类测试默认 `#[ignore]`，只在显式 `--run-ignored` 或人工联调时执行，避免 CI 因第三方 RSS/站点抖动而误红。
 - 新增投研工具时优先维护 `research::tools` 里的目录、分类和自动化标记；可自动化的市场数据/链上/安全来源再逐步落成 Rust connector。
 - 新增 AI / Agent 学习资料时优先维护 `research::learning` 里的目录、分类、格式、URL 和学习路径；只有会影响运行时能力的内容再落到 `AiClient`、prompt 或 connector。
