@@ -68,6 +68,23 @@
 5. 用户明确批准后，再执行 `just report-publish config.toml '微信公众号日报' '/tmp/wechat-report.md'`
 6. `just report-history config.toml '微信公众号日报'`
 
+## 2026-07-03
+
+### Done
+
+- **2026-07-03 公众号日报已生成并发送手机预览** — 本地生成 `/tmp/wechat-report-2026-07-03-v3.md`，标题为 `AI · Web3 最新日报｜2026-07-03`，正文包含 AI / Web3 / 技术与开源 / 推荐深读四个主要板块，所有正文观点、深读和参考来源继续显示完整 `原文：https://...`。为避免重新生成导致已审核稿和实际推送稿分叉，这次直接用 `moonpub --articles /Users/qiaopengjun/Code/Rust/moonpub-data push /tmp/wechat-report-2026-07-03-v3.md --render` 推送，返回 `pushed`、`media_id = EmukC2rjB9X3nj6feGSEryBu4jJwj06Jiqs-tQLqQYT10Bgi2mZM5CMgWwDCPu_U`、`images: 1 uploaded to WeChat CDN`，后台自动化显示 `✅ 预览发送成功`。注意这次是直接 moonpub 发布已审核文件，不会自动写入 QunMind `publish-history`。
+- **日报素材选择改为分桶保留** — `src/daily_report/mod.rs` 不再简单把综合排序后的前 25 条交给模型，而是先保留官方 / 手工精选，再分别给 AI、Web3、技术候选留预算，最后再补齐总量。这样同一天 arXiv / Web3 源很密集时，技术与开源素材不会在 prompt 前就被挤没，减少“技术板块消失”或“GitHub/HN 只剩延伸素材”的情况。
+- **最终分类清洗加固** — 日报生成现在会在补齐板块之后再执行最终分类归位，继续把 Web3 条目迁回 Web3、AI 条目迁回 AI，并把不符合技术主题的条目从技术区剔除。新增回归覆盖 `Audio-Based` 不应因 `base` 误判为 Base 链、`Programming Paradigm` 不应因普通英文 `paradigm` 误判为 Web3 投资机构信号。
+- **固定结尾重新锁成唯一标准文案** — `src/daily_report/render.rs` 的固定结尾标题统一为 `继续交流`，正文固定包含公众号「寻月隐君」、后台回复「加群」和点赞 / 推荐 / 在看引导。AGENTS 也已明确不要再同时维护 QunMind 生成层结尾和 `moonpub` 模板结尾，避免“今天一个结尾、明天另一个结尾”。
+- **隔离浏览器 profile 参数接入 QunMind 标准入口** — `report-login`、`report-configure`、`report-recover-automation`、`report-preview` 的 CLI / MCP / Justfile 入口都新增 `temporary_profile` / `--temporary-profile` 透传，能显式让 `moonpub login/configure/test-yulan` 使用一次性隔离 profile。默认仍复用持久 profile，用于保留公众号后台登录态。当前剩余差距是 `moonpub push --render` 本体还没有 `push --temporary-profile`，因此真实推草稿后的 post-push 自动化要完全隔离，还需要切到 `moonpub` 仓库继续补。
+
+### Verification
+
+- `cargo fmt --all`
+- `cargo test daily_report::tests:: --lib`：71 passed
+- `/tmp/wechat-report-2026-07-03-v3.md` 本地抽查：日期为 2026-07-03，包含 AI / Web3 / 技术与开源 / 推荐深读、`继续交流` 固定结尾和完整裸 `原文：https://...`
+- `moonpub --articles /Users/qiaopengjun/Code/Rust/moonpub-data push /tmp/wechat-report-2026-07-03-v3.md --render`：真实推送草稿并显示 `✅ 预览发送成功`
+
 ## 2026-07-01
 
 ### Done

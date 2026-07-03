@@ -7,8 +7,8 @@ const AI_SUBSECTIONS: [&str; 3] = ["多Agent编排", "单Agent应用", "工作�
 const MAX_REFERENCE_ITEMS: usize = 15;
 const MAX_SOURCE_LINK_ITEMS: usize = 50;
 const OVERVIEW_FOCUS_PREVIEW_CHARS: usize = 34;
-const REPORT_OUTRO_TITLE: &str = "关注与交流";
-const REPORT_OUTRO_BODY: &str = "如果你也在关注 AI、Web3 与技术趋势，欢迎继续关注公众号「寻月隐君」。如需获取最新读者交流群方式，可在公众号后台回复“加群”。我会继续把当天值得追踪的一手信息、官网更新与研究资料整理成日报，方便你快速核对与延伸阅读。";
+const REPORT_OUTRO_TITLE: &str = "继续交流";
+const REPORT_OUTRO_BODY: &str = "如果你也关注 AI、Web3 与技术趋势，欢迎继续关注公众号「寻月隐君」。想加入读者交流群，可以在公众号后台回复「加群」获取最新方式。如果这份日报对你有帮助，也欢迎点赞、推荐给朋友，或点个“在看”。";
 
 pub(super) fn assemble_markdown(
     report: &ReportJson,
@@ -1177,8 +1177,9 @@ mod tests {
 
         let md = assemble_markdown(&report, &[make_item("web3", Some(90))], "");
 
-        assert!(md.contains("## 关注与交流"));
+        assert!(md.contains("## 继续交流"));
         assert!(md.contains("公众号「寻月隐君」"));
-        assert!(md.contains("回复“加群”"));
+        assert!(md.contains("回复「加群」"));
+        assert!(md.contains("点赞、推荐给朋友"));
     }
 }

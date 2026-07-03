@@ -23,6 +23,9 @@ const MAX_WEB3_ITEMS: usize = 3;
 const MAX_TECH_ITEMS: usize = 6;
 const MIN_READS: usize = 3;
 const MAX_READS: usize = 3;
+const PROMPT_AI_ITEM_BUDGET: usize = 10;
+const PROMPT_WEB3_ITEM_BUDGET: usize = 10;
+const PROMPT_TECH_ITEM_BUDGET: usize = 8;
 
 pub struct DailyReportGenerator {
     ai: Arc<dyn AiClient>,
@@ -71,7 +74,7 @@ impl DailyReportGenerator {
 
         let mut ranked = items;
         sort_items_for_report(&mut ranked);
-        ranked.truncate(MAX_REPORT_ITEMS);
+        let ranked = select_report_items(ranked);
 
         let messages = vec![ChatMessage {
             role: "user".to_string(),
@@ -151,6 +154,9 @@ fn enrich_report(
     backfill_sections_after_focus_removal(&mut report, items, recent_used_urls);
     dedup_and_backfill_reads(&mut report, items, recent_used_urls);
     ensure_minimum_section_items(&mut report, items, recent_used_urls);
+    finalize_section_classification(&mut report, items);
+    ensure_minimum_section_items(&mut report, items, recent_used_urls);
+    finalize_section_classification(&mut report, items);
     ensure_minimum_reads(&mut report, items, recent_used_urls);
 
     report
@@ -984,6 +990,62 @@ fn polish_sections(report: &mut ReportJson, items: &[PublicNewsItem]) {
     report.web3_items.truncate(MAX_WEB3_ITEMS);
     report.tech_items.truncate(MAX_TECH_ITEMS);
     report.reads.truncate(MAX_READS);
+}
+
+fn finalize_section_classification(report: &mut ReportJson, items: &[PublicNewsItem]) {
+    migrate_web3_items_out_of_ai(report, items);
+    migrate_ai_items_out_of_web3(report, items);
+    migrate_ai_items_out_of_tech(report, items);
+    migrate_web3_items_out_of_tech(report, items);
+    report
+        .web3_items
+        .retain(|item| is_web3_section_item(item, items));
+    report
+        .ai_items
+        .retain(|item| is_ai_section_item(item, items));
+    report
+        .tech_items
+        .retain(|item| tech_section_is_worthy(item, items));
+    dedup_sections(&mut report.ai_items);
+    dedup_sections(&mut report.web3_items);
+    dedup_sections(&mut report.tech_items);
+    report.ai_items.truncate(MAX_AI_ITEMS);
+    report.web3_items.truncate(MAX_WEB3_ITEMS);
+    report.tech_items.truncate(MAX_TECH_ITEMS);
+}
+
+fn migrate_web3_items_out_of_ai(report: &mut ReportJson, items: &[PublicNewsItem]) {
+    let mut retained_ai = Vec::new();
+
+    for item in report.ai_items.drain(..) {
+        if is_web3_section_item(&item, items) {
+            report.web3_items.push(item);
+        } else {
+            retained_ai.push(item);
+        }
+    }
+
+    report.ai_items = retained_ai;
+}
+
+fn migrate_ai_items_out_of_web3(report: &mut ReportJson, items: &[PublicNewsItem]) {
+    let mut retained_web3 = Vec::new();
+
+    for mut item in report.web3_items.drain(..) {
+        if !is_web3_section_item(&item, items) && is_ai_section_item(&item, items) {
+            if item.subsection.trim().is_empty()
+                && let Some(source_item) =
+                    items.iter().find(|source_item| source_item.url == item.url)
+            {
+                item.subsection = infer_ai_subsection(source_item).to_string();
+            }
+            report.ai_items.push(item);
+        } else {
+            retained_web3.push(item);
+        }
+    }
+
+    report.web3_items = retained_web3;
 }
 
 fn polish_tech_timeline(report: &mut ReportJson, items: &[PublicNewsItem]) {
@@ -1887,6 +1949,77 @@ fn is_plain_github_trending_read(url: &str, items: &[PublicNewsItem]) -> bool {
         })
 }
 
+fn select_report_items(ranked: Vec<PublicNewsItem>) -> Vec<PublicNewsItem> {
+    let mut selected = Vec::new();
+    let mut seen = HashSet::new();
+
+    push_ranked_items(
+        &ranked,
+        &mut selected,
+        &mut seen,
+        |item| is_manual_category(item) || is_official_blog_item(item),
+        MAX_REPORT_ITEMS,
+    );
+    push_ranked_items(
+        &ranked,
+        &mut selected,
+        &mut seen,
+        is_ai_item,
+        PROMPT_AI_ITEM_BUDGET,
+    );
+    push_ranked_items(
+        &ranked,
+        &mut selected,
+        &mut seen,
+        is_web3_item,
+        PROMPT_WEB3_ITEM_BUDGET,
+    );
+    push_ranked_items(
+        &ranked,
+        &mut selected,
+        &mut seen,
+        |item| is_tech_item(item) || is_minimum_tech_fill_item(item),
+        PROMPT_TECH_ITEM_BUDGET,
+    );
+    push_ranked_items(
+        &ranked,
+        &mut selected,
+        &mut seen,
+        |_| true,
+        MAX_REPORT_ITEMS,
+    );
+
+    selected.truncate(MAX_REPORT_ITEMS);
+    selected
+}
+
+fn push_ranked_items(
+    ranked: &[PublicNewsItem],
+    selected: &mut Vec<PublicNewsItem>,
+    seen: &mut HashSet<String>,
+    predicate: impl Fn(&PublicNewsItem) -> bool,
+    max_additions: usize,
+) {
+    if max_additions == 0 || selected.len() >= MAX_REPORT_ITEMS {
+        return;
+    }
+
+    let mut added = 0usize;
+    for item in ranked {
+        if added >= max_additions || selected.len() >= MAX_REPORT_ITEMS {
+            break;
+        }
+        if !predicate(item) {
+            continue;
+        }
+        if !seen.insert(item.url.clone()) {
+            continue;
+        }
+        selected.push(item.clone());
+        added += 1;
+    }
+}
+
 fn sort_items_for_report(items: &mut [PublicNewsItem]) {
     items.sort_by_key(|item| std::cmp::Reverse(report_item_rank(item)));
 }
@@ -2268,7 +2401,6 @@ fn is_web3_section_item(item: &ReportSection, source_items: &[PublicNewsItem]) -
             "coinbase",
             "kraken",
             "a16z",
-            "paradigm",
             "multicoin",
         ],
     ) {
@@ -2589,7 +2721,6 @@ fn is_web3_item(item: &PublicNewsItem) -> bool {
             "coinbase",
             "kraken",
             "a16z",
-            "paradigm",
             "multicoin",
         ],
     )
@@ -3033,7 +3164,7 @@ fn clean_topic_fragment(value: &str) -> String {
 }
 
 fn text_contains_keyword(haystack: &str, keyword: &str) -> bool {
-    if keyword.contains(' ') || keyword.contains('-') || keyword.len() > 3 {
+    if keyword.contains(' ') || keyword.contains('-') || keyword.len() > 4 {
         return haystack.contains(keyword);
     }
 
@@ -6841,5 +6972,85 @@ mod tests {
         assert!(web3_section.matches("### [").count() >= 3);
         assert!(tech_section.matches("### [").count() >= 3);
         assert!(report.matches("### 深读 ").count() >= 3);
+    }
+
+    #[test]
+    fn web3_keyword_base_requires_word_boundary() {
+        let item = PublicNewsItem {
+            source: "ArXiv AI".to_string(),
+            title: "Audio-Based Understanding of Audiobook Narration Appeal".to_string(),
+            url: "https://arxiv.org/abs/2607.02473".to_string(),
+            summary: Some("这篇论文研究音频理解任务，与分布式账本主题没有直接关系。".to_string()),
+            author: None,
+            published_at: Some("2026-07-03T08:00:00Z".to_string()),
+            score: Some(50),
+            comments: None,
+            ai_score: None,
+            category: Some("ai".to_string()),
+        };
+
+        assert!(!is_web3_item(&item));
+    }
+
+    #[test]
+    fn web3_detection_does_not_treat_programming_paradigm_as_investor_signal() {
+        let item = PublicNewsItem {
+            source: "ArXiv AI".to_string(),
+            title: "Program-as-Weights: A Programming Paradigm for Fuzzy Functions".to_string(),
+            url: "https://arxiv.org/abs/2607.02512".to_string(),
+            summary: Some("这篇论文提出一种面向模糊函数的编程范式。".to_string()),
+            author: None,
+            published_at: Some("2026-07-03T08:00:00Z".to_string()),
+            score: Some(50),
+            comments: None,
+            ai_score: None,
+            category: Some("ai".to_string()),
+        };
+
+        assert!(!is_web3_item(&item));
+    }
+
+    #[test]
+    fn report_item_selection_preserves_technical_candidates() {
+        let mut ranked = Vec::new();
+        for index in 0..18 {
+            ranked.push(PublicNewsItem {
+                source: "ArXiv AI".to_string(),
+                title: format!("LLM Agent Paper {index}"),
+                url: format!("https://arxiv.org/abs/2607.{index:05}"),
+                summary: Some("研究团队提出了新的 Agent 推理方法。".to_string()),
+                author: None,
+                published_at: Some("2026-07-03T08:00:00Z".to_string()),
+                score: Some(100 - index),
+                comments: None,
+                ai_score: None,
+                category: Some("ai".to_string()),
+            });
+        }
+        for index in 0..8 {
+            ranked.push(PublicNewsItem {
+                source: "Hacker News".to_string(),
+                title: format!("PostgreSQL query engine release {index}"),
+                url: format!("https://example.com/tech-{index}"),
+                summary: Some("数据库查询引擎发布新版本并修复工程问题。".to_string()),
+                author: None,
+                published_at: Some("2026-07-03T09:00:00Z".to_string()),
+                score: Some(30 - index),
+                comments: None,
+                ai_score: None,
+                category: None,
+            });
+        }
+
+        let selected = select_report_items(ranked);
+        assert!(selected.len() <= MAX_REPORT_ITEMS);
+        assert!(selected.iter().filter(|item| is_ai_item(item)).count() >= 10);
+        assert!(
+            selected
+                .iter()
+                .filter(|item| is_minimum_tech_fill_item(item))
+                .count()
+                >= 3
+        );
     }
 }

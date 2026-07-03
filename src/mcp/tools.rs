@@ -77,6 +77,10 @@ pub fn list_tools() -> Vec<Tool> {
                     "report_name": {
                         "type": "string",
                         "description": "Explicit daily report target name. Required when multiple schedule.daily_reports entries exist."
+                    },
+                    "temporary_profile": {
+                        "type": "boolean",
+                        "description": "Use an isolated one-off browser profile instead of the persistent moonpub profile (default: false)."
                     }
                 },
                 "required": []
@@ -95,6 +99,10 @@ pub fn list_tools() -> Vec<Tool> {
                     "headed": {
                         "type": "boolean",
                         "description": "Run browser automation in headed mode (default: false)."
+                    },
+                    "temporary_profile": {
+                        "type": "boolean",
+                        "description": "Use an isolated one-off browser profile instead of the persistent moonpub profile (default: false)."
                     }
                 },
                 "required": []
@@ -113,6 +121,10 @@ pub fn list_tools() -> Vec<Tool> {
                     "headed": {
                         "type": "boolean",
                         "description": "Run browser automation in headed mode during configure (default: false)."
+                    },
+                    "temporary_profile": {
+                        "type": "boolean",
+                        "description": "Use an isolated one-off browser profile instead of the persistent moonpub profile (default: false)."
                     }
                 },
                 "required": []
@@ -131,6 +143,10 @@ pub fn list_tools() -> Vec<Tool> {
                     "headed": {
                         "type": "boolean",
                         "description": "Run the preview-step browser automation in headed mode (default: false)."
+                    },
+                    "temporary_profile": {
+                        "type": "boolean",
+                        "description": "Use an isolated one-off browser profile instead of the persistent moonpub profile (default: false)."
                     }
                 },
                 "required": []
@@ -436,10 +452,15 @@ fn tool_report_login(config: &Config, args: &serde_json::Value) -> anyhow::Resul
         .get("report_name")
         .and_then(|v| v.as_str())
         .unwrap_or("");
+    let temporary_profile = args
+        .get("temporary_profile")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
     let report_target = require_wechat_manual_report_target(config, report_name, "report-login")?;
     let raw_output = match login_wechat_backend(
         &report_target.wechat_bin,
         &report_target.wechat_articles_dir,
+        temporary_profile,
     ) {
         Ok(raw_output) => raw_output,
         Err(err) => {
@@ -457,6 +478,7 @@ fn tool_report_login(config: &Config, args: &serde_json::Value) -> anyhow::Resul
         "output": report_target.output,
         "wechat_bin": report_target.wechat_bin,
         "wechat_articles_dir": report_target.wechat_articles_dir,
+        "temporary_profile": temporary_profile,
         "raw_output": raw_output,
     }))?)
 }
@@ -470,12 +492,17 @@ fn tool_report_configure(config: &Config, args: &serde_json::Value) -> anyhow::R
         .get("headed")
         .and_then(|v| v.as_bool())
         .unwrap_or(false);
+    let temporary_profile = args
+        .get("temporary_profile")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
     let report_target =
         require_wechat_manual_report_target(config, report_name, "report-configure")?;
     let raw_output = configure_wechat_backend(
         &report_target.wechat_bin,
         &report_target.wechat_articles_dir,
         headed,
+        temporary_profile,
     )?;
 
     Ok(serde_json::to_string_pretty(&serde_json::json!({
@@ -485,6 +512,7 @@ fn tool_report_configure(config: &Config, args: &serde_json::Value) -> anyhow::R
         "wechat_bin": report_target.wechat_bin,
         "wechat_articles_dir": report_target.wechat_articles_dir,
         "headed": headed,
+        "temporary_profile": temporary_profile,
         "raw_output": raw_output,
     }))?)
 }
@@ -497,13 +525,21 @@ fn tool_report_recover_automation(
         .get("report_name")
         .and_then(|v| v.as_str())
         .unwrap_or("");
+    let headed = args
+        .get("headed")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    let temporary_profile = args
+        .get("temporary_profile")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
     let report_target =
         require_wechat_manual_report_target(config, report_name, "report-recover-automation")?;
-    let headed = true;
     let configure_output = configure_wechat_backend(
         &report_target.wechat_bin,
         &report_target.wechat_articles_dir,
         headed,
+        temporary_profile,
     )?;
 
     Ok(serde_json::to_string_pretty(&serde_json::json!({
@@ -513,6 +549,7 @@ fn tool_report_recover_automation(
         "wechat_bin": report_target.wechat_bin,
         "wechat_articles_dir": report_target.wechat_articles_dir,
         "headed": headed,
+        "temporary_profile": temporary_profile,
         "login_strategy": "configure_flow_reuses_setup_editor_login",
         "configure_output": configure_output,
     }))?)
@@ -527,11 +564,16 @@ fn tool_report_preview(config: &Config, args: &serde_json::Value) -> anyhow::Res
         .get("headed")
         .and_then(|v| v.as_bool())
         .unwrap_or(false);
+    let temporary_profile = args
+        .get("temporary_profile")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
     let report_target = require_wechat_manual_report_target(config, report_name, "report-preview")?;
     let raw_output = preview_wechat_backend(
         &report_target.wechat_bin,
         &report_target.wechat_articles_dir,
         headed,
+        temporary_profile,
     )?;
 
     Ok(serde_json::to_string_pretty(&serde_json::json!({
@@ -541,6 +583,7 @@ fn tool_report_preview(config: &Config, args: &serde_json::Value) -> anyhow::Res
         "wechat_bin": report_target.wechat_bin,
         "wechat_articles_dir": report_target.wechat_articles_dir,
         "headed": headed,
+        "temporary_profile": temporary_profile,
         "raw_output": raw_output,
     }))?)
 }

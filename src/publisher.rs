@@ -91,15 +91,24 @@ pub fn prepare_report_output_markdown(
     Ok(markdown.to_string())
 }
 
-pub fn login_wechat_backend(moonpub_bin: &str, articles_dir: &str) -> Result<String> {
+pub fn login_wechat_backend(
+    moonpub_bin: &str,
+    articles_dir: &str,
+    temporary_profile: bool,
+) -> Result<String> {
     if moonpub_bin.trim().is_empty() || articles_dir.trim().is_empty() {
         return Err(QunMindError::Config(
             "wechat draft publisher requires both bin and articles_dir".to_string(),
         ));
     }
 
-    let output = Command::new(moonpub_bin)
-        .args(["--articles", articles_dir, "login"])
+    let mut command = Command::new(moonpub_bin);
+    command.args(["--articles", articles_dir, "login"]);
+    if temporary_profile {
+        command.arg("--temporary-profile");
+    }
+
+    let output = command
         .output()
         .map_err(|err| QunMindError::Channel(format!("启动 moonpub login 失败: {}", err)))?;
 
@@ -125,6 +134,7 @@ pub fn configure_wechat_backend(
     moonpub_bin: &str,
     articles_dir: &str,
     headed: bool,
+    temporary_profile: bool,
 ) -> Result<String> {
     if moonpub_bin.trim().is_empty() || articles_dir.trim().is_empty() {
         return Err(QunMindError::Config(
@@ -136,6 +146,9 @@ pub fn configure_wechat_backend(
     command.args(["--articles", articles_dir, "configure"]);
     if headed {
         command.arg("--headed");
+    }
+    if temporary_profile {
+        command.arg("--temporary-profile");
     }
 
     let output = command
@@ -152,7 +165,7 @@ pub fn configure_wechat_backend(
     }
 
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-    info!(stdout = %stdout, headed, "moonpub configure 成功");
+    info!(stdout = %stdout, headed, temporary_profile, "moonpub configure 成功");
     Ok(stdout)
 }
 
@@ -160,6 +173,7 @@ pub fn preview_wechat_backend(
     moonpub_bin: &str,
     articles_dir: &str,
     headed: bool,
+    temporary_profile: bool,
 ) -> Result<String> {
     if moonpub_bin.trim().is_empty() || articles_dir.trim().is_empty() {
         return Err(QunMindError::Config(
@@ -171,6 +185,9 @@ pub fn preview_wechat_backend(
     command.args(["--articles", articles_dir, "test-yulan"]);
     if headed {
         command.arg("--headed");
+    }
+    if temporary_profile {
+        command.arg("--temporary-profile");
     }
 
     let output = command
@@ -187,7 +204,7 @@ pub fn preview_wechat_backend(
     }
 
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-    info!(stdout = %stdout, headed, "moonpub test-yulan 成功");
+    info!(stdout = %stdout, headed, temporary_profile, "moonpub test-yulan 成功");
     Ok(stdout)
 }
 
@@ -375,7 +392,7 @@ mod tests {
 
     #[test]
     fn login_errors_when_bin_not_found() {
-        let result = login_wechat_backend("/nonexistent/bin/moonpub", "/tmp");
+        let result = login_wechat_backend("/nonexistent/bin/moonpub", "/tmp", true);
 
         assert!(result.is_err());
         assert!(
@@ -388,7 +405,7 @@ mod tests {
 
     #[test]
     fn configure_errors_when_bin_not_found() {
-        let result = configure_wechat_backend("/nonexistent/bin/moonpub", "/tmp", false);
+        let result = configure_wechat_backend("/nonexistent/bin/moonpub", "/tmp", false, true);
 
         assert!(result.is_err());
         assert!(
@@ -401,7 +418,7 @@ mod tests {
 
     #[test]
     fn preview_errors_when_bin_not_found() {
-        let result = preview_wechat_backend("/nonexistent/bin/moonpub", "/tmp", false);
+        let result = preview_wechat_backend("/nonexistent/bin/moonpub", "/tmp", false, true);
 
         assert!(result.is_err());
         assert!(

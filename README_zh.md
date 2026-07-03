@@ -279,11 +279,20 @@ just report-history config.toml '微信公众号日报'
 - 再生成一版本地 markdown，确认 RSS 上游内容已经进入日报素材
 - 最后再执行 `report-publish` 推到 `moonpub` 的公众号草稿箱
 
+如果你明确要求“无痕 / 隔离浏览器”，现在 CLI 和 Justfile 的后台自动化恢复、配置和预览步骤都可以显式加一次性 profile，例如：
+
+```bash
+just report-recover-automation config.toml '微信公众号日报' 'true' 'true'
+just report-preview config.toml '微信公众号日报' 'true' 'true'
+```
+
+这里第二个 `true` 表示 `temporary_profile = true`，会让 `moonpub configure` / `test-yulan` 使用隔离的一次性浏览器 profile；默认仍复用持久 profile，是为了保留公众号后台登录态、减少每次扫码。注意：当前 `moonpub push --render` 本体仍需要在 `moonpub` 仓库继续补 `--temporary-profile` 支持，否则真实推草稿后的自动配置步骤仍会复用它自己的持久 profile。
+
 现在 `report-status` 也会在 CLI JSON 和 MCP 输出里直接给出 `recommended_commands`。这意味着状态页不再只告诉你“下一步大概是什么”，而是尽量直接列出你接下来最该执行的命令，减少临近交付时再靠人工把状态词翻译回 shell 命令。
 
 对 MCP / Agent 调用方，现在同一个状态结果里还会继续附带 `recommended_tool_calls`。它是 shell 命令提示的结构化版本：例如目标处于 `ready_for_first_publish` 时，Agent 已经可以直接顺着状态结果去调 `report_markdown`、`report_publish` 和 `publish_history`；最近回执仍是 `automation_state = "login_required"` 时，也可以直接去调 `report_recover_automation` 和 `publish_history`，不需要再自己从命令字符串里反推下一步。
 
-同一套恢复动作现在也已经补到 MCP，不再只有 shell/CLI 能调。也就是说，外部 Agent / MCP 客户端现在可以直接调用 `report_status`、`report_login`、`report_configure` 和 `report_recover_automation`，并且沿用和 CLI 完全一致的日报目标选择语义：只有一个日报目标时自动复用，多个目标时必须显式给 `report_name`。
+同一套恢复动作现在也已经补到 MCP，不再只有 shell/CLI 能调。也就是说，外部 Agent / MCP 客户端现在可以直接调用 `report_status`、`report_login`、`report_configure` 和 `report_recover_automation`，并且沿用和 CLI 完全一致的日报目标选择语义：只有一个日报目标时自动复用，多个目标时必须显式给 `report_name`。这些浏览器自动化工具也支持 `temporary_profile = true`，用于显式切换到一次性隔离浏览器 profile。
 
 现在 MCP 也已经能直接走手工日报演练链路：`report_markdown` 会按和 `qunmind daily-report` 一样的“优先群消息和链接情报、群为空时再回退 public_sources”语义生成本地 markdown；`report_publish` 则只有在显式传入 `confirm_publish = true` 时，才会继续触发真实 publisher 边界。
 
