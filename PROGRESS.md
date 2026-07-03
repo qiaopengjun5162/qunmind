@@ -78,6 +78,7 @@
 - **固定结尾重新锁成唯一标准文案** — `src/daily_report/render.rs` 的固定结尾标题统一为 `继续交流`，正文固定包含公众号「寻月隐君」、后台回复「加群」和点赞 / 推荐 / 在看引导。AGENTS 也已明确不要再同时维护 QunMind 生成层结尾和 `moonpub` 模板结尾，避免“今天一个结尾、明天另一个结尾”。
 - **隔离浏览器 profile 参数接入 QunMind 标准入口** — `report-login`、`report-configure`、`report-recover-automation`、`report-preview` 的 CLI / MCP / Justfile 入口都新增 `temporary_profile` / `--temporary-profile` 透传，能显式让 `moonpub login/configure/test-yulan` 使用一次性隔离 profile。默认仍复用持久 profile，用于保留公众号后台登录态。当前剩余差距是 `moonpub push --render` 本体还没有 `push --temporary-profile`，因此真实推草稿后的 post-push 自动化要完全隔离，还需要切到 `moonpub` 仓库继续补。
 - **公众号日报手机预览可读性修正** — `src/publisher.rs` 现在会在微信稿 frontmatter 注入 `theme: newsletter`，避免继续继承 `moonpub-data` 的 `geek` 主题导致白色文字、绿色过重或编号徽章对比度不足；`src/daily_report/render.rs` 也把“今日三件事”和“今日信号”从有序列表改为普通加粗提示行，减少 `moonpub` 渲染成白色数字徽章的风险。
+- **公众号日报首屏排版继续卡片化** — 在不引入新 `moonpub` 语法的前提下，`src/daily_report/render.rs` 现在把导语和今日收束渲染为 `:::intro` 卡片，并在“今日速览 / 今日焦点”前加入 `:::divider` 分隔；焦点三段式也补了段间留白。这样手机首屏会更像正式 newsletter，同时继续避开会产生白色标签或白色数字徽章的 block。
 - **群二维码更新为最新文件** — 活跃 `moonpub-data/moonpub.toml` 读取的是 `/Users/qiaopengjun/Code/Rust/moonpub-data/qrcode.png`，这轮已用 `/Users/qiaopengjun/Library/Mobile Documents/com~apple~CloudDocs/ObsidianMain/Context/assets/qrcode-group.png` 替换，SHA256 为 `46ac3dd7142f6707ee4ec0ab2b2b9364bdc8ac8eb6e9bed98d964ce843c85608`。QunMind 固定结尾仍只写“后台回复「加群」”，二维码由 `moonpub` footer 读取。
 - **最新修正版真实推送成功** — `/tmp/wechat-report-2026-07-03-theme-qrcode-fix.md` 已真实推送公众号草稿箱并发送手机预览，回执 `published_at = 2026-07-03T15:27:06.946822+00:00`，`automation_state = "ok"`，`warnings = []`，创作来源仍为 `个人观点，仅供参考`。
 
@@ -88,6 +89,7 @@
 - `cargo fmt --all -- --check`
 - `cargo test daily_report::render::tests:: --lib`：26 passed
 - `cargo test publisher::tests:: --lib`：14 passed
+- `cargo run -- --config config.toml daily-report --report-name "微信公众号日报" --output /tmp/wechat-report-2026-07-03-layout-next.md`：本地样稿生成成功；抽查确认 `theme: newsletter`、`cover:`、`intro/divider` blocks、`继续交流` 和完整裸 `原文：https://...` 仍在，未出现 `####`
 - `/tmp/wechat-report-2026-07-03-v3.md` 本地抽查：日期为 2026-07-03，包含 AI / Web3 / 技术与开源 / 推荐深读、`继续交流` 固定结尾和完整裸 `原文：https://...`
 - `moonpub --articles /Users/qiaopengjun/Code/Rust/moonpub-data push /tmp/wechat-report-2026-07-03-v3.md --render`：真实推送草稿并显示 `✅ 预览发送成功`
 - `cargo run -- --config config.toml daily-report --report-name "微信公众号日报" --output /tmp/wechat-report-2026-07-03-theme-qrcode-fix.md --publish`：真实推送草稿并显示 `✅ 预览发送成功`

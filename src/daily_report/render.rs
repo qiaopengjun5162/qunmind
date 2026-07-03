@@ -96,20 +96,25 @@ fn render_frontmatter(title: &str, digest: &str, date: &str) -> String {
 }
 
 fn render_intro(intro: &str) -> String {
-    format!("{}\n\n", sanitize(intro.trim()))
+    let intro = sanitize(intro.trim());
+    if intro.is_empty() {
+        return String::new();
+    }
+
+    format!(":::intro\n{}\n:::\n\n", intro)
 }
 
 fn render_focus(text: &str, url: &str) -> String {
     let focus_text = humanize_focus_text(text);
     if url.trim().is_empty() {
         format!(
-            "## 今日焦点\n\n**发生了什么**\n{}\n\n**为什么重要**\n它是本期信息流里最适合先核对的一条，可以帮助读者快速建立今天的阅读上下文。\n\n**后续关注**\n继续关注是否出现官方文档、产品更新或社区复盘。\n\n",
+            ":::divider\nlabel: 今日焦点\n:::\n\n## 今日焦点\n\n**发生了什么**\n\n{}\n\n**为什么重要**\n\n它是本期信息流里最适合先核对的一条，可以帮助读者快速建立今天的阅读上下文。\n\n**后续关注**\n\n继续关注是否出现官方文档、产品更新或社区复盘。\n\n",
             ensure_sentence_end(&focus_text)
         )
     } else {
         let url = url.trim();
         format!(
-            "## 今日焦点\n\n**发生了什么**\n{} — [点击阅读]({})\n\n**为什么重要**\n它是本期信息流里最适合先核对的一条，可以帮助读者快速建立今天的阅读上下文。\n\n**后续关注**\n继续关注是否出现官方文档、产品更新或社区复盘。\n\n原文：{}\n\n",
+            ":::divider\nlabel: 今日焦点\n:::\n\n## 今日焦点\n\n**发生了什么**\n\n{} — [点击阅读]({})\n\n**为什么重要**\n\n它是本期信息流里最适合先核对的一条，可以帮助读者快速建立今天的阅读上下文。\n\n**后续关注**\n\n继续关注是否出现官方文档、产品更新或社区复盘。\n\n原文：{}\n\n",
             ensure_sentence_end(&focus_text),
             url,
             url
@@ -159,7 +164,10 @@ fn render_overview(report: &ReportJson) -> String {
         "**最后看链接区**：文末会区分“正文引用来源”和“完整素材链接”，方便逐条追溯。".to_string(),
     );
 
-    format!("## 今日三件事\n\n{}\n\n", lines.join("\n"))
+    format!(
+        ":::divider\nlabel: 今日速览\n:::\n\n## 今日三件事\n\n{}\n\n",
+        lines.join("\n\n")
+    )
 }
 
 fn render_ai_section(items: &[ReportSection], signals: &[String], section_index: usize) -> String {
@@ -600,7 +608,10 @@ fn render_summary(report: &ReportJson) -> Option<String> {
 }
 
 fn render_summary_section(summary: &str) -> String {
-    format!("## 今日收束\n\n{}\n\n", summary.trim())
+    format!(
+        "## 今日收束\n\n:::intro\n{}\n:::\n\n",
+        sanitize(summary.trim())
+    )
 }
 
 fn render_outro_section() -> String {
@@ -780,7 +791,10 @@ mod tests {
             "",
         );
         assert!(md.contains("今日重点"));
+        assert!(md.contains(":::intro\n今日重点\n:::"));
+        assert!(md.contains(":::divider\nlabel: 今日速览\n:::"));
         assert!(md.contains("## 今日三件事"));
+        assert!(md.contains(":::divider\nlabel: 今日焦点\n:::"));
         assert!(md.contains("## 今日焦点"));
         assert!(md.contains("## 01. AI 前沿"));
         assert!(md.contains("## 02. Web3"));
@@ -831,6 +845,7 @@ mod tests {
         assert!(md.contains("## 今日三件事"));
         assert!(md.contains("**先看焦点**"));
         assert!(!md.contains("1. 先看焦点"));
+        assert!(md.contains(":::divider\nlabel: 今日速览\n:::"));
         assert!(md.contains("AI 1 条"));
         assert!(md.contains("Web3 1 条"));
         assert!(md.contains("技术 1 条"));
@@ -850,6 +865,7 @@ mod tests {
         assert!(body.contains("**发生了什么**"));
         assert!(body.contains("**为什么重要**"));
         assert!(body.contains("**后续关注**"));
+        assert!(body.contains(":::divider\nlabel: 今日焦点\n:::"));
         assert!(body.contains("原文：https://example.com/openai-codex"));
     }
 
@@ -1006,6 +1022,7 @@ mod tests {
         let summary_block = md.split("## 今日收束").nth(1).expect("summary block");
 
         assert!(md.contains("## 今日收束"));
+        assert!(summary_block.contains(":::intro"));
         assert!(summary_block.contains("本期建议优先阅读"));
         assert!(summary_block.contains("OpenAI 发布 Codex 编排实践"));
         assert!(summary_block.contains("以太坊隐私浏览器原型值得追踪"));
