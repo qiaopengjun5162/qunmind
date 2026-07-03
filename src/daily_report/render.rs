@@ -370,7 +370,7 @@ fn format_reference_card(index: usize, item: &PublicNewsItem, fallback_note: &st
     let note = reference_note(item).unwrap_or_else(|| fallback_note.to_string());
 
     format!(
-        "#### {:02}｜[{}]({})\n\n> 来源：{}{}\n> 说明：{}\n> 原文：{}\n\n",
+        "**{:02}｜[{}]({})**\n\n> 来源：{}{}\n> 说明：{}\n> 原文：{}\n\n",
         index, title, item.url, source_label, score_part, note, item.url
     )
 }
@@ -1158,10 +1158,10 @@ mod tests {
             .split("### 完整素材链接")
             .next()
             .unwrap_or(refs.as_str());
-        assert!(refs.contains("#### 01｜[item-0]"));
-        assert!(refs.contains("#### 15｜[item-14]"));
-        assert!(!used_refs.contains("#### 16｜[item-15]"));
-        assert_eq!(used_refs.matches("#### ").count(), 15);
+        assert!(refs.contains("**01｜[item-0]"));
+        assert!(refs.contains("**15｜[item-14]"));
+        assert!(!used_refs.contains("**16｜[item-15]"));
+        assert_eq!(used_refs.matches("**").count(), 30);
     }
 
     #[test]
@@ -1186,16 +1186,16 @@ mod tests {
         let refs = build_refs_block(&report, &items, 5);
 
         assert!(refs.contains("## 05. 参考来源"));
-        assert!(refs.contains("#### 01｜[used]"));
+        assert!(refs.contains("**01｜[used]"));
         assert!(refs.contains("来源："));
         assert!(refs.contains("· 10 points"));
         assert!(refs.contains("说明："));
         assert!(refs.contains("原文：https://example.com/used"));
         assert!(refs.contains("> 原文：https://example.com/used"));
         assert!(refs.contains("### 完整素材链接（2）"));
-        assert!(refs.contains("#### 01｜[unreferenced]"));
+        assert!(refs.contains("**01｜[unreferenced]"));
         assert!(refs.contains("原文：https://example.com/unreferenced"));
-        assert!(refs.contains("#### 02｜[another]"));
+        assert!(refs.contains("**02｜[another]"));
         assert!(refs.contains("原文：https://example.com/another"));
     }
 
