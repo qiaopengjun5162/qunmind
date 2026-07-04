@@ -34,6 +34,17 @@
 - **wx-cli 命令编排层第二轮收口进行中**
 - **公众号日报最小可用目标已经真实打通**
 
+## 2026-07-04
+
+### Done
+
+- **本地发布网络诊断边界定稿** — 评估 `mcncarl/yichen-skills` 的可参考方向后，先把它收敛为“私密状态外置、平台自动化隔离、结构化 dry-run / 诊断先行”的工程边界，而不是直接并入日报生成链路。新增 `docs/local-publisher-network-diagnostics.md` 与 `report-network-status` 只读 CLI，明确 `errcode=40164 invalid ip` 这类问题应作为 `QunMind -> moonpub -> WeChat OpenAPI` 的本机发布网络诊断处理；Mihomo / Clash 信息可以用于只读诊断和脱敏输出，但默认不自动改 profile、不提交订阅配置、不让日报正文生成依赖代理状态。
+
+### Verification
+
+- `cargo test network_diagnostic::tests --lib`
+- `cargo test cli::tests::parses_report_network_status_command --lib`
+
 ### Small Goals
 
 接下来几个小目标，按优先级排序：

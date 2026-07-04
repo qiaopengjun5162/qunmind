@@ -60,6 +60,13 @@ pub enum CliCommand {
         #[arg(long, default_value_t = 5)]
         limit: i64,
     },
+    /// 查看公众号发布链路的本机代理 / Mihomo 只读诊断状态
+    #[command(name = "report-network-status")]
+    ReportNetworkStatus {
+        /// 日报目标名称；为空时使用 legacy daily_report_chat_id 兼容名称
+        #[arg(long, default_value = "")]
+        report_name: String,
+    },
     /// 打开公众号浏览器登录，供后续自动化复用登录态
     #[command(name = "report-login")]
     ReportLogin {
@@ -694,6 +701,23 @@ mod tests {
                 assert_eq!(limit, 2);
             }
             _ => panic!("report-status command should parse"),
+        }
+    }
+
+    #[test]
+    fn parses_report_network_status_command() {
+        let args = parse_args(&[
+            "qunmind",
+            "report-network-status",
+            "--report-name",
+            "技术群日报",
+        ]);
+
+        match args.command {
+            Some(CliCommand::ReportNetworkStatus { report_name }) => {
+                assert_eq!(report_name, "技术群日报");
+            }
+            _ => panic!("report-network-status command should parse"),
         }
     }
 

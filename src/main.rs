@@ -7,6 +7,7 @@ use qunmind::channel::wx_cli::WxCliChannel;
 use qunmind::cli::{Args, CliCommand};
 use qunmind::config::{ChannelKind, Config};
 use qunmind::error::QunMindError;
+use qunmind::network_diagnostic::{NetworkDiagnosticOptions, report_network_status_json};
 use qunmind::publisher::{
     configure_wechat_backend, login_wechat_backend, prepare_report_output_markdown,
     preview_wechat_backend, publish_markdown, wechat_login_recovery_hint,
@@ -228,6 +229,19 @@ async fn run_diagnostic_command(
                     &report_name,
                     &target,
                     receipts,
+                ))?
+            );
+            Ok(())
+        }
+        CliCommand::ReportNetworkStatus { report_name } => {
+            let report_name = effective_publish_history_name(config, &report_name)?;
+            let target = effective_report_status_target(config, &report_name)?;
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&report_network_status_json(
+                    &report_name,
+                    &target,
+                    &NetworkDiagnosticOptions::from_env(),
                 ))?
             );
             Ok(())

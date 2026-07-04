@@ -94,6 +94,8 @@ X / Twitter 这类一手信息入口也优先走 `PublicNewsSource` 边界。当
 
 如果微信公众号发布命中 `errcode=40164 invalid ip`，先区分是 `QunMind` 侧还是 `moonpub` 侧的问题。当前本地 `moonpub` 原版 `src/wechat.rs` 默认用 `ureq` 直连微信 API，不会自动继承 shell 里设置的代理语义；需要显式在 `moonpub` 微信客户端里接入 `HTTP_PROXY` / `HTTPS_PROXY` / `ALL_PROXY` 环境变量，修复后微信侧看到的出口 IP 会改变。若出口 IP 已变化但仍未进白名单，说明剩余阻塞纯粹是公众号后台白名单，而不是代码没走代理。
 
+参考 `mcncarl/yichen-skills` 时，只借鉴“私密状态外置、浏览器/平台自动化隔离、结构化诊断先行”的边界，不要把它当成 Mihomo / Clash 的现成实现。Mihomo、Clash Verge、HTTP 代理和微信 OpenAPI 出口 IP 属于本机发布运维诊断，优先沉淀到 `docs/local-publisher-network-diagnostics.md` 这种只读/可脱敏的诊断方案里；不要把 Clash profile、订阅 URL、节点密码、cookies、微信数据库密钥或本机绝对私密路径提交进仓库，也不要让日报生成逻辑直接依赖或修改代理配置。
+
 `src/daily_report/` 当前除了“模型生成正文”之外，还承担一层质量兜底：如果 AI 返回的 JSON 非法、字段过空、板块误分或摘要质量过低，优先在 Rust 侧补齐非空板块、修正 AI/Web3/技术分类、过滤低信号条目，并把链接区分为“正文实际引用的参考来源”和“未写入正文但来自本次素材池的完整素材链接”。后续继续优化日报质量时，优先沿这条“AI 生成 + Rust 兜底收敛”边界演进，不要把容错逻辑散回 CLI、scheduler 或 publisher。
 
 手工 `daily-report --output <path>` 在回退到 `public_sources` 生成公众号日报时，会优先读取同一路径上一次生成的 markdown，并提取其中正文 `原文：https://...` URL 作为“近期已用链接”降权信号。该信号只影响本次正文板块与推荐深读的选材新鲜度，不会删除“完整素材链接”区里的可追溯来源。优化同一天多次重跑体验时，优先沿这个轻量降权边界演进，不要急着引入复杂的跨日状态库。

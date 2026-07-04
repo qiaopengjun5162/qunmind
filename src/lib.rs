@@ -8,6 +8,7 @@ pub mod diagnostic;
 pub mod error;
 pub mod intelligence;
 pub mod mcp;
+pub mod network_diagnostic;
 pub mod publisher;
 pub mod reporting;
 pub mod research;
