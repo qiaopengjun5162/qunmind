@@ -320,7 +320,7 @@ fn wechat_daily_cover_filename(markdown_path: &std::path::Path) -> Result<String
 fn inject_wechat_frontmatter_fields(markdown: &str, cover_filename: &str) -> String {
     let cover_line = format!("cover: ./{cover_filename}");
     let author_line = "wechat_author: 寻月隐君";
-    let theme_line = "theme: newsletter";
+    let theme_line = "theme: notebook";
 
     if !markdown.starts_with("---\n") {
         return format!("---\n{cover_line}\n{author_line}\n{theme_line}\n---\n\n{markdown}");
@@ -329,7 +329,7 @@ fn inject_wechat_frontmatter_fields(markdown: &str, cover_filename: &str) -> Str
     let body_start = "---\n".len();
     let rest = &markdown[body_start..];
     let Some(close_offset) = rest.find("\n---") else {
-        return format!("---\n{cover_line}\n{author_line}\n---\n\n{markdown}");
+        return format!("---\n{cover_line}\n{author_line}\n{theme_line}\n---\n\n{markdown}");
     };
 
     let frontmatter = &rest[..close_offset];
@@ -356,18 +356,30 @@ fn inject_wechat_frontmatter_fields(markdown: &str, cover_filename: &str) -> Str
         fields.push_str(author_line);
         fields.push('\n');
     }
-    if !frontmatter
-        .lines()
-        .any(|line| line.trim_start().starts_with("theme:"))
-    {
-        if !fields.ends_with('\n') && !fields.is_empty() {
-            fields.push('\n');
-        }
-        fields.push_str(theme_line);
-        fields.push('\n');
-    }
+    fields = upsert_frontmatter_line(&fields, "theme:", theme_line);
 
     format!("---\n{fields}{tail}")
+}
+
+fn upsert_frontmatter_line(frontmatter: &str, key: &str, replacement: &str) -> String {
+    let mut replaced = false;
+    let mut lines = Vec::new();
+    for line in frontmatter.lines() {
+        if line.trim_start().starts_with(key) {
+            if !replaced {
+                lines.push(replacement.to_string());
+                replaced = true;
+            }
+        } else {
+            lines.push(line.to_string());
+        }
+    }
+    if !replaced {
+        lines.push(replacement.to_string());
+    }
+    let mut out = lines.join("\n");
+    out.push('\n');
+    out
 }
 
 #[cfg(test)]
@@ -512,7 +524,7 @@ mod tests {
                 .contains("cover: ./daily.ai-web3-daily-cover-900x500.png")
         );
         assert!(prepared.markdown.contains("wechat_author"));
-        assert!(prepared.markdown.contains("theme: newsletter"));
+        assert!(prepared.markdown.contains("theme: notebook"));
         assert_eq!(
             prepared.cover_path,
             dir.join("daily.ai-web3-daily-cover-900x500.png")
@@ -532,7 +544,19 @@ mod tests {
         assert!(prepared.contains("cover: ./custom.png"));
         assert_eq!(prepared.matches("wechat_author:").count(), 1);
         assert_eq!(prepared.matches("theme:").count(), 1);
-        assert!(prepared.contains("theme: newsletter"));
+        assert!(prepared.contains("theme: notebook"));
+    }
+
+    #[test]
+    fn wechat_frontmatter_overrides_legacy_theme() {
+        let markdown =
+            "---\ntitle: \"AI · Web3 最新日报｜2026-06-26\"\ntheme: newsletter\n---\n\n正文";
+
+        let prepared = inject_wechat_frontmatter_fields(markdown, "daily.cover.png");
+
+        assert_eq!(prepared.matches("theme:").count(), 1);
+        assert!(prepared.contains("theme: notebook"));
+        assert!(!prepared.contains("theme: newsletter"));
     }
 
     #[test]
@@ -565,7 +589,7 @@ mod tests {
 
         assert!(prepared.contains("cover: ./wechat-report.ai-web3-daily-cover-900x500.png"));
         assert!(prepared.contains("wechat_author: 寻月隐君"));
-        assert!(prepared.contains("theme: newsletter"));
+        assert!(prepared.contains("theme: notebook"));
         assert!(
             dir.join("wechat-report.ai-web3-daily-cover-900x500.png")
                 .is_file()

@@ -615,7 +615,10 @@ fn render_summary_section(summary: &str) -> String {
 }
 
 fn render_outro_section() -> String {
-    format!("\n## {}\n\n{}\n\n", REPORT_OUTRO_TITLE, REPORT_OUTRO_BODY)
+    format!(
+        "\n## {}\n\n:::closing-card label=\"寻月隐君\"\n{}\n:::\n\n",
+        REPORT_OUTRO_TITLE, REPORT_OUTRO_BODY
+    )
 }
 
 fn is_reliable_read_summary(summary: &str) -> bool {

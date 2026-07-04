@@ -118,7 +118,7 @@ X / Twitter 这类一手信息入口也优先走 `PublicNewsSource` 边界。当
 
 公众号日报当前面向个人公众号 `寻月隐君` 使用固定封面母版。封面应保持浅色背景和深色主标题，避免移动端预览里白色文字对比度不足。`QunMind` 在 `publish_markdown(...)` 的 WeChat publisher 边界写出随本次临时稿件命名的 PNG，并向交给 `moonpub --render` 的临时 markdown frontmatter 注入相对 `cover:`，再由 `moonpub` 负责上传为公众号草稿封面。不要把本机绝对路径写进正文 markdown，也不要只改 `moonpub-data` 里的旧 `thumb_media_id`，否则手工生成稿和真实发布会再次分叉。
 手工 `daily-report --output <path>` 与 MCP `report_markdown` 对 `output = "wechat"` 的目标，也必须先走同一层微信稿准备逻辑，再把 markdown 落盘。也就是说，本地输出稿要和后续真实 `publish_markdown(...)` 看到的 frontmatter 形态保持一致；不要再让“本地写出的稿”和“发布时临时补过封面/作者的稿”分叉成两份。
-公众号日报微信稿 frontmatter 当前还会固定注入 `theme: newsletter`，避免继承 `moonpub-data` 里的 `geek` 等主题后在手机预览出现白色文字、绿色过重或标题徽章对比度不足。若后续要换主题，必须先用手机预览确认正文、编号、引用卡片和链接区都可读。
+公众号日报微信稿 frontmatter 当前会固定覆盖为 `theme: notebook`，使用更稳的蓝白浅色专业风格，避免历史稿里的 `newsletter` 偏黄色、`geek` 绿色过重或标题徽章对比度不足。若后续要换主题，必须先用手机预览确认正文、编号、引用卡片和链接区都可读。
 群二维码不是 QunMind 正文结尾的一部分，而是 `moonpub` 渲染 footer 时从 `moonpub-data/moonpub.toml` 的 `qrcode` 读取。当前活跃路径是 `/Users/qiaopengjun/Code/Rust/moonpub-data/qrcode.png`，已从 iCloud `ObsidianMain/Context/assets/qrcode-group.png` 替换为最新群二维码；后续更新群二维码时优先替换这个活跃文件并重新推草稿预览，不要误改 QunMind 固定结尾文案。
 为了让公众号草稿箱里的“最新一条”更容易辨认，日报主标题当前优先固定为 `AI · Web3 最新日报｜YYYY-MM-DD`。当天真正变化的主线信息应继续放在 `digest`、`intro` 和 `今日焦点`，不要再把公共素材主线直接塞回 `title`，否则草稿箱里会重新出现“像同一篇又像不同篇”的识别噪音。
 
