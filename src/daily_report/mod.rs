@@ -1525,7 +1525,7 @@ fn dedup_and_backfill_reads(
             .iter()
             .find(|item| normalize_story_url(&item.url) == normalized_url);
         !url.is_empty()
-            && !used_urls.contains(&normalized_url)
+            && (!used_urls.contains(&normalized_url) || source_item.is_some_and(is_manual_category))
             && !recent_used_urls.contains(url)
             && source_item.is_none_or(|item| !is_generic_market_wrap_item(item))
             && (!had_non_plain_candidates || !is_plain_github_trending_read(url, items))
@@ -1543,6 +1543,11 @@ fn dedup_and_backfill_reads(
     for read in &report.reads {
         used_urls.insert(normalize_story_url(read.url.trim()));
     }
+    let mut existing_read_urls = report
+        .reads
+        .iter()
+        .map(|read| normalize_story_url(read.url.trim()))
+        .collect::<std::collections::HashSet<_>>();
 
     if report.reads.len() >= MAX_READS {
         report
@@ -1559,7 +1564,11 @@ fn dedup_and_backfill_reads(
         if report.reads.len() >= MAX_READS {
             break;
         }
-        if used_urls.contains(&normalize_story_url(item.url.trim())) {
+        let normalized_url = normalize_story_url(item.url.trim());
+        if existing_read_urls.contains(&normalized_url) {
+            continue;
+        }
+        if used_urls.contains(&normalized_url) && !is_manual_category(item) {
             continue;
         }
         if recent_used_urls.contains(item.url.trim()) {
@@ -1594,7 +1603,8 @@ fn dedup_and_backfill_reads(
                 .filter(|summary| !summary.is_empty())
                 .unwrap_or_else(|| fallback_read_summary(item)),
         });
-        used_urls.insert(normalize_story_url(&item.url));
+        used_urls.insert(normalized_url.clone());
+        existing_read_urls.insert(normalized_url);
     }
 
     report
@@ -4454,6 +4464,40 @@ mod tests {
         assert!(!urls.contains(&"https://example.com/focus"));
         assert!(!urls.contains(&"https://example.com/tech"));
         assert!(urls.contains(&"https://example.com/fresh-read"));
+    }
+
+    #[test]
+    fn dedup_and_backfill_reads_keeps_manual_focus_as_deep_read() {
+        let manual = PublicNewsItem {
+            source: "Paragraph".to_string(),
+            title: "公开我个人全部的投资、研究与写作的逻辑和方法论".to_string(),
+            url: "https://paragraph.com/@jason-chen/GtQDLkp2k1Rb15VAOhgx".to_string(),
+            summary: Some(
+                "Jason Chen 系统公开个人 Web3 投资、研究与写作方法论，重点包括投资逻辑、一手信源渠道、深度投研框架和写作结构。"
+                    .to_string(),
+            ),
+            author: Some("Jason Chen".to_string()),
+            published_at: None,
+            score: Some(1000),
+            comments: None,
+            ai_score: None,
+            category: Some("manual:web3_research".to_string()),
+        };
+        let mut report = ReportJson {
+            focus_text: manual.summary.clone().unwrap(),
+            focus_url: manual.url.clone(),
+            reads: vec![],
+            ..Default::default()
+        };
+
+        dedup_and_backfill_reads(
+            &mut report,
+            std::slice::from_ref(&manual),
+            &std::collections::HashSet::new(),
+        );
+
+        assert_eq!(report.reads.len(), 1);
+        assert_eq!(report.reads[0].url, manual.url);
     }
 
     #[tokio::test]
