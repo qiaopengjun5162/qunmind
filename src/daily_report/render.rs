@@ -8,7 +8,7 @@ const MAX_REFERENCE_ITEMS: usize = 15;
 const MAX_SOURCE_LINK_ITEMS: usize = 50;
 const OVERVIEW_FOCUS_PREVIEW_CHARS: usize = 34;
 const REPORT_OUTRO_TITLE: &str = "继续交流";
-const REPORT_OUTRO_BODY: &str = "如果你也关注 AI、Web3 与技术趋势，欢迎继续关注公众号「寻月隐君」。想加入读者交流群，可以在公众号后台回复「加群」获取最新方式。如果这份日报对你有帮助，也欢迎点赞、推荐给朋友，或点个“在看”。";
+const REPORT_OUTRO_BODY: &str = "这里是公众号「寻月隐君」的 AI · Web3 最新日报。每天筛选公开信息、官方资料和一手链接，帮你快速看到值得继续追踪的技术与行业动态。\n\n想加入读者交流群，可以在公众号后台回复「加群」获取最新方式。若二维码或入口过期，也以后台回复为准。\n\n本文只做信息整理，不构成投资建议；所有判断都建议回到文中的「原文」链接继续核对。\n\n如果这份日报对你有帮助，欢迎点赞、推荐给朋友，或点个「在看」。";
 
 pub(super) fn assemble_markdown(
     report: &ReportJson,
@@ -330,10 +330,10 @@ fn build_refs_block(report: &ReportJson, items: &[PublicNewsItem], section_index
         .take(MAX_REFERENCE_ITEMS)
     {
         referenced_count += 1;
-        referenced_entries.push_str(&format_reference_card(
+        referenced_entries.push_str(&format_reference_entry(
             referenced_count,
             item,
-            "正文已引用。建议从原文核对上下文、数据口径和作者原意。",
+            ReferenceEntryStyle::Cited,
         ));
     }
     if referenced_count == 0 {
@@ -357,29 +357,46 @@ fn build_refs_block(report: &ReportJson, items: &[PublicNewsItem], section_index
             unreferenced.len()
         ));
         for (i, item) in unreferenced.iter().enumerate() {
-            block.push_str(&format_reference_card(
+            block.push_str(&format_reference_entry(
                 i + 1,
                 item,
-                "本次已采集但未写入正文。适合继续扩展阅读或留作后续追踪。",
+                ReferenceEntryStyle::SourceOnly,
             ));
         }
     }
     block
 }
 
-fn format_reference_card(index: usize, item: &PublicNewsItem, fallback_note: &str) -> String {
+enum ReferenceEntryStyle {
+    Cited,
+    SourceOnly,
+}
+
+fn format_reference_entry(
+    index: usize,
+    item: &PublicNewsItem,
+    style: ReferenceEntryStyle,
+) -> String {
     let title = sanitize(item.title.replace('\n', " ").trim());
     let source_label = display_source_label(item);
     let score_part = match item.score {
         Some(score) if score > 0 => format!(" · {score} points"),
         _ => String::new(),
     };
-    let note = reference_note(item).unwrap_or_else(|| fallback_note.to_string());
-
-    format!(
-        "**{:02}｜[{}]({})**\n\n来源：{}{}  \n说明：{}  \n原文：{}\n\n",
-        index, title, item.url, source_label, score_part, note, item.url
-    )
+    match style {
+        ReferenceEntryStyle::Cited => {
+            let note =
+                reference_note(item).unwrap_or_else(|| "正文已引用，建议核对原文。".to_string());
+            format!(
+                "**{:02}｜[{}]({})**\n来源：{}{}｜说明：{}  \n原文：{}\n\n",
+                index, title, item.url, source_label, score_part, note, item.url
+            )
+        }
+        ReferenceEntryStyle::SourceOnly => format!(
+            "**{:02}｜[{}]({})**\n来源：{}{}｜原文：{}\n\n",
+            index, title, item.url, source_label, score_part, item.url
+        ),
+    }
 }
 
 fn reference_note(item: &PublicNewsItem) -> Option<String> {
@@ -1221,6 +1238,8 @@ mod tests {
         assert!(refs.contains("原文：https://example.com/unreferenced"));
         assert!(refs.contains("**02｜[another]"));
         assert!(refs.contains("原文：https://example.com/another"));
+        let source_links = refs.split("### 完整素材链接").nth(1).unwrap_or_default();
+        assert!(!source_links.contains("说明："));
     }
 
     #[test]
@@ -1238,7 +1257,7 @@ mod tests {
             category: None,
         };
 
-        let rendered = format_reference_card(1, &item, "fallback");
+        let rendered = format_reference_entry(1, &item, ReferenceEntryStyle::Cited);
 
         assert!(rendered.contains("说明：据彭博社报道"));
         assert!(!rendered.contains("..."));
