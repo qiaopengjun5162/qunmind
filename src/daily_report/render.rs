@@ -6,9 +6,12 @@ use crate::source::PublicNewsItem;
 const AI_SUBSECTIONS: [&str; 3] = ["多Agent编排", "单Agent应用", "工作方式变革"];
 const MAX_REFERENCE_ITEMS: usize = 15;
 const MAX_SOURCE_LINK_ITEMS: usize = 50;
+const COMPACT_REF_TITLE_CHARS: usize = 30;
+const COMPACT_REF_SOURCE_CHARS: usize = 28;
+const COMPACT_REF_NOTE_CHARS: usize = 26;
 const OVERVIEW_FOCUS_PREVIEW_CHARS: usize = 34;
 const REPORT_OUTRO_TITLE: &str = "继续交流";
-const REPORT_OUTRO_BODY: &str = "这里是公众号「寻月隐君」的 AI · Web3 最新日报。每天筛选公开信息、官方资料和一手链接，帮你快速看到值得继续追踪的技术与行业动态。\n\n想加入读者交流群，可以在公众号后台回复「加群」获取最新方式。若二维码或入口过期，也以后台回复为准。\n\n本文只做信息整理，不构成投资建议；所有判断都建议回到文中的「原文」链接继续核对。\n\n如果这份日报对你有帮助，欢迎点赞、推荐给朋友，或点个「在看」。";
+const REPORT_OUTRO_BODY: &str = "这里是公众号「寻月隐君」的 AI · Web3 最新日报。每天筛选公开信息、官方资料和一手链接，帮你快速看到值得继续追踪的技术与行业动态。\n\n想加入读者交流群，可以在公众号后台回复「加群」获取最新方式。二维码或入口如有更新，也以后台回复为准。\n\n本文只做信息整理，不构成投资建议；重要判断请回到文中的「原文」链接继续核对。\n\n如果这份日报对你有帮助，欢迎点赞、推荐给朋友，或者点个「在看」。";
 
 pub(super) fn assemble_markdown(
     report: &ReportJson,
@@ -60,11 +63,10 @@ pub(super) fn assemble_markdown(
     }
 
     md.push_str(&build_refs_block(report, items, section_index));
-    md.push_str(&render_outro_section());
-
     if !daily_quote.trim().is_empty() {
         md.push_str(&format!("\n## 今日一句\n\n> {}\n", daily_quote.trim()));
     }
+    md.push_str(&render_outro_section());
 
     md
 }
@@ -340,7 +342,7 @@ fn build_refs_block(report: &ReportJson, items: &[PublicNewsItem], section_index
         block.push_str("### 正文引用来源（0）\n\n暂无正文直接引用链接。\n");
     } else {
         block.push_str(&format!(
-            "### 正文引用来源（{}）\n\n正文里直接写到的观点，统一收在这里，优先核对这些原文。\n\n{}",
+            "### 正文引用来源（{}）\n\n正文观点的核对入口，压缩成资料索引，优先打开原文确认。\n\n:::compact-links\n{}:::\n\n",
             referenced_count, referenced_entries
         ));
     }
@@ -353,7 +355,7 @@ fn build_refs_block(report: &ReportJson, items: &[PublicNewsItem], section_index
         .collect::<Vec<_>>();
     if !unreferenced.is_empty() {
         block.push_str(&format!(
-            "\n### 完整素材链接（{}）\n\n以下是本次采集但未全部写入正文的素材入口，保留完整原文，方便继续追踪。\n\n",
+            "\n### 完整素材链接（{}）\n\n未写入正文的素材入口，只保留来源和完整原文链接。\n\n:::compact-links\n",
             unreferenced.len()
         ));
         for (i, item) in unreferenced.iter().enumerate() {
@@ -363,6 +365,7 @@ fn build_refs_block(report: &ReportJson, items: &[PublicNewsItem], section_index
                 ReferenceEntryStyle::SourceOnly,
             ));
         }
+        block.push_str(":::\n\n");
     }
     block
 }
@@ -383,20 +386,40 @@ fn format_reference_entry(
         Some(score) if score > 0 => format!(" · {score} points"),
         _ => String::new(),
     };
+    let compact_title = table_cell(&truncate_str(&title, COMPACT_REF_TITLE_CHARS));
+    let url = table_cell(&item.url);
+    let source = table_cell(&truncate_str(
+        &format!("{source_label}{score_part}"),
+        COMPACT_REF_SOURCE_CHARS,
+    ));
     match style {
         ReferenceEntryStyle::Cited => {
             let note =
                 reference_note(item).unwrap_or_else(|| "正文已引用，建议核对原文。".to_string());
+            let note = table_cell(&truncate_reference_cell(&note, COMPACT_REF_NOTE_CHARS));
             format!(
-                "**{:02}｜[{}]({})**\n来源：{}{}｜说明：{}  \n原文：{}\n\n",
-                index, title, item.url, source_label, score_part, note, item.url
+                "- {:02} | {} | {}｜{} | {}\n",
+                index, compact_title, source, note, url
             )
         }
         ReferenceEntryStyle::SourceOnly => format!(
-            "**{:02}｜[{}]({})**\n来源：{}{}｜原文：{}\n\n",
-            index, title, item.url, source_label, score_part, item.url
+            "- {:02} | {} | {} | {}\n",
+            index, compact_title, source, url
         ),
     }
+}
+
+fn table_cell(value: &str) -> String {
+    sanitize(value)
+        .replace('|', "｜")
+        .replace('\n', " ")
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn truncate_reference_cell(value: &str, max_chars: usize) -> String {
+    truncate_str(value, max_chars).replace("...", "……")
 }
 
 fn reference_note(item: &PublicNewsItem) -> Option<String> {
@@ -1106,8 +1129,8 @@ mod tests {
 
         let refs = build_refs_block(&report, &[item], 5);
 
-        assert!(refs.contains("来源：Google Blog · 149 points"));
-        assert!(!refs.contains("来源：Hacker News · 149 points"));
+        assert!(refs.contains("Google Blog · 149 points"));
+        assert!(!refs.contains("Hacker News · 149 points"));
     }
 
     #[test]
@@ -1199,10 +1222,16 @@ mod tests {
             .split("### 完整素材链接")
             .next()
             .unwrap_or(refs.as_str());
-        assert!(refs.contains("**01｜[item-0]"));
-        assert!(refs.contains("**15｜[item-14]"));
-        assert!(!used_refs.contains("**16｜[item-15]"));
-        assert_eq!(used_refs.matches("**").count(), 30);
+        assert!(refs.contains("- 01 | item-0"));
+        assert!(refs.contains("- 15 | item-14"));
+        assert!(!used_refs.contains("- 16 | item-15"));
+        assert_eq!(
+            used_refs
+                .lines()
+                .filter(|line| line.starts_with("- "))
+                .count(),
+            15
+        );
     }
 
     #[test]
@@ -1227,19 +1256,20 @@ mod tests {
         let refs = build_refs_block(&report, &items, 5);
 
         assert!(refs.contains("## 05. 参考来源"));
-        assert!(refs.contains("**01｜[used]"));
-        assert!(refs.contains("来源："));
+        assert!(refs.contains(":::compact-links"));
+        assert!(refs.contains("- 01 | used"));
         assert!(refs.contains("· 10 points"));
-        assert!(refs.contains("说明："));
-        assert!(refs.contains("原文：https://example.com/used"));
+        assert!(refs.contains("正文已引用，建议核对原文。"));
+        assert!(refs.contains("https://example.com/used"));
         assert!(!refs.contains("> 原文：https://example.com/used"));
         assert!(refs.contains("### 完整素材链接（2）"));
-        assert!(refs.contains("**01｜[unreferenced]"));
-        assert!(refs.contains("原文：https://example.com/unreferenced"));
-        assert!(refs.contains("**02｜[another]"));
-        assert!(refs.contains("原文：https://example.com/another"));
+        assert!(refs.contains("- 01 | unreferenced"));
+        assert!(refs.contains("https://example.com/unreferenced"));
+        assert!(refs.contains("- 02 | another"));
+        assert!(refs.contains("https://example.com/another"));
         let source_links = refs.split("### 完整素材链接").nth(1).unwrap_or_default();
         assert!(!source_links.contains("说明："));
+        assert!(!source_links.contains("正文已引用"));
     }
 
     #[test]
@@ -1259,9 +1289,11 @@ mod tests {
 
         let rendered = format_reference_entry(1, &item, ReferenceEntryStyle::Cited);
 
-        assert!(rendered.contains("说明：据彭博社报道"));
+        assert!(rendered.contains("据彭博社报道"));
         assert!(!rendered.contains("..."));
+        assert!(rendered.contains("……"));
         assert!(!rendered.contains("警方称"));
+        assert!(rendered.lines().count() <= 1);
     }
 
     #[test]
@@ -1347,5 +1379,30 @@ mod tests {
         assert!(md.contains("公众号「寻月隐君」"));
         assert!(md.contains("回复「加群」"));
         assert!(md.contains("点赞、推荐给朋友"));
+        assert!(md.contains("点个「在看」"));
+        assert_eq!(md.matches("## 继续交流").count(), 1);
+        assert!(md.trim_end().ends_with(":::"), "outro must remain last");
+    }
+
+    #[test]
+    fn assemble_keeps_fixed_outro_after_daily_quote() {
+        let report = ReportJson {
+            web3_items: vec![ReportSection {
+                subsection: String::new(),
+                title: "Web3 item".to_string(),
+                url: "https://example.com/web3".to_string(),
+                comment: "Web3 comment".to_string(),
+                source: "PANews".to_string(),
+                points: 80,
+            }],
+            ..Default::default()
+        };
+
+        let md = assemble_markdown(&report, &[make_item("web3", Some(90))], "保持好奇。");
+        let quote_pos = md.find("## 今日一句").expect("daily quote section");
+        let outro_pos = md.find("## 继续交流").expect("fixed outro section");
+
+        assert!(quote_pos < outro_pos);
+        assert!(md.trim_end().ends_with(":::"));
     }
 }

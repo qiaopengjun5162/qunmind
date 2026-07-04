@@ -89,13 +89,18 @@
 - **固定结尾可见性继续加固** — `src/daily_report/render.rs` 现在把唯一标准标题 `## 继续交流` 放在尾部卡片前，再用 `:::closing-card label="寻月隐君"` 承载正文。这样手机端先看到固定标题，再看到加群与点赞 / 推荐 / 在看引导，不再像结尾标题被藏起来。
 - **日报内容层级继续拉开** — `src/daily_report/render.rs` 现在把“今日三件事”包进 `:::summary`，把“今日焦点”改成 `:::callout label="先读这条"`，同时把参考来源 / 完整素材链接从引用卡片降级成普通资料索引。这样首屏、正文观点卡和文末链接区不再全是同一种视觉语言，读者更容易知道先看哪里、哪里只是核对资料。
 - **标准结尾和链接区进一步压缩** — `src/daily_report/render.rs` 现在把“继续交流”恢复为固定多段标准模板，包含公众号「寻月隐君」、后台回复「加群」、信息整理 / 非投资建议提醒、回到原文核对和点赞 / 推荐 / 在看引导；参考来源区也继续压缩，正文引用来源最多三行，完整素材链接只保留“标题 + 来源 / 原文”两行。
+- **参考链接区改为 `compact-links` 小字号索引** — `src/daily_report/render.rs` 现在把“正文引用来源”和“完整素材链接”统一输出为 `:::compact-links`，单条压成“序号｜短标题｜来源/短说明｜完整原文 URL”。这样仍保留可追溯原文链接，但不再让文末来源区按每条五六行展开，后续由 `moonpub` 渲染成 12px 紧凑行。
+- **标准结尾固定为全文最后模块** — `src/daily_report/render.rs` 现在明确先渲染可选 `今日一句`，再渲染唯一的 `## 继续交流` 标准结尾，避免 quote 或其它尾部模块出现在固定结尾后面；同时轻微优化结尾文案，但保留公众号「寻月隐君」、后台回复「加群」、非投资建议、回到原文核对和点赞 / 推荐 / 在看引导。
 
 ### Verification
 
 - `cargo fmt --all -- --check`
 - `cargo test publisher::tests:: --lib`：15 passed
-- `cargo test daily_report::render::tests:: --lib`：26 passed
+- `cargo test daily_report::render::tests:: --lib`：27 passed
 - `cargo clippy --all-targets --all-features --tests --benches -- -D warnings`
+- `cargo test daily_report::render::tests::assemble_appends_fixed_outro_section --lib`
+- `cargo test daily_report::render::tests::assemble_keeps_fixed_outro_after_daily_quote --lib`
+- `cargo run -- --config config.toml daily-report --report-name "微信公众号日报" --output /tmp/wechat-report-2026-07-04-compact-links-final.md`：沙箱外本地生成成功；抽查确认输出含 `:::compact-links`，参考来源区 13 条、完整素材链接 12 条，全文 223 行，`theme: notebook`、`## 继续交流` 仍在，未出现 `####`
 - `cargo run -- --config config.toml daily-report --report-name "微信公众号日报" --output /tmp/wechat-report-2026-07-04-notebook-v2.md`：本地生成成功；抽查确认 `theme: notebook`、`## 继续交流`、完整裸 `原文：https://...` 均存在，未出现 `####` 或 `newsletter`
 - `cargo run -- --config config.toml daily-report --report-name "微信公众号日报" --output /tmp/wechat-report-2026-07-04-layout-hierarchy.md`：本地生成成功；抽查确认首屏含 `:::summary`，焦点含 `:::callout label: 先读这条`，正文条目仍保留 `> 原文` 引用卡片，参考链接区改为普通 `来源 / 说明 / 原文` 索引行
 - `cargo run -- --config config.toml daily-report --report-name "微信公众号日报" --output /tmp/wechat-report-2026-07-04-compact-links-outro.md`：本地生成成功；抽查确认标准结尾为多段模板，完整素材链接压缩为两行式索引，全文从 336 行降到 280 行
