@@ -87,6 +87,7 @@
 - **2026-07-04 公众号日报 v2 已推草稿并发送手机预览** — 新稿 `/tmp/wechat-report-2026-07-04-notebook-v2.md` 已真实推送到公众号草稿箱第一条，标题为 `AI · Web3 最新日报｜2026-07-04`，`media_id = EmukC2rjB9X3nj6feGSEr0GAeIQIQ7yPkicMHAkkGvBdUSNAjhzNGo7c0bU1Vu0D`。本次后台自动化明确完成：赞赏已开启，留言已开启，创作来源保持 `个人观点，仅供参考`，手机预览发送成功。
 - **微信稿主题强制回到 `notebook`** — `src/publisher.rs` 现在不再保留旧稿已有的 `theme:`，而是在微信稿准备边界统一覆盖为 `theme: notebook`。这样即使临时稿或历史稿残留 `theme: newsletter`，也不会继续把偏黄色主题推到公众号草稿。
 - **固定结尾可见性继续加固** — `src/daily_report/render.rs` 现在把唯一标准标题 `## 继续交流` 放在尾部卡片前，再用 `:::closing-card label="寻月隐君"` 承载正文。这样手机端先看到固定标题，再看到加群与点赞 / 推荐 / 在看引导，不再像结尾标题被藏起来。
+- **日报内容层级继续拉开** — `src/daily_report/render.rs` 现在把“今日三件事”包进 `:::summary`，把“今日焦点”改成 `:::callout label="先读这条"`，同时把参考来源 / 完整素材链接从引用卡片降级成普通资料索引。这样首屏、正文观点卡和文末链接区不再全是同一种视觉语言，读者更容易知道先看哪里、哪里只是核对资料。
 
 ### Verification
 
@@ -95,6 +96,7 @@
 - `cargo test daily_report::render::tests:: --lib`：26 passed
 - `cargo clippy --all-targets --all-features --tests --benches -- -D warnings`
 - `cargo run -- --config config.toml daily-report --report-name "微信公众号日报" --output /tmp/wechat-report-2026-07-04-notebook-v2.md`：本地生成成功；抽查确认 `theme: notebook`、`## 继续交流`、完整裸 `原文：https://...` 均存在，未出现 `####` 或 `newsletter`
+- `cargo run -- --config config.toml daily-report --report-name "微信公众号日报" --output /tmp/wechat-report-2026-07-04-layout-hierarchy.md`：本地生成成功；抽查确认首屏含 `:::summary`，焦点含 `:::callout label: 先读这条`，正文条目仍保留 `> 原文` 引用卡片，参考链接区改为普通 `来源 / 说明 / 原文` 索引行
 - `moonpub --articles /Users/qiaopengjun/Code/Rust/moonpub-data push /tmp/wechat-report-2026-07-04-notebook-v2.md --render`：真实推送草稿，自动化输出 `✅ 赞赏 已开启`、`创作来源 state: '个人观点，仅供参考'`、`✅ 预览发送成功`
 - `moonpub --articles /Users/qiaopengjun/Code/Rust/moonpub-data list-drafts`：确认草稿箱第一条为 `AI · Web3 最新日报｜2026-07-04`，`media_id = EmukC2rjB9X3nj6feGSEr0GAeIQIQ7yPkicMHAkkGvBdUSNAjhzNGo7c0bU1Vu0D`
 

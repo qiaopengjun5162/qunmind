@@ -108,13 +108,13 @@ fn render_focus(text: &str, url: &str) -> String {
     let focus_text = humanize_focus_text(text);
     if url.trim().is_empty() {
         format!(
-            ":::divider\nlabel: 今日焦点\n:::\n\n## 今日焦点\n\n**发生了什么**\n\n{}\n\n**为什么重要**\n\n它是本期信息流里最适合先核对的一条，可以帮助读者快速建立今天的阅读上下文。\n\n**后续关注**\n\n继续关注是否出现官方文档、产品更新或社区复盘。\n\n",
+            ":::divider\nlabel: 主线\n:::\n\n## 今日焦点\n\n:::callout\nlabel: 先读这条\n\n{}\n:::\n\n**为什么重要**\n\n它是本期信息流里最适合先核对的一条，可以帮助读者快速建立今天的阅读上下文。\n\n**后续关注**\n\n继续关注是否出现官方文档、产品更新或社区复盘。\n\n",
             ensure_sentence_end(&focus_text)
         )
     } else {
         let url = url.trim();
         format!(
-            ":::divider\nlabel: 今日焦点\n:::\n\n## 今日焦点\n\n**发生了什么**\n\n{} — [点击阅读]({})\n\n**为什么重要**\n\n它是本期信息流里最适合先核对的一条，可以帮助读者快速建立今天的阅读上下文。\n\n**后续关注**\n\n继续关注是否出现官方文档、产品更新或社区复盘。\n\n原文：{}\n\n",
+            ":::divider\nlabel: 主线\n:::\n\n## 今日焦点\n\n:::callout\nlabel: 先读这条\n\n{} — [点击阅读]({})\n:::\n\n**为什么重要**\n\n它是本期信息流里最适合先核对的一条，可以帮助读者快速建立今天的阅读上下文。\n\n**后续关注**\n\n继续关注是否出现官方文档、产品更新或社区复盘。\n\n原文：{}\n\n",
             ensure_sentence_end(&focus_text),
             url,
             url
@@ -165,7 +165,7 @@ fn render_overview(report: &ReportJson) -> String {
     );
 
     format!(
-        ":::divider\nlabel: 今日速览\n:::\n\n## 今日三件事\n\n{}\n\n",
+        ":::divider\nlabel: 今日速览\n:::\n\n## 今日三件事\n\n:::summary\n{}\n:::\n\n",
         lines.join("\n\n")
     )
 }
@@ -318,7 +318,7 @@ fn build_refs_block(report: &ReportJson, items: &[PublicNewsItem], section_index
         .collect::<std::collections::HashSet<_>>();
     let mut seen_normalized_urls = std::collections::HashSet::new();
     let mut block = format!(
-        "## {:02}. 参考来源\n\n这里不只放链接，也把来源、用途和原文入口拆开，方便你按需核对。\n\n",
+        "## {:02}. 参考来源\n\n这一节是资料索引，不再按正文卡片展开。你可以先读上面的正文，再回到这里逐条核对原文。\n\n",
         section_index
     );
     let mut referenced_count = 0;
@@ -377,7 +377,7 @@ fn format_reference_card(index: usize, item: &PublicNewsItem, fallback_note: &st
     let note = reference_note(item).unwrap_or_else(|| fallback_note.to_string());
 
     format!(
-        "**{:02}｜[{}]({})**\n\n> 来源：{}{}\n> 说明：{}\n> 原文：{}\n\n",
+        "**{:02}｜[{}]({})**\n\n来源：{}{}  \n说明：{}  \n原文：{}\n\n",
         index, title, item.url, source_label, score_part, note, item.url
     )
 }
@@ -797,7 +797,9 @@ mod tests {
         assert!(md.contains(":::intro\n今日重点\n:::"));
         assert!(md.contains(":::divider\nlabel: 今日速览\n:::"));
         assert!(md.contains("## 今日三件事"));
-        assert!(md.contains(":::divider\nlabel: 今日焦点\n:::"));
+        assert!(md.contains(":::summary\n**先看焦点**"));
+        assert!(md.contains(":::divider\nlabel: 主线\n:::"));
+        assert!(md.contains(":::callout\nlabel: 先读这条"));
         assert!(md.contains("## 今日焦点"));
         assert!(md.contains("## 01. AI 前沿"));
         assert!(md.contains("## 02. Web3"));
@@ -849,6 +851,7 @@ mod tests {
         assert!(md.contains("**先看焦点**"));
         assert!(!md.contains("1. 先看焦点"));
         assert!(md.contains(":::divider\nlabel: 今日速览\n:::"));
+        assert!(md.contains(":::summary\n**先看焦点**"));
         assert!(md.contains("AI 1 条"));
         assert!(md.contains("Web3 1 条"));
         assert!(md.contains("技术 1 条"));
@@ -859,16 +862,17 @@ mod tests {
     }
 
     #[test]
-    fn focus_is_rendered_as_three_reading_blocks() {
+    fn focus_is_rendered_as_prioritized_reading_block() {
         let body = render_focus(
             "OpenAI 发布新的 Codex 编排方案，强调多 Agent 协作与任务拆分",
             "https://example.com/openai-codex",
         );
 
-        assert!(body.contains("**发生了什么**"));
+        assert!(body.contains(":::divider\nlabel: 主线\n:::"));
+        assert!(body.contains(":::callout\nlabel: 先读这条"));
+        assert!(body.contains("[点击阅读](https://example.com/openai-codex)"));
         assert!(body.contains("**为什么重要**"));
         assert!(body.contains("**后续关注**"));
-        assert!(body.contains(":::divider\nlabel: 今日焦点\n:::"));
         assert!(body.contains("原文：https://example.com/openai-codex"));
     }
 
@@ -1211,7 +1215,7 @@ mod tests {
         assert!(refs.contains("· 10 points"));
         assert!(refs.contains("说明："));
         assert!(refs.contains("原文：https://example.com/used"));
-        assert!(refs.contains("> 原文：https://example.com/used"));
+        assert!(!refs.contains("> 原文：https://example.com/used"));
         assert!(refs.contains("### 完整素材链接（2）"));
         assert!(refs.contains("**01｜[unreferenced]"));
         assert!(refs.contains("原文：https://example.com/unreferenced"));
