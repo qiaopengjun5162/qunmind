@@ -90,6 +90,8 @@ X / Twitter 这类一手信息入口也优先走 `PublicNewsSource` 边界。当
 
 当前 `QunMind -> moonpub` 的真实语义要说清楚：`push --render` 已经会在“草稿推送成功后”顺手尝试一轮浏览器自动化配置，但这一步是软失败策略。像 `automation: login timeout: QR code not scanned within 120s` 这类 warning，不是“完全没走自动化”，而是“草稿已推成功，但浏览器自动化没能真正进入后续预览/配置步骤”。后续状态、文档和对用户的解释都要区分这两层。
 
+不要把微信 OpenAPI `access_token` 和公众号后台网页 `token=` 混为一谈。前者由 `appid` / `secret` 向 `api.weixin.qq.com/cgi-bin/token` 获取，用于上传图片、创建草稿、查询草稿等 API 操作；后者来自 `mp.weixin.qq.com` 浏览器登录后的 URL/session，用于后台预览、配置等浏览器自动化。若 `push --render` 已返回 `pushed to WeChat draft` 但 warning 是 `login timeout`，说明 OpenAPI token 可用、草稿已创建，失败的是后台网页 session / 扫码登录态。
+
 如果用户明确要求“无痕浏览器”或“隔离浏览器”，要区分两件事：`report-login`、`report-configure`、`report-recover-automation` 和 `report-preview` 已支持 `--temporary-profile`，会把参数透传给 `moonpub login/configure/test-yulan`，使用一次性隔离 profile；但默认不启用，因为复用持久 profile 才能保留公众号后台登录态。当前 `moonpub push --render` 的 post-push 自动化仍需要 `moonpub` 本体支持 `push --temporary-profile` 后，QunMind 发布主链路才能完全隔离 profile。不要再把“复用登录态的持久 profile”描述成无痕模式。
 
 如果微信公众号发布命中 `errcode=40164 invalid ip`，先区分是 `QunMind` 侧还是 `moonpub` 侧的问题。当前本地 `moonpub` 原版 `src/wechat.rs` 默认用 `ureq` 直连微信 API，不会自动继承 shell 里设置的代理语义；需要显式在 `moonpub` 微信客户端里接入 `HTTP_PROXY` / `HTTPS_PROXY` / `ALL_PROXY` 环境变量，修复后微信侧看到的出口 IP 会改变。若出口 IP 已变化但仍未进白名单，说明剩余阻塞纯粹是公众号后台白名单，而不是代码没走代理。

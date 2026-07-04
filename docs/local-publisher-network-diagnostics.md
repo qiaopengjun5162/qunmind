@@ -32,6 +32,19 @@ answer:
 - which exit IP WeChat currently sees
 - whether that IP is stable enough to add to the WeChat IP allowlist
 
+Also keep the two WeChat tokens separate:
+
+- OpenAPI `access_token`: fetched with `appid` / `secret` from
+  `api.weixin.qq.com/cgi-bin/token`; it is enough for upload image, create draft,
+  list draft, and similar API operations.
+- WeChat MP backend page `token=`: extracted from `mp.weixin.qq.com/cgi-bin/...`
+  after a browser QR-code login; it belongs to the web session used by preview
+  and backend automation.
+
+If a draft push succeeds but the follow-up says `login timeout: QR code not
+scanned within 120s`, the OpenAPI token was valid. The failed part is the browser
+session for WeChat backend preview/configuration, not the API draft creation.
+
 ## Mihomo / Clash Boundary
 
 The current CLI helper is `report-network-status`. It is best-effort and

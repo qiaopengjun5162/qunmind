@@ -39,6 +39,7 @@
 ### Done
 
 - **本地发布网络诊断边界定稿** — 评估 `mcncarl/yichen-skills` 的可参考方向后，先把它收敛为“私密状态外置、平台自动化隔离、结构化 dry-run / 诊断先行”的工程边界，而不是直接并入日报生成链路。新增 `docs/local-publisher-network-diagnostics.md` 与 `report-network-status` 只读 CLI，明确 `errcode=40164 invalid ip` 这类问题应作为 `QunMind -> moonpub -> WeChat OpenAPI` 的本机发布网络诊断处理；Mihomo / Clash 信息可以用于只读诊断和脱敏输出，但默认不自动改 profile、不提交订阅配置、不让日报正文生成依赖代理状态。
+- **微信两类 token 语义补清** — 继续把 `access_token` 与公众号后台网页 `token=` 的差异写入 `docs/local-publisher-network-diagnostics.md` 和 `AGENTS.md`：OpenAPI `access_token` 由 `appid` / `secret` 获取，能完成上传图片、创建草稿、查询草稿；后台网页 `token=` 来自 `mp.weixin.qq.com` 浏览器 session，用于预览和后台配置自动化。因此“草稿已推成功但 `login timeout`”不是 API token 丢了，而是浏览器后台登录态/扫码环节失效。
 
 ### Verification
 
