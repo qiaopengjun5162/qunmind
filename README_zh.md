@@ -28,11 +28,11 @@
 - 支持 `[[public_sources.manual_items]]` 手工精选入口，用来补入你明确想推荐大家阅读的一手官方文章、X 原帖或其他优质链接。
 - 默认 `web3_media_urls` 现已包含 `PANews RSS`，`panewslab.com` 这类中文 Web3 原文也会作为可追溯精选来源保留下来。
 - 默认 `web3_media_urls` 现已同时包含 `吴说区块链 Atom feed`，`wublock123.com` 这类中文 Web3 / 交易所快讯也会作为可追溯精选来源保留下来。
-- 微信公众号日报发布前会注入固定个人号封面：栏目是 `AI · Web3 最新日报`，署名是 `寻月隐君`，最终仍由 `moonpub --render` 负责渲染和上传。
+- 微信公众号日报发布前会注入固定个人号封面：栏目是 `AI · Web3 最新日报`，署名是 `寻月隐君`，当前封面使用浅色底和深色主标题，避免手机预览里白字低对比；最终仍由 `moonpub --render` 负责渲染和上传。
 - 微信公众号日报标题当前固定为 `AI · Web3 最新日报｜YYYY-MM-DD`，当天主线放在 `digest`、导语和焦点模块里，方便在草稿箱中快速辨认最新一条。
-- 微信公众号日报正文现在按“导语 -> 今日三件事 -> 今日焦点 -> AI / Web3 / 技术 / 深读编号分区 -> 参考来源 / 完整素材链接”组织，焦点拆成“发生了什么 / 为什么重要 / 后续关注”，条目用“值得关注 + 独立依据行 + 裸原文链接”呈现，更适合先快速浏览再追原文。
-- 微信公众号日报现在会在 `QunMind` 生成层固定补上“继续交流”结尾：正文尾部直接写入加群提示和点赞/推荐引导，不再依赖微信后台模板插入；`report-markdown` 本地稿和真实推到 `moonpub` 的正文保持同一份尾部内容。
-- 现在 `daily-report --output` 与 MCP `report_markdown` 在 `output = "wechat"` 时，也会先补齐和真实发布相同的 `cover:` / `wechat_author:` frontmatter，再把稿件写到本地；这样你本地看到的微信稿和后续真实发布前送进 `moonpub` 的就是同一份内容形态。
+- 微信公众号日报正文现在按“导语 -> 今日三件事 -> 今日焦点 -> AI / Web3 / 技术 / 深读编号分区 -> 参考来源 / 完整素材链接”组织，首屏速览用 `summary` 块、焦点用 `callout` 块突出主线，正文条目用“标题 + 值得关注 / 来源依据 / 原文”的引用卡片呈现，深读区用“为什么读 / 原文”，文末来源区统一用 `compact-links` 小字号资料索引，单条尽量压成“序号｜短标题｜来源/短说明｜原文完整 URL”，避免链接区篇幅压过正文。
+- 微信公众号日报现在会在 `QunMind` 生成层固定补上“继续交流”标准模板结尾：正文尾部直接写入公众号「寻月隐君」、后台回复「加群」、信息整理 / 非投资建议提醒、回到原文核对，以及点赞 / 推荐 / 在看引导；它始终是全文最后一个正文模块，不再依赖微信后台模板插入，`report-markdown` 本地稿和真实推到 `moonpub` 的正文保持同一份尾部内容。
+- 现在 `daily-report --output` 与 MCP `report_markdown` 在 `output = "wechat"` 时，也会先补齐和真实发布相同的 `cover:` / `wechat_author:` / `theme: notebook` frontmatter，再把稿件写到本地；旧稿里如果残留 `theme: newsletter`，进入微信稿边界时也会被覆盖，避免手机预览继续出现偏黄色主题。
 - 同一天内多次手工试发公众号日报时，QunMind 现在会为每次发布生成唯一临时稿件名，避免 `moonpub` 复用旧 `draft.json` 后出现“时间更新了，但正文还是上一版”的错觉。
 
 ## 当前状态
@@ -279,11 +279,28 @@ just report-history config.toml '微信公众号日报'
 - 再生成一版本地 markdown，确认 RSS 上游内容已经进入日报素材
 - 最后再执行 `report-publish` 推到 `moonpub` 的公众号草稿箱
 
+如果你明确要求“无痕 / 隔离浏览器”，现在 CLI 和 Justfile 的后台自动化恢复、配置和预览步骤都可以显式加一次性 profile，例如：
+
+```bash
+just report-recover-automation config.toml '微信公众号日报' 'true' 'true'
+just report-preview config.toml '微信公众号日报' 'true' 'true'
+```
+
+这里第二个 `true` 表示 `temporary_profile = true`，会让 `moonpub configure` / `test-yulan` 使用隔离的一次性浏览器 profile；默认仍复用持久 profile，是为了保留公众号后台登录态、减少每次扫码。注意：当前 `moonpub push --render` 本体仍需要在 `moonpub` 仓库继续补 `--temporary-profile` 支持，否则真实推草稿后的自动配置步骤仍会复用它自己的持久 profile。
+
 现在 `report-status` 也会在 CLI JSON 和 MCP 输出里直接给出 `recommended_commands`。这意味着状态页不再只告诉你“下一步大概是什么”，而是尽量直接列出你接下来最该执行的命令，减少临近交付时再靠人工把状态词翻译回 shell 命令。
+
+如果遇到微信公众号 OpenAPI 的 `errcode=40164 invalid ip`，不要把它和日报内容生成混在一起排查。QunMind 现在提供只读本机网络诊断入口，用来查看发布目标、代理环境变量、本地代理端口和 Mihomo / Clash 控制器配置状态：
+
+```bash
+cargo run -- --config config.toml report-network-status --report-name '微信公众号日报'
+```
+
+这条命令默认不修改 Clash / Mihomo profile，也不会输出订阅 URL、节点密码或 controller secret。可选环境变量是 `QUNMIND_PUBLISH_PROXY`、`MIHOMO_CONTROLLER` 和 `MIHOMO_SECRET`；输出里只显示敏感值是否已设置，并对 URL 凭据做脱敏。具体边界见 `docs/local-publisher-network-diagnostics.md`。
 
 对 MCP / Agent 调用方，现在同一个状态结果里还会继续附带 `recommended_tool_calls`。它是 shell 命令提示的结构化版本：例如目标处于 `ready_for_first_publish` 时，Agent 已经可以直接顺着状态结果去调 `report_markdown`、`report_publish` 和 `publish_history`；最近回执仍是 `automation_state = "login_required"` 时，也可以直接去调 `report_recover_automation` 和 `publish_history`，不需要再自己从命令字符串里反推下一步。
 
-同一套恢复动作现在也已经补到 MCP，不再只有 shell/CLI 能调。也就是说，外部 Agent / MCP 客户端现在可以直接调用 `report_status`、`report_login`、`report_configure` 和 `report_recover_automation`，并且沿用和 CLI 完全一致的日报目标选择语义：只有一个日报目标时自动复用，多个目标时必须显式给 `report_name`。
+同一套恢复动作现在也已经补到 MCP，不再只有 shell/CLI 能调。也就是说，外部 Agent / MCP 客户端现在可以直接调用 `report_status`、`report_login`、`report_configure` 和 `report_recover_automation`，并且沿用和 CLI 完全一致的日报目标选择语义：只有一个日报目标时自动复用，多个目标时必须显式给 `report_name`。这些浏览器自动化工具也支持 `temporary_profile = true`，用于显式切换到一次性隔离浏览器 profile。
 
 现在 MCP 也已经能直接走手工日报演练链路：`report_markdown` 会按和 `qunmind daily-report` 一样的“优先群消息和链接情报、群为空时再回退 public_sources”语义生成本地 markdown；`report_publish` 则只有在显式传入 `confirm_publish = true` 时，才会继续触发真实 publisher 边界。
 
@@ -302,7 +319,7 @@ just report-history config.toml '微信公众号日报'
 - 会把明显误分的条目重新平衡回正确板块，例如 `openai/codex` 不再因为包含 `dex` 被误放进 Web3
 - 会过滤或重写低信号评论，补齐深读摘要
 - 空板块标题不会再渲染出来
-- 条目摘要会补齐句末标点，并用 `值得关注` 引导读者先看摘要；正文观点继续用 `该观点依据：...` 独立引用行展示，避免正文里堆括号
+- 条目摘要会补齐句末标点，并用 `值得关注` 引导读者先看摘要；正文观点继续用 `来源依据：...` 和裸 `原文：https://...` 独立引用行展示，避免正文里堆括号
 - 总结区会过滤太短或英文片段式摘要，必要时回退成自然中文提示，避免草稿里出现 `Aave Confirms...` 这类不完整内容
 - 焦点、正文观点、深读推荐、参考来源和完整素材入口都会直接显示 `原文：https://...` 裸链接；如果深读没有可靠摘要，会明确提示“请直接阅读原文核对”，避免公众号渲染后只剩可点击标题、无法复制追溯
 - 如果系统拿不到正文或可靠摘要，就只展示标题、来源和完整原文 URL；不会把不可核验的信息包装成自己的观点

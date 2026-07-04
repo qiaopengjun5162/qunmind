@@ -7,6 +7,7 @@ use qunmind::channel::wx_cli::WxCliChannel;
 use qunmind::cli::{Args, CliCommand};
 use qunmind::config::{ChannelKind, Config};
 use qunmind::error::QunMindError;
+use qunmind::network_diagnostic::{NetworkDiagnosticOptions, report_network_status_json};
 use qunmind::publisher::{
     configure_wechat_backend, login_wechat_backend, prepare_report_output_markdown,
     preview_wechat_backend, publish_markdown, wechat_login_recovery_hint,
@@ -232,7 +233,23 @@ async fn run_diagnostic_command(
             );
             Ok(())
         }
-        CliCommand::ReportLogin { report_name } => {
+        CliCommand::ReportNetworkStatus { report_name } => {
+            let report_name = effective_publish_history_name(config, &report_name)?;
+            let target = effective_report_status_target(config, &report_name)?;
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&report_network_status_json(
+                    &report_name,
+                    &target,
+                    &NetworkDiagnosticOptions::from_env(),
+                ))?
+            );
+            Ok(())
+        }
+        CliCommand::ReportLogin {
+            report_name,
+            temporary_profile,
+        } => {
             let report_target = resolve_manual_daily_report_target(config, &report_name)?;
             if report_target.output != "wechat" {
                 return Err(QunMindError::Config(format!(
@@ -245,6 +262,7 @@ async fn run_diagnostic_command(
             let raw_output = match login_wechat_backend(
                 &report_target.wechat_bin,
                 &report_target.wechat_articles_dir,
+                temporary_profile,
             ) {
                 Ok(raw_output) => raw_output,
                 Err(err) => {
@@ -268,6 +286,7 @@ async fn run_diagnostic_command(
                     "output": report_target.output,
                     "wechat_bin": report_target.wechat_bin,
                     "wechat_articles_dir": report_target.wechat_articles_dir,
+                    "temporary_profile": temporary_profile,
                     "raw_output": raw_output,
                 }))?
             );
@@ -276,6 +295,7 @@ async fn run_diagnostic_command(
         CliCommand::ReportConfigure {
             report_name,
             headed,
+            temporary_profile,
         } => {
             let report_target = resolve_manual_daily_report_target(config, &report_name)?;
             if report_target.output != "wechat" {
@@ -290,6 +310,7 @@ async fn run_diagnostic_command(
                 &report_target.wechat_bin,
                 &report_target.wechat_articles_dir,
                 headed,
+                temporary_profile,
             )?;
             println!(
                 "{}",
@@ -300,6 +321,7 @@ async fn run_diagnostic_command(
                     "wechat_bin": report_target.wechat_bin,
                     "wechat_articles_dir": report_target.wechat_articles_dir,
                     "headed": headed,
+                    "temporary_profile": temporary_profile,
                     "raw_output": raw_output,
                 }))?
             );
@@ -307,7 +329,8 @@ async fn run_diagnostic_command(
         }
         CliCommand::ReportRecoverAutomation {
             report_name,
-            headed: _headed,
+            headed,
+            temporary_profile,
         } => {
             let report_target = resolve_manual_daily_report_target(config, &report_name)?;
             if report_target.output != "wechat" {
@@ -317,12 +340,11 @@ async fn run_diagnostic_command(
                 ))
                 .into());
             }
-
-            let headed = true;
             let configure_output = configure_wechat_backend(
                 &report_target.wechat_bin,
                 &report_target.wechat_articles_dir,
                 headed,
+                temporary_profile,
             )?;
             println!(
                 "{}",
@@ -332,7 +354,8 @@ async fn run_diagnostic_command(
                     "output": report_target.output,
                     "wechat_bin": report_target.wechat_bin,
                     "wechat_articles_dir": report_target.wechat_articles_dir,
-                    "headed": true,
+                    "headed": headed,
+                    "temporary_profile": temporary_profile,
                     "login_strategy": "configure_flow_reuses_setup_editor_login",
                     "configure_output": configure_output,
                 }))?
@@ -342,6 +365,7 @@ async fn run_diagnostic_command(
         CliCommand::ReportPreview {
             report_name,
             headed,
+            temporary_profile,
         } => {
             let report_target = resolve_manual_daily_report_target(config, &report_name)?;
             if report_target.output != "wechat" {
@@ -356,6 +380,7 @@ async fn run_diagnostic_command(
                 &report_target.wechat_bin,
                 &report_target.wechat_articles_dir,
                 headed,
+                temporary_profile,
             )?;
             println!(
                 "{}",
@@ -366,6 +391,7 @@ async fn run_diagnostic_command(
                     "wechat_bin": report_target.wechat_bin,
                     "wechat_articles_dir": report_target.wechat_articles_dir,
                     "headed": headed,
+                    "temporary_profile": temporary_profile,
                     "raw_output": raw_output,
                 }))?
             );

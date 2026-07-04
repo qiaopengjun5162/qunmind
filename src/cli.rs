@@ -60,12 +60,22 @@ pub enum CliCommand {
         #[arg(long, default_value_t = 5)]
         limit: i64,
     },
+    /// 查看公众号发布链路的本机代理 / Mihomo 只读诊断状态
+    #[command(name = "report-network-status")]
+    ReportNetworkStatus {
+        /// 日报目标名称；为空时使用 legacy daily_report_chat_id 兼容名称
+        #[arg(long, default_value = "")]
+        report_name: String,
+    },
     /// 打开公众号浏览器登录，供后续自动化复用登录态
     #[command(name = "report-login")]
     ReportLogin {
         /// 日报目标名称；为空时自动复用唯一日报目标
         #[arg(long, default_value = "")]
         report_name: String,
+        /// 使用一次性隔离浏览器 profile，不复用本机持久登录态
+        #[arg(long)]
+        temporary_profile: bool,
     },
     /// 重试公众号浏览器自动化配置步骤
     #[command(name = "report-configure")]
@@ -76,6 +86,9 @@ pub enum CliCommand {
         /// 用有头浏览器调试自动化步骤
         #[arg(long)]
         headed: bool,
+        /// 使用一次性隔离浏览器 profile，不复用本机持久登录态
+        #[arg(long)]
+        temporary_profile: bool,
     },
     /// 顺序执行公众号登录与浏览器自动化重试
     #[command(name = "report-recover-automation")]
@@ -86,6 +99,9 @@ pub enum CliCommand {
         /// 用有头浏览器调试自动化步骤
         #[arg(long)]
         headed: bool,
+        /// 使用一次性隔离浏览器 profile，不复用本机持久登录态
+        #[arg(long)]
+        temporary_profile: bool,
     },
     /// 单独测试公众号预览步骤
     #[command(name = "report-preview")]
@@ -96,6 +112,9 @@ pub enum CliCommand {
         /// 用有头浏览器调试预览步骤
         #[arg(long)]
         headed: bool,
+        /// 使用一次性隔离浏览器 profile，不复用本机持久登录态
+        #[arg(long)]
+        temporary_profile: bool,
     },
     /// 按已绑定公众号名称拉取文章列表
     #[command(name = "wechat-articles")]
@@ -686,12 +705,39 @@ mod tests {
     }
 
     #[test]
-    fn parses_report_login_command() {
-        let args = parse_args(&["qunmind", "report-login", "--report-name", "技术群日报"]);
+    fn parses_report_network_status_command() {
+        let args = parse_args(&[
+            "qunmind",
+            "report-network-status",
+            "--report-name",
+            "技术群日报",
+        ]);
 
         match args.command {
-            Some(CliCommand::ReportLogin { report_name }) => {
+            Some(CliCommand::ReportNetworkStatus { report_name }) => {
                 assert_eq!(report_name, "技术群日报");
+            }
+            _ => panic!("report-network-status command should parse"),
+        }
+    }
+
+    #[test]
+    fn parses_report_login_command() {
+        let args = parse_args(&[
+            "qunmind",
+            "report-login",
+            "--report-name",
+            "技术群日报",
+            "--temporary-profile",
+        ]);
+
+        match args.command {
+            Some(CliCommand::ReportLogin {
+                report_name,
+                temporary_profile,
+            }) => {
+                assert_eq!(report_name, "技术群日报");
+                assert!(temporary_profile);
             }
             _ => panic!("report-login command should parse"),
         }
@@ -705,15 +751,18 @@ mod tests {
             "--report-name",
             "技术群日报",
             "--headed",
+            "--temporary-profile",
         ]);
 
         match args.command {
             Some(CliCommand::ReportConfigure {
                 report_name,
                 headed,
+                temporary_profile,
             }) => {
                 assert_eq!(report_name, "技术群日报");
                 assert!(headed);
+                assert!(temporary_profile);
             }
             _ => panic!("report-configure command should parse"),
         }
@@ -727,15 +776,18 @@ mod tests {
             "--report-name",
             "技术群日报",
             "--headed",
+            "--temporary-profile",
         ]);
 
         match args.command {
             Some(CliCommand::ReportRecoverAutomation {
                 report_name,
                 headed,
+                temporary_profile,
             }) => {
                 assert_eq!(report_name, "技术群日报");
                 assert!(headed);
+                assert!(temporary_profile);
             }
             _ => panic!("report-recover-automation command should parse"),
         }
@@ -749,15 +801,18 @@ mod tests {
             "--report-name",
             "技术群日报",
             "--headed",
+            "--temporary-profile",
         ]);
 
         match args.command {
             Some(CliCommand::ReportPreview {
                 report_name,
                 headed,
+                temporary_profile,
             }) => {
                 assert_eq!(report_name, "技术群日报");
                 assert!(headed);
+                assert!(temporary_profile);
             }
             _ => panic!("report-preview command should parse"),
         }

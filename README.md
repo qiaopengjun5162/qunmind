@@ -36,8 +36,8 @@ The project currently supports:
 - Manual curated source items for one-off official articles, X posts, or other links you explicitly want readers to continue reading.
 - The default `web3_media_urls` list now includes a PANews RSS feed, and `panewslab.com` links are treated as curated traceable sources so Chinese Web3 articles can survive topic filtering with full original URLs intact.
 - The default `web3_media_urls` list also includes the WuBlockchain Atom feed, and `wublock123.com` links are treated as curated traceable sources so Chinese Web3 exchange/news flashes can flow into the report pipeline with full original URLs.
-- WeChat public-account report drafts use a fixed personal-account cover for the `AI · Web3 最新日报` column, branded as `寻月隐君`, while `moonpub` still owns final rendering and upload.
-- WeChat daily reports render as a review-friendly article layout: intro, "today's three things", a three-part focus callout, numbered AI / Web3 / tech / deep-read sections, "worth watching" item notes, polished source quote lines, and separate referenced-source versus complete-source-link blocks.
+- WeChat public-account report drafts use a fixed personal-account cover for the `AI · Web3 最新日报` column, branded as `寻月隐君`; the cover now uses a light background with dark title text for better mobile-preview contrast, while `moonpub` still owns final rendering and upload.
+- WeChat daily reports render as a review-friendly article layout: intro, "today's three things", a three-part focus callout, numbered AI / Web3 / tech / deep-read sections, compact body cards with "worth watching", source evidence, and raw original URLs, plus a small-font `compact-links` source index that keeps one full original URL per row.
 
 ## Status
 
@@ -267,11 +267,28 @@ Recommended order:
 - generate local markdown first and verify the RSS-backed article material appears in the report
 - only then run `report-publish` to push the draft through `moonpub`
 
+When you explicitly want an isolated browser profile instead of the persistent `moonpub` profile, pass `temporary_profile='true'` to the Justfile wrappers:
+
+```bash
+just report-recover-automation config.toml '微信公众号日报' 'true' 'true'
+just report-preview config.toml '微信公众号日报' 'true' 'true'
+```
+
+The first `true` enables headed mode and the second enables `temporary_profile`. The default still reuses the persistent profile so the WeChat backend session can survive across runs. The `moonpub push --render` command itself still needs matching `--temporary-profile` support in the `moonpub` repository before the post-push automation can be fully isolated too.
+
 `report-status` now also returns `recommended_commands` in both CLI JSON and MCP output. The intent is simple: once the status view already knows the most likely next commands, operators and agents should be able to copy that list directly instead of translating abstract status words back into shell commands by hand.
+
+For local publisher network issues, keep proxy and Mihomo / Clash handling as an operator-side diagnostic boundary rather than part of report generation. The project notes in `docs/local-publisher-network-diagnostics.md` capture the current direction: use `mcncarl/yichen-skills` as a reference candidate for private-state isolation, helper boundaries, and structured dry-run output, but do not commit local proxy profiles or make QunMind mutate Clash configuration as part of normal daily-report generation. The read-only CLI entry is:
+
+```bash
+cargo run -- --config config.toml report-network-status --report-name '微信公众号日报'
+```
+
+Optional environment variables for this diagnostic are `QUNMIND_PUBLISH_PROXY`, `MIHOMO_CONTROLLER`, and `MIHOMO_SECRET`; the JSON output only reports whether sensitive values are set and redacts credentials from URLs.
 
 For MCP/agent callers, the same payload now also includes `recommended_tool_calls`. This is the structured counterpart to shell commands: when a target is `ready_for_first_publish`, the status response can now directly point an agent to `report_markdown`, `report_publish`, and `publish_history`; when a recent receipt still says `automation_state = "login_required"`, it can directly point the agent to `report_recover_automation` and `publish_history` instead of forcing it to parse shell text first.
 
-The same recovery flow is now available through MCP as first-class tools, not just shell wrappers. MCP clients can call `report_status`, `report_login`, `report_configure`, and `report_recover_automation` with the same target-selection semantics used by the CLI: one configured target can be auto-reused, while multiple targets still require an explicit `report_name`.
+The same recovery flow is now available through MCP as first-class tools, not just shell wrappers. MCP clients can call `report_status`, `report_login`, `report_configure`, and `report_recover_automation` with the same target-selection semantics used by the CLI: one configured target can be auto-reused, while multiple targets still require an explicit `report_name`. Browser-automation MCP tools also accept `temporary_profile = true` when an isolated one-off browser profile is required.
 
 MCP can now also drive the manual report rehearsal path itself. `report_markdown` generates the local markdown file with the same group-message-first and public-source-fallback semantics used by `qunmind daily-report`, while `report_publish` only crosses the real external publisher boundary when the caller passes `confirm_publish = true`.
 

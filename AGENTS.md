@@ -76,10 +76,13 @@ X / Twitter 这类一手信息入口也优先走 `PublicNewsSource` 边界。当
 如果同一篇原文同时被 `Hacker News`、聚合媒体和 `official_blogs` / `manual_items` 抓到，聚合层必须优先保留官方 / 手工精选版本，不能因为抓取顺序把一手原文显示成二手来源。日报正文与参考链接里的来源标签也应优先按原始官网域名纠正成 `OpenAI`、`Google Blog`、`Cloudflare Blog` 等 canonical 名称。
 
 当用户临时给出明确想推荐大家阅读的优质链接（例如 OpenAI 官方文章、项目公告、论文、X 原帖、ZK / cryptography 资料）时，优先接到 `[[public_sources.manual_items]]` 手工精选入口，而不是临时硬编码进日报正文。`manual_items` 仍属于 `PublicNewsSource` 素材边界，适合作为“RSS 尚未覆盖但人工确认值得推荐”的补充来源；如果 X 原帖正文暂时拿不到，也可以先放 URL、标题、作者和人工摘要，让它进入“完整素材链接”或“推荐深读”候选。`ManualSource` 会把这类条目标记为 `manual:*`，聚合层必须把它们视为用户显式精选并跳过 topic keyword 过滤，不要再靠不断追加 URL 域名白名单来保留手工来源。
+如果用户给的是方法论长文、官方深度文章、研究综述这类“希望大家重点阅读”的手工精选，即使它已经成为 `今日焦点` 或正文引用，也可以继续保留在 `推荐深读` 里；普通公共来源仍应避免焦点、正文和深读重复。深读区自身不能重复同一个 URL。
 
 `src/publisher.rs` 是日报发布边界。`QunMind` 负责“生成什么、何时发、目标是否 ready”；平台侧项目或适配器负责“按平台规则怎么发”。当前只落地了 `PublishTarget::WechatDraft`，通过本地 `moonpub` 推公众号草稿。后续即使接抖音、小红书，也优先新增 publisher target 或独立发布子系统，不把平台鉴权、素材渲染和风控逻辑塞回 scheduler。
 
 公众号日报的固定结尾现在属于 `src/daily_report/render.rs` 的生成边界：标准结尾与加群信息必须直接写进生成出的 markdown 尾部，保证 `daily-report --output`、MCP `report_markdown` 和真实发布看到的是同一份正文。不要再把“标准结尾 / 加群信息”交给微信后台模板步骤，也不要让 `moonpub` 模板介入日报主链路。
+
+公众号日报固定结尾的唯一标题是 `继续交流`，正文必须是固定多段标准模板，至少包含公众号「寻月隐君」、后台回复「加群」、信息整理 / 非投资建议提醒、回到「原文」链接核对，以及点赞 / 推荐 / 在看引导。这个标准结尾必须由 `assemble_markdown(...)` 放在全文最后；如果存在 `daily_quote`，也要先渲染 `今日一句`，再渲染 `继续交流`。不要再在 QunMind 生成层与 `moonpub` 模板之间维护两套结尾，也不要把结尾标题随意改回“关注与交流”等临时文案。
 
 `QunMind -> moonpub` 的手工/定时日报临时 Markdown 文件名不能只按日期命名。`moonpub push --render` 在同 slug 的 `.draft.json` 已存在时会直接复用旧渲染产物，因此 `src/publisher.rs` 这里必须继续使用带时间戳的唯一 slug，避免同一天多次试发时“发布时间更新了，但正文还是旧稿”。
 
@@ -87,7 +90,13 @@ X / Twitter 这类一手信息入口也优先走 `PublicNewsSource` 边界。当
 
 当前 `QunMind -> moonpub` 的真实语义要说清楚：`push --render` 已经会在“草稿推送成功后”顺手尝试一轮浏览器自动化配置，但这一步是软失败策略。像 `automation: login timeout: QR code not scanned within 120s` 这类 warning，不是“完全没走自动化”，而是“草稿已推成功，但浏览器自动化没能真正进入后续预览/配置步骤”。后续状态、文档和对用户的解释都要区分这两层。
 
+不要把微信 OpenAPI `access_token` 和公众号后台网页 `token=` 混为一谈。前者由 `appid` / `secret` 向 `api.weixin.qq.com/cgi-bin/token` 获取，用于上传图片、创建草稿、查询草稿等 API 操作；后者来自 `mp.weixin.qq.com` 浏览器登录后的 URL/session，用于后台预览、配置等浏览器自动化。若 `push --render` 已返回 `pushed to WeChat draft` 但 warning 是 `login timeout`，说明 OpenAPI token 可用、草稿已创建，失败的是后台网页 session / 扫码登录态。
+
+如果用户明确要求“无痕浏览器”或“隔离浏览器”，要区分两件事：`report-login`、`report-configure`、`report-recover-automation` 和 `report-preview` 已支持 `--temporary-profile`，会把参数透传给 `moonpub login/configure/test-yulan`，使用一次性隔离 profile；但默认不启用，因为复用持久 profile 才能保留公众号后台登录态。当前 `moonpub push --render` 的 post-push 自动化仍需要 `moonpub` 本体支持 `push --temporary-profile` 后，QunMind 发布主链路才能完全隔离 profile。不要再把“复用登录态的持久 profile”描述成无痕模式。
+
 如果微信公众号发布命中 `errcode=40164 invalid ip`，先区分是 `QunMind` 侧还是 `moonpub` 侧的问题。当前本地 `moonpub` 原版 `src/wechat.rs` 默认用 `ureq` 直连微信 API，不会自动继承 shell 里设置的代理语义；需要显式在 `moonpub` 微信客户端里接入 `HTTP_PROXY` / `HTTPS_PROXY` / `ALL_PROXY` 环境变量，修复后微信侧看到的出口 IP 会改变。若出口 IP 已变化但仍未进白名单，说明剩余阻塞纯粹是公众号后台白名单，而不是代码没走代理。
+
+参考 `mcncarl/yichen-skills` 时，只借鉴“私密状态外置、浏览器/平台自动化隔离、结构化诊断先行”的边界，不要把它当成 Mihomo / Clash 的现成实现。Mihomo、Clash Verge、HTTP 代理和微信 OpenAPI 出口 IP 属于本机发布运维诊断，优先沉淀到 `docs/local-publisher-network-diagnostics.md` 这种只读/可脱敏的诊断方案里；不要把 Clash profile、订阅 URL、节点密码、cookies、微信数据库密钥或本机绝对私密路径提交进仓库，也不要让日报生成逻辑直接依赖或修改代理配置。
 
 `src/daily_report/` 当前除了“模型生成正文”之外，还承担一层质量兜底：如果 AI 返回的 JSON 非法、字段过空、板块误分或摘要质量过低，优先在 Rust 侧补齐非空板块、修正 AI/Web3/技术分类、过滤低信号条目，并把链接区分为“正文实际引用的参考来源”和“未写入正文但来自本次素材池的完整素材链接”。后续继续优化日报质量时，优先沿这条“AI 生成 + Rust 兜底收敛”边界演进，不要把容错逻辑散回 CLI、scheduler 或 publisher。
 
@@ -105,10 +114,12 @@ X / Twitter 这类一手信息入口也优先走 `PublicNewsSource` 边界。当
 
 当同一天重复生成公众号日报时，`src/daily_report/` 现在会主动压制“长期稳定霸榜但缺少今天新事件”的 GitHub Trending 仓库：技术区最多保留少量这类熟面孔，其余优先让位给安全事件、发布公告、部署指南、工程复盘等更像“今天发生了什么”的技术项；被挤出的稳定榜单继续留在“完整素材链接”，不要再让正文技术区被 `rust/rustdesk/zed` 一类条目反复占满。
 
-公众号日报排版优先使用 `moonpub` 已支持的 block fence，例如 `intro`、`tip`、`callout`、`divider`、`steps`、`timeline` 和 `summary`。当前正文结构是“导语 -> 今日三件事 -> 今日焦点 -> 编号 AI / Web3 / 技术 / 深读分区 -> 参考来源 / 完整素材链接”；`今日焦点` 采用“发生了什么 / 为什么重要 / 后续关注”三段式，正文条目用 `值得关注` 引导读者先读摘要，再看独立依据行和原文链接。条目依据用独立引用行，参考链接区用 `divider` 标识，避免回退成普通 Markdown 横线或括号堆叠。每个正文观点、焦点、深读推荐、参考来源和完整素材链接都必须直接显示裸 `原文：https://...`，正文条目必须显示 `该观点依据：...`，不能只依赖 Markdown 链接文字或公众号渲染后的可点击标题；如果拿不到可靠摘要或正文，就明确提示读者“请直接阅读原文核对”，不要假装已经理解全文。日报的可追溯性优先级高于版面简洁；如果模型无法把观点追溯到具体 URL，宁可只展示标题和完整原文链接，也不要写成不可核验的“系统观点”。后续优化排版时先确认 `moonpub` renderer 支持对应 block，不要随手造新语法导致草稿渲染退化。
+公众号日报排版优先使用 `moonpub` 已支持的 block fence，例如 `intro`、`tip`、`callout`、`divider`、`steps`、`timeline`、`summary` 和 `compact-links`。当前正文结构是“`intro` 导语卡片 -> `divider` 今日速览 -> `summary` 今日三件事 -> `divider` 主线 -> `callout` 今日焦点 -> 编号 AI / Web3 / 技术 / 深读分区 -> `intro` 今日收束卡片 -> 参考来源 / 完整素材链接”；不同区域必须有明确视觉层级，不要让首屏、正文条目和参考链接都长成同一种卡片。正文条目采用紧凑引用卡片：标题行带板块标签，卡片内固定显示 `值得关注`、`来源依据`、`原文` 三行；深读区固定显示 `为什么读` 和 `原文`。参考来源和完整素材链接区统一使用 `:::compact-links` 资料索引：单条尽量压成“序号｜短标题｜来源/短说明｜原文完整 URL”，由 `moonpub` 渲染为 12px 小字号；标题不要再单独做链接，唯一链接入口是完整 `原文：https://...`，避免尾部链接篇幅压过正文；不要用 `####` 四级标题渲染每条链接，否则公众号里颜色和标题层级会显得混乱。首屏排版避免使用会固定产生白色标签或白色数字徽章的 block 作为主结构，除非先用手机预览确认对比度；当前更稳的主结构是 `intro` + `divider` + `summary`。每个正文观点、焦点、深读推荐、参考来源和完整素材链接都必须直接显示裸 `原文：https://...`，正文条目必须显示 `来源依据：...`，不能只依赖 Markdown 链接文字或公众号渲染后的可点击标题；如果拿不到可靠摘要或正文，就明确提示读者“请直接阅读原文核对”，不要假装已经理解全文。日报的可追溯性优先级高于版面简洁；如果模型无法把观点追溯到具体 URL，宁可只展示标题和完整原文链接，也不要写成不可核验的“系统观点”。后续优化排版时先确认 `moonpub` renderer 支持对应 block，不要随手造新语法导致草稿渲染退化。
 
-公众号日报当前面向个人公众号 `寻月隐君` 使用固定封面母版。`QunMind` 在 `publish_markdown(...)` 的 WeChat publisher 边界写出随本次临时稿件命名的 PNG，并向交给 `moonpub --render` 的临时 markdown frontmatter 注入相对 `cover:`，再由 `moonpub` 负责上传为公众号草稿封面。不要把本机绝对路径写进正文 markdown，也不要只改 `moonpub-data` 里的旧 `thumb_media_id`，否则手工生成稿和真实发布会再次分叉。
+公众号日报当前面向个人公众号 `寻月隐君` 使用固定封面母版。封面应保持浅色背景和深色主标题，避免移动端预览里白色文字对比度不足。`QunMind` 在 `publish_markdown(...)` 的 WeChat publisher 边界写出随本次临时稿件命名的 PNG，并向交给 `moonpub --render` 的临时 markdown frontmatter 注入相对 `cover:`，再由 `moonpub` 负责上传为公众号草稿封面。不要把本机绝对路径写进正文 markdown，也不要只改 `moonpub-data` 里的旧 `thumb_media_id`，否则手工生成稿和真实发布会再次分叉。
 手工 `daily-report --output <path>` 与 MCP `report_markdown` 对 `output = "wechat"` 的目标，也必须先走同一层微信稿准备逻辑，再把 markdown 落盘。也就是说，本地输出稿要和后续真实 `publish_markdown(...)` 看到的 frontmatter 形态保持一致；不要再让“本地写出的稿”和“发布时临时补过封面/作者的稿”分叉成两份。
+公众号日报微信稿 frontmatter 当前会固定覆盖为 `theme: notebook`，使用更稳的蓝白浅色专业风格，避免历史稿里的 `newsletter` 偏黄色、`geek` 绿色过重或标题徽章对比度不足。若后续要换主题，必须先用手机预览确认正文、编号、引用卡片和链接区都可读。
+群二维码不是 QunMind 正文结尾的一部分，而是 `moonpub` 渲染 footer 时从 `moonpub-data/moonpub.toml` 的 `qrcode` 读取。当前活跃路径是 `/Users/qiaopengjun/Code/Rust/moonpub-data/qrcode.png`，已从 iCloud `ObsidianMain/Context/assets/qrcode-group.png` 替换为最新群二维码；后续更新群二维码时优先替换这个活跃文件并重新推草稿预览，不要误改 QunMind 固定结尾文案。
 为了让公众号草稿箱里的“最新一条”更容易辨认，日报主标题当前优先固定为 `AI · Web3 最新日报｜YYYY-MM-DD`。当天真正变化的主线信息应继续放在 `digest`、`intro` 和 `今日焦点`，不要再把公共素材主线直接塞回 `title`，否则草稿箱里会重新出现“像同一篇又像不同篇”的识别噪音。
 
 发布适配器成功后优先返回结构化 `PublishReceipt`（目标、目的地、时间、摘要、原始输出），不要只在 scheduler 里打印一句成功日志。这样后续补持久化、失败重试或多平台对账时不用重新拆接口。

@@ -91,15 +91,24 @@ pub fn prepare_report_output_markdown(
     Ok(markdown.to_string())
 }
 
-pub fn login_wechat_backend(moonpub_bin: &str, articles_dir: &str) -> Result<String> {
+pub fn login_wechat_backend(
+    moonpub_bin: &str,
+    articles_dir: &str,
+    temporary_profile: bool,
+) -> Result<String> {
     if moonpub_bin.trim().is_empty() || articles_dir.trim().is_empty() {
         return Err(QunMindError::Config(
             "wechat draft publisher requires both bin and articles_dir".to_string(),
         ));
     }
 
-    let output = Command::new(moonpub_bin)
-        .args(["--articles", articles_dir, "login"])
+    let mut command = Command::new(moonpub_bin);
+    command.args(["--articles", articles_dir, "login"]);
+    if temporary_profile {
+        command.arg("--temporary-profile");
+    }
+
+    let output = command
         .output()
         .map_err(|err| QunMindError::Channel(format!("启动 moonpub login 失败: {}", err)))?;
 
@@ -125,6 +134,7 @@ pub fn configure_wechat_backend(
     moonpub_bin: &str,
     articles_dir: &str,
     headed: bool,
+    temporary_profile: bool,
 ) -> Result<String> {
     if moonpub_bin.trim().is_empty() || articles_dir.trim().is_empty() {
         return Err(QunMindError::Config(
@@ -136,6 +146,9 @@ pub fn configure_wechat_backend(
     command.args(["--articles", articles_dir, "configure"]);
     if headed {
         command.arg("--headed");
+    }
+    if temporary_profile {
+        command.arg("--temporary-profile");
     }
 
     let output = command
@@ -152,7 +165,7 @@ pub fn configure_wechat_backend(
     }
 
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-    info!(stdout = %stdout, headed, "moonpub configure 成功");
+    info!(stdout = %stdout, headed, temporary_profile, "moonpub configure 成功");
     Ok(stdout)
 }
 
@@ -160,6 +173,7 @@ pub fn preview_wechat_backend(
     moonpub_bin: &str,
     articles_dir: &str,
     headed: bool,
+    temporary_profile: bool,
 ) -> Result<String> {
     if moonpub_bin.trim().is_empty() || articles_dir.trim().is_empty() {
         return Err(QunMindError::Config(
@@ -171,6 +185,9 @@ pub fn preview_wechat_backend(
     command.args(["--articles", articles_dir, "test-yulan"]);
     if headed {
         command.arg("--headed");
+    }
+    if temporary_profile {
+        command.arg("--temporary-profile");
     }
 
     let output = command
@@ -187,7 +204,7 @@ pub fn preview_wechat_backend(
     }
 
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-    info!(stdout = %stdout, headed, "moonpub test-yulan 成功");
+    info!(stdout = %stdout, headed, temporary_profile, "moonpub test-yulan 成功");
     Ok(stdout)
 }
 
@@ -303,15 +320,16 @@ fn wechat_daily_cover_filename(markdown_path: &std::path::Path) -> Result<String
 fn inject_wechat_frontmatter_fields(markdown: &str, cover_filename: &str) -> String {
     let cover_line = format!("cover: ./{cover_filename}");
     let author_line = "wechat_author: 寻月隐君";
+    let theme_line = "theme: notebook";
 
     if !markdown.starts_with("---\n") {
-        return format!("---\n{cover_line}\n{author_line}\n---\n\n{markdown}");
+        return format!("---\n{cover_line}\n{author_line}\n{theme_line}\n---\n\n{markdown}");
     }
 
     let body_start = "---\n".len();
     let rest = &markdown[body_start..];
     let Some(close_offset) = rest.find("\n---") else {
-        return format!("---\n{cover_line}\n{author_line}\n---\n\n{markdown}");
+        return format!("---\n{cover_line}\n{author_line}\n{theme_line}\n---\n\n{markdown}");
     };
 
     let frontmatter = &rest[..close_offset];
@@ -338,8 +356,30 @@ fn inject_wechat_frontmatter_fields(markdown: &str, cover_filename: &str) -> Str
         fields.push_str(author_line);
         fields.push('\n');
     }
+    fields = upsert_frontmatter_line(&fields, "theme:", theme_line);
 
     format!("---\n{fields}{tail}")
+}
+
+fn upsert_frontmatter_line(frontmatter: &str, key: &str, replacement: &str) -> String {
+    let mut replaced = false;
+    let mut lines = Vec::new();
+    for line in frontmatter.lines() {
+        if line.trim_start().starts_with(key) {
+            if !replaced {
+                lines.push(replacement.to_string());
+                replaced = true;
+            }
+        } else {
+            lines.push(line.to_string());
+        }
+    }
+    if !replaced {
+        lines.push(replacement.to_string());
+    }
+    let mut out = lines.join("\n");
+    out.push('\n');
+    out
 }
 
 #[cfg(test)]
@@ -375,7 +415,7 @@ mod tests {
 
     #[test]
     fn login_errors_when_bin_not_found() {
-        let result = login_wechat_backend("/nonexistent/bin/moonpub", "/tmp");
+        let result = login_wechat_backend("/nonexistent/bin/moonpub", "/tmp", true);
 
         assert!(result.is_err());
         assert!(
@@ -388,7 +428,7 @@ mod tests {
 
     #[test]
     fn configure_errors_when_bin_not_found() {
-        let result = configure_wechat_backend("/nonexistent/bin/moonpub", "/tmp", false);
+        let result = configure_wechat_backend("/nonexistent/bin/moonpub", "/tmp", false, true);
 
         assert!(result.is_err());
         assert!(
@@ -401,7 +441,7 @@ mod tests {
 
     #[test]
     fn preview_errors_when_bin_not_found() {
-        let result = preview_wechat_backend("/nonexistent/bin/moonpub", "/tmp", false);
+        let result = preview_wechat_backend("/nonexistent/bin/moonpub", "/tmp", false, true);
 
         assert!(result.is_err());
         assert!(
@@ -484,6 +524,7 @@ mod tests {
                 .contains("cover: ./daily.ai-web3-daily-cover-900x500.png")
         );
         assert!(prepared.markdown.contains("wechat_author"));
+        assert!(prepared.markdown.contains("theme: notebook"));
         assert_eq!(
             prepared.cover_path,
             dir.join("daily.ai-web3-daily-cover-900x500.png")
@@ -502,6 +543,20 @@ mod tests {
         assert_eq!(prepared.matches("cover:").count(), 1);
         assert!(prepared.contains("cover: ./custom.png"));
         assert_eq!(prepared.matches("wechat_author:").count(), 1);
+        assert_eq!(prepared.matches("theme:").count(), 1);
+        assert!(prepared.contains("theme: notebook"));
+    }
+
+    #[test]
+    fn wechat_frontmatter_overrides_legacy_theme() {
+        let markdown =
+            "---\ntitle: \"AI · Web3 最新日报｜2026-06-26\"\ntheme: newsletter\n---\n\n正文";
+
+        let prepared = inject_wechat_frontmatter_fields(markdown, "daily.cover.png");
+
+        assert_eq!(prepared.matches("theme:").count(), 1);
+        assert!(prepared.contains("theme: notebook"));
+        assert!(!prepared.contains("theme: newsletter"));
     }
 
     #[test]
@@ -534,6 +589,7 @@ mod tests {
 
         assert!(prepared.contains("cover: ./wechat-report.ai-web3-daily-cover-900x500.png"));
         assert!(prepared.contains("wechat_author: 寻月隐君"));
+        assert!(prepared.contains("theme: notebook"));
         assert!(
             dir.join("wechat-report.ai-web3-daily-cover-900x500.png")
                 .is_file()
