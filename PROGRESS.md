@@ -98,6 +98,7 @@
 - `cargo test publisher::tests:: --lib`：15 passed
 - `cargo test daily_report::render::tests:: --lib`：27 passed
 - `cargo clippy --all-targets --all-features --tests --benches -- -D warnings`
+- `cargo nextest run --all-features`：421 passed, 2 skipped
 - `cargo test daily_report::render::tests::assemble_appends_fixed_outro_section --lib`
 - `cargo test daily_report::render::tests::assemble_keeps_fixed_outro_after_daily_quote --lib`
 - `cargo run -- --config config.toml daily-report --report-name "微信公众号日报" --output /tmp/wechat-report-2026-07-04-compact-links-final.md`：沙箱外本地生成成功；抽查确认输出含 `:::compact-links`，参考来源区 13 条、完整素材链接 12 条，全文 223 行，`theme: notebook`、`## 继续交流` 仍在，未出现 `####`

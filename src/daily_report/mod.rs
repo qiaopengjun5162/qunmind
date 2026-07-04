@@ -4018,7 +4018,8 @@ mod tests {
         let web3_section = section_body_by_title(&report, "Web3");
         let reads_section = section_body_by_title(&report, "推荐深读");
         assert!(!web3_section.contains("openai / codex"));
-        assert!(report.contains("[openai / codex](https://github.com/openai/codex)"));
+        assert!(report.contains("openai / codex"));
+        assert!(report.contains("https://github.com/openai/codex"));
         if !reads_section.is_empty() {
             assert!(
                 reads_section.contains("> 为什么读：")
@@ -5419,8 +5420,8 @@ mod tests {
 
         let report = generator.generate().await.expect("report");
         let refs = report.split("### 正文引用来源（").nth(1).unwrap_or("");
-        let used_refs = refs.split("**完整素材链接**").next().unwrap_or(refs);
-        let source_links = refs.split("**完整素材链接**").nth(1).unwrap_or("");
+        let used_refs = refs.split("### 完整素材链接").next().unwrap_or(refs);
+        let source_links = refs.split("### 完整素材链接").nth(1).unwrap_or("");
 
         assert!(used_refs.contains("https://example.com/ai1"));
         assert!(used_refs.contains("https://example.com/tech1"));
