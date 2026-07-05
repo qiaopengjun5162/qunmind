@@ -945,7 +945,12 @@ fn read_summary_quality_score(summary: &str) -> usize {
     if trimmed.is_empty() {
         return 0;
     }
-    if trimmed == "未生成可靠摘要，请直接阅读原文核对。" {
+    if trimmed.contains("直接阅读原文")
+        || trimmed.contains("核对关键事实")
+        || trimmed.contains("核对发布细节")
+        || trimmed.contains("核对研究假设")
+        || trimmed.contains("核对方法设定")
+    {
         return 0;
     }
     if trimmed.chars().count() < 12 {
@@ -2527,6 +2532,10 @@ fn display_source_name(item: &PublicNewsItem) -> &str {
         "Google Blog"
     } else if item.url.contains("blog.cloudflare.com/") {
         "Cloudflare Blog"
+    } else if item.url.contains("blog.rust-lang.org/") {
+        "Rust Blog"
+    } else if item.url.contains("github.blog/") {
+        "GitHub Blog"
     } else {
         item.source.as_str()
     }
@@ -4157,10 +4166,7 @@ mod tests {
         assert!(report.contains("openai / codex"));
         assert!(report.contains("https://github.com/openai/codex"));
         if !reads_section.is_empty() {
-            assert!(
-                reads_section.contains("> 为什么读：")
-                    || reads_section.contains("未生成可靠摘要，请直接阅读原文核对。")
-            );
+            assert!(reads_section.contains("> 为什么读："));
         }
     }
 
@@ -4955,7 +4961,7 @@ mod tests {
             reads: vec![ReportRead {
                 title: "rust-lang / rust".to_string(),
                 url: "https://github.com/rust-lang/rust".to_string(),
-                summary: "未生成可靠摘要，请直接阅读原文核对。".to_string(),
+                summary: "这条开源材料指向 rust-lang / rust，值得直接打开原文，确认项目现状、关键实现和使用门槛。".to_string(),
             }],
             ..Default::default()
         };

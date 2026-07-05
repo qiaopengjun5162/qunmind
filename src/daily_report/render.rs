@@ -544,6 +544,10 @@ fn display_source_label_from_parts<'a>(source: &'a str, url: &'a str) -> &'a str
         "Google Blog"
     } else if url.contains("blog.cloudflare.com/") {
         "Cloudflare Blog"
+    } else if url.contains("blog.rust-lang.org/") {
+        "Rust Blog"
+    } else if url.contains("github.blog/") {
+        "GitHub Blog"
     } else {
         source
     }
