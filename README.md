@@ -32,7 +32,7 @@ The project currently supports:
 - Cron-based daily reports.
 - Daily reports generated from recently stored group messages and link intelligence.
 - Per-group daily report targets with optional cron, prompt, lookback, message, and link overrides.
-- Optional Hacker News, CoinMarketCap, CoinGecko, DeFi Llama, Dune, GitHub Trending, and Slerf Blog fallback reports when a report group has no messages.
+- Optional Hacker News, CoinMarketCap, CoinGecko, DeFi Llama, Dune, GitHub Trending, Slerf Blog, and Reddit RSS fallback reports when a report group has no messages.
 - Manual curated source items for one-off official articles, X posts, or other links you explicitly want readers to continue reading.
 - The default `web3_media_urls` list now includes a PANews RSS feed, and `panewslab.com` links are treated as curated traceable sources so Chinese Web3 articles can survive topic filtering with full original URLs intact.
 - The default `web3_media_urls` list also includes the WuBlockchain Atom feed, and `wublock123.com` links are treated as curated traceable sources so Chinese Web3 exchange/news flashes can flow into the report pipeline with full original URLs.
@@ -247,6 +247,8 @@ When the helper succeeds and leaves a markdown file behind, QunMind now also bes
 For X / Twitter-style first-hand signals, QunMind uses the same lightweight boundary through `[public_sources] x_rss_*`: provide RSSHub, Nitter-compatible, or self-hosted X-list RSS / Atom feeds, and QunMind will normalize them as `X RSS` public news items. The main process does not embed X login, scraping, proxy, or anti-bot logic.
 
 If you want the daily report to absorb more first-hand official context instead of leaning mostly on news flashes, QunMind now also supports `[public_sources] official_blogs_*`. This source boundary is meant for stable RSS / Atom feeds from official publishers such as OpenAI, Google Blog, and Cloudflare Blog, so product releases, research posts, and infrastructure announcements can enter the report pipeline as durable upstream material rather than one-off manual links.
+
+For community discussion and practical problem signals, QunMind also supports `[public_sources] reddit_rss_*`. It consumes public subreddit RSS / Atom feeds such as `r/rust`, `r/MachineLearning`, `r/ethdev`, and `r/cryptography`; it does not embed Reddit login, cookies, scraping, or API-key based collection in the main process.
 
 Manual curated items such as `x.com`, `twitter.com`, Nitter-compatible links, and WeChat public-account URLs are treated as explicitly selected material rather than broad-feed noise, so the topic keyword filter will not drop them simply because the title does not contain a configured keyword.
 

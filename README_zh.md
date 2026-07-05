@@ -24,7 +24,7 @@
 - Cron 定时日报。
 - 基于最近已保存群消息和链接情报生成日报。
 - 多群日报目标配置，可按群覆盖 cron、prompt、回看窗口、消息数量和链接数量。
-- 群消息为空时可选使用 Hacker News、CoinMarketCap、CoinGecko、DeFi Llama、Dune、GitHub Trending、Slerf Blog 生成公共信息参考日报。
+- 群消息为空时可选使用 Hacker News、CoinMarketCap、CoinGecko、DeFi Llama、Dune、GitHub Trending、Slerf Blog、Reddit RSS 生成公共信息参考日报。
 - 支持 `[[public_sources.manual_items]]` 手工精选入口，用来补入你明确想推荐大家阅读的一手官方文章、X 原帖或其他优质链接。
 - 默认 `web3_media_urls` 现已包含 `PANews RSS`，`panewslab.com` 这类中文 Web3 原文也会作为可追溯精选来源保留下来。
 - 默认 `web3_media_urls` 现已同时包含 `吴说区块链 Atom feed`，`wublock123.com` 这类中文 Web3 / 交易所快讯也会作为可追溯精选来源保留下来。
@@ -257,6 +257,8 @@ wechat_article_helper_output_dir = "/tmp/qunmind-wechat-article-helper"
 X / Twitter 这类一手信息也走同样的轻量边界：通过 `[public_sources] x_rss_*` 配置 RSSHub、Nitter 兼容源或自建 X List RSS / Atom 上游，QunMind 会把它们归一成 `X RSS` 公共素材。主进程不内嵌 X 登录、抓取、代理或反风控逻辑。
 
 如果你想让日报不只是“快讯聚合”，而是更多吸收官网 / 官方博客 / 正式技术公告，现在也可以直接启用 `[public_sources] official_blogs_*`。这条来源边界默认面向 OpenAI、Google Blog、Cloudflare Blog 这类稳定可抓取的 RSS / Atom 上游，适合补充模型发布、研究博客、基础设施公告与官方技术文章，让日报更容易产出“高层面”的内容，而不是只剩市场快讯。
+
+如果想补充社区讨论和实用问题信号，可以启用 `[public_sources] reddit_rss_*`。它只消费 `r/rust`、`r/MachineLearning`、`r/ethdev`、`r/cryptography` 这类公开 subreddit RSS / Atom，不在主进程里集成 Reddit 登录、cookie、反爬或 API key 采集。
 
 如果临时看到特别值得推荐大家阅读的原文，但 RSS / X 上游还没稳定抓到，可以直接加到 `[[public_sources.manual_items]]`。它适合放 OpenAI 官方文章、项目公告、论文链接、X 原帖等“人工精选”素材；这些条目会进入日报素材池，并优先出现在“推荐深读”或“完整素材链接”里。
 

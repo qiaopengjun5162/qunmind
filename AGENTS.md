@@ -14,7 +14,7 @@
 
 项目初心是微信/微信群 AI 中枢；公共投研来源只是日报缺少群消息时的辅助素材，不应压过微信收发、消息归一化、群配置、上下文记忆和真实联调。
 
-当前已有 PostgreSQL 消息持久化。`BotHandler` 会在 mention 过滤前保存入站消息；命中回复时会按 `bot.context_messages` 读取最近同会话文本作为基础对话上下文，默认 8 条，配置为 0 时只使用当前消息；`PostgresMessageStore` 会从文本消息中抽取 URL 并写入 `message_links`；`scheduler` 的日报会按 `schedule.daily_report_lookback_hours`、`schedule.daily_report_max_messages` 和 `schedule.daily_report_max_links` 读取已保存群消息与链接情报后再调用模型生成。群消息为空且 `[public_sources]` 中至少一个来源启用时，会读取 Hacker News、CoinMarketCap、CoinGecko、DeFi Llama、Dune、GitHub Trending、Slerf Blog、WeChat RSS、X RSS、Web3 Media 等公共信息参考日报素材，并按 `topic_keywords` 聚焦 Rust、Web3、crypto、AI、ZKP 等前沿技术。当前还没有前端 UI。
+当前已有 PostgreSQL 消息持久化。`BotHandler` 会在 mention 过滤前保存入站消息；命中回复时会按 `bot.context_messages` 读取最近同会话文本作为基础对话上下文，默认 8 条，配置为 0 时只使用当前消息；`PostgresMessageStore` 会从文本消息中抽取 URL 并写入 `message_links`；`scheduler` 的日报会按 `schedule.daily_report_lookback_hours`、`schedule.daily_report_max_messages` 和 `schedule.daily_report_max_links` 读取已保存群消息与链接情报后再调用模型生成。群消息为空且 `[public_sources]` 中至少一个来源启用时，会读取 Hacker News、CoinMarketCap、CoinGecko、DeFi Llama、Dune、GitHub Trending、Slerf Blog、WeChat RSS、X RSS、Reddit RSS、Web3 Media 等公共信息参考日报素材，并按 `topic_keywords` 聚焦 Rust、Web3、crypto、AI、ZKP 等前沿技术。当前还没有前端 UI。
 
 `PANews` 当前先沿 `web3_media` RSS 边界接入，默认 feed 使用 `https://www.panewslab.com/rss.xml?lang=zh&type=NEWS`。同时 `panewslab.com` 域名被视作精选可追溯来源，避免中文 Web3 原文因为标题没命中 `topic_keywords` 而在聚合层被误过滤。
 
@@ -72,6 +72,8 @@
 X / Twitter 这类一手信息入口也优先走 `PublicNewsSource` 边界。当前落地形态是 `[public_sources] x_rss_*`，消费 RSSHub、Nitter 兼容源或自建 X List RSS / Atom 上游；不要把 X 登录态、反爬、代理池或绕风控逻辑直接塞进 `QunMind` 主进程。需要更强实时性时，优先建设独立采集上游，再把稳定输出接成 RSS/Atom 或后续 connector。
 
 官网 / 官方博客这类“更高层面”的一手来源也应优先走 `PublicNewsSource` 边界。当前推荐形态是 `[public_sources] official_blogs_*`：统一消费 OpenAI、Google Blog、Cloudflare Blog 一类稳定可访问的 RSS / Atom 上游，把正式发布、研究博客、技术公告沉淀成长期来源；不要每次都退回成靠 `manual_items` 临时补几条官方链接。
+
+Reddit 这类社区讨论来源也优先走 `PublicNewsSource` 边界。当前落地形态是 `[public_sources] reddit_rss_*`，只消费公开 subreddit RSS / Atom，用于补充 AI / Web3 / 开源社区的实用问题、工具反馈和工程讨论；不要把 Reddit 登录态、cookie、抓取绕过、私信或 API key 采集塞进 `QunMind` 主进程。
 
 如果同一篇原文同时被 `Hacker News`、聚合媒体和 `official_blogs` / `manual_items` 抓到，聚合层必须优先保留官方 / 手工精选版本，不能因为抓取顺序把一手原文显示成二手来源。日报正文与参考链接里的来源标签也应优先按原始官网域名纠正成 `OpenAI`、`Google Blog`、`Cloudflare Blog` 等 canonical 名称。
 

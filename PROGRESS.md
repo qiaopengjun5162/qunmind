@@ -190,6 +190,7 @@
 - **技术区支持新鲜素材补位** — 如果 AI 技术区只写了长期榜单或遗漏了更有时效性的技术项，Rust 兜底层现在会从当天素材池里回补高信号技术链接，例如安全事件、部署指南、工程工具文章，减少“稿子虽然是今天生成的，但正文看起来像昨天那版”的观感。
 - **深读区避免与焦点/正文撞车** — 推荐深读现在会自动避开已经出现在今日焦点、AI/Web3/技术正文里的同一链接，再从剩余素材池补新的阅读入口，降低同一篇文章在一篇日报里反复出现的重复感。
 - **连续重跑开始主动换新** — 当手工 `daily-report --output <path>` 回退到 `public_sources` 生成公众号日报时，系统现在会读取同一路径上一次生成稿，并额外扫描同目录最近几份 `wechat-report-*.md` / `daily-report-*.md`，从正文 `原文：https://...` 和 `compact-links` 中提取 URL 作为本次焦点、正文与深读的轻量降权信号。这样即使今天换了输出文件名，也不容易又回到昨天那批链接，但“完整素材链接”仍会继续保留全部可追溯来源。
+- **Reddit RSS 社区讨论来源落地** — 新增 `[public_sources] reddit_rss_*` 与 `src/source/reddit_rss.rs`，默认示例覆盖 `r/rust`、`r/MachineLearning`、`r/ethdev`、`r/cryptography`。它只消费公开 subreddit RSS / Atom，用来补充 AI / Web3 / 开源社区的实用问题、工具反馈和工程讨论，不把 Reddit 登录态、cookie、API key 或反爬逻辑塞进主进程。
 - **PANews 已纳入 Web3 来源默认链路** — `web3_media_urls` 默认新增 `https://www.panewslab.com/rss.xml?lang=zh&type=NEWS`，并把 `panewslab.com` 视作精选可追溯来源域名。这样像 `PANews` 这类中文 Web3 原文既能通过 RSS 正式进入素材池，也不会因为标题没命中 `topic_keywords` 而在聚合层被误过滤。
 - **吴说区块链已纳入 Web3 来源默认链路** — `web3_media_urls` 默认新增 `https://www.wublock123.com/feed`，并把 `wublock123.com` 视作精选可追溯来源域名。同时 `web3_media` 补齐了 Atom `entry` 解析能力，避免这类中文 Web3 / 交易所快讯源因为不是传统 RSS `<item>` 而接入后抓不到内容。
 - **深读区开始优先文章型来源** — `推荐深读` 现在会优先选择更像文章、论文、官方说明或手工精选的入口，而不是普通 `GitHub Trending` 榜单仓库；只有在当天素材池确实缺少更好替代项时，才保底保留 1 条仓库链接，避免深读区看起来只是把技术榜单重复了一遍。

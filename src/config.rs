@@ -289,6 +289,14 @@ pub struct PublicSourcesConfig {
     #[serde(default = "default_official_blogs_timeout_secs")]
     pub official_blogs_timeout_secs: u64,
     #[serde(default)]
+    pub reddit_rss_enabled: bool,
+    #[serde(default = "default_reddit_rss_urls")]
+    pub reddit_rss_urls: Vec<String>,
+    #[serde(default = "default_reddit_rss_max_items")]
+    pub reddit_rss_max_items: usize,
+    #[serde(default = "default_reddit_rss_timeout_secs")]
+    pub reddit_rss_timeout_secs: u64,
+    #[serde(default)]
     pub web3_media_enabled: bool,
     #[serde(default = "default_web3_media_urls")]
     pub web3_media_urls: Vec<String>,
@@ -606,6 +614,23 @@ fn default_official_blogs_timeout_secs() -> u64 {
     15
 }
 
+fn default_reddit_rss_urls() -> Vec<String> {
+    vec![
+        "https://www.reddit.com/r/rust/.rss".to_string(),
+        "https://www.reddit.com/r/MachineLearning/.rss".to_string(),
+        "https://www.reddit.com/r/ethdev/.rss".to_string(),
+        "https://www.reddit.com/r/cryptography/.rss".to_string(),
+    ]
+}
+
+fn default_reddit_rss_max_items() -> usize {
+    16
+}
+
+fn default_reddit_rss_timeout_secs() -> u64 {
+    15
+}
+
 fn default_manual_source_name() -> String {
     "Manual Picks".to_string()
 }
@@ -761,6 +786,10 @@ impl Default for PublicSourcesConfig {
             official_blogs_urls: default_official_blogs_urls(),
             official_blogs_max_items: default_official_blogs_max_items(),
             official_blogs_timeout_secs: default_official_blogs_timeout_secs(),
+            reddit_rss_enabled: false,
+            reddit_rss_urls: default_reddit_rss_urls(),
+            reddit_rss_max_items: default_reddit_rss_max_items(),
+            reddit_rss_timeout_secs: default_reddit_rss_timeout_secs(),
             web3_media_enabled: false,
             web3_media_urls: default_web3_media_urls(),
             web3_media_max_items: default_web3_media_max_items(),
@@ -928,6 +957,18 @@ mod tests {
         );
         assert_eq!(config.public_sources.official_blogs_max_items, 12);
         assert_eq!(config.public_sources.official_blogs_timeout_secs, 15);
+        assert!(!config.public_sources.reddit_rss_enabled);
+        assert_eq!(
+            config.public_sources.reddit_rss_urls,
+            vec![
+                "https://www.reddit.com/r/rust/.rss".to_string(),
+                "https://www.reddit.com/r/MachineLearning/.rss".to_string(),
+                "https://www.reddit.com/r/ethdev/.rss".to_string(),
+                "https://www.reddit.com/r/cryptography/.rss".to_string(),
+            ]
+        );
+        assert_eq!(config.public_sources.reddit_rss_max_items, 16);
+        assert_eq!(config.public_sources.reddit_rss_timeout_secs, 15);
         assert!(!config.public_sources.web3_media_enabled);
         assert_eq!(
             config.public_sources.web3_media_urls,
