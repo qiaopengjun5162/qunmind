@@ -39,7 +39,7 @@
 ### Done
 
 - **2026-07-05 公众号日报 v11 已推草稿并发送手机预览** — 已审核稿 `/tmp/wechat-report-2026-07-05-source-expanded-v11.md` 已直接通过 `moonpub --articles /Users/qiaopengjun/Code/Rust/moonpub-data push /tmp/wechat-report-2026-07-05-source-expanded-v11.md --render` 推送到公众号草稿箱，并完成手机预览发送。标题为 `AI · Web3 最新日报｜2026-07-05`，`media_id = EmukC2rjB9X3nj6feGSErwz80kJdb49Hij6-qMyX0NTYNItMKQw5-Wy9D5PII3nx`；后台自动化输出显示 Session 已恢复、赞赏已开启、留言已开启、创作来源保持 `个人观点，仅供参考`、模板插入 skipped、预览发送成功。注意这次为避免重新生成导致内容波动，直接推送已审核 markdown，因此不会写入 QunMind `publish-history`；公众号草稿和手机预览已成功，不影响后台人工发布。
-- **深读与空摘要兜底文案改成自然推荐理由** — `src/daily_report/render.rs` 不再把空摘要或不可靠摘要直接渲染成“未生成可靠摘要，请直接阅读原文核对。”；现在会根据标题、来源域名和链接类型生成更自然的 `为什么读` / `值得关注` 兜底文案，例如官方博客、论文、ethresear.ch、GitHub 和 AI/Web3 条目都会得到更像正式日报的推荐理由，同时继续保留完整 `原文：https://...` 作为追溯入口。
+- **深读与空摘要兜底文案改成自然推荐理由** — `src/daily_report/render.rs` 不再把空摘要或不可靠摘要渲染成生硬的系统提示；现在会根据标题、来源域名和链接类型生成更自然的 `为什么读` / `值得关注` 兜底文案，例如官方博客、论文、ethresear.ch、GitHub 和 AI/Web3 条目都会得到更像正式日报的推荐理由，同时继续保留完整 `原文：https://...` 作为追溯入口。
 - **日报素材来源进一步扩到官方工程博客** — `official_blogs_urls` 默认新增 `Rust Blog` 与 `GitHub Blog`，让技术与开源板块能拿到更稳定的一手工程发布、平台安全实践和工具链文章；同时把当前容易 403 的 `CryptoSlate` 从默认 Web3 media 源移除，减少生成时的失败噪音。
 - **日报分类兜底继续加固** — `src/daily_report/mod.rs` 现在把手工精选、AI、Web3、技术和官方博客分桶保留，避免官方博客或单一热点挤空技术区；最终分类后还会补回最低板块数量，防止技术区在最后一轮清洗中被剪空。
 - **低信号 Reddit 讨论帖不再占正文和深读位** — Reddit RSS 仍作为社区讨论来源，但 `Ask here`、`This Week in Rust`、`should I`、每日/每周讨论帖这类低信号入口不会再填充技术正文或推荐深读，保留“可用信息”而不是把论坛占位帖推给读者。

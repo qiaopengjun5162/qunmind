@@ -836,7 +836,7 @@ fn render_summary(report: &ReportJson) -> Option<String> {
     }
 
     Some(format!(
-        "本期建议优先阅读{}。如果某条摘要不够完整，请以对应原文链接为准。",
+        "本期建议优先阅读{}。如果某条说明偏简洁，请直接结合对应原文链接继续核对。",
         titles.join("、")
     ))
 }
