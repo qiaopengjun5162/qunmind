@@ -875,6 +875,10 @@ pub(super) fn is_low_confidence_fallback_summary(summary: &str) -> bool {
         "这条材料更适合直接打开原文",
         "这条信息摘要不够完整",
         "建议直接阅读原文核对",
+        "建议打开原文核对",
+        "读者应重点核对",
+        "读者应优先核对",
+        "读者应打开原文核对",
         "适合直接回到一手原文核对",
     ]
     .iter()
@@ -1180,6 +1184,9 @@ mod tests {
     fn fallback_summary_detection_marks_generated_reason_as_low_confidence() {
         assert!(is_low_confidence_fallback_summary(
             "这篇官方材料围绕 Announcing the Monetization 展开，适合直接回到一手原文核对发布细节、约束条件和实际影响。"
+        ));
+        assert!(is_low_confidence_fallback_summary(
+            "以太坊研究社区正在讨论后量子场景下以太坊是否仍需要签名机制，建议打开原文核对方案假设、实现约束和对协议设计的潜在影响。"
         ));
         assert!(!is_low_confidence_fallback_summary(
             "Google DeepMind 团队提出了一种新的强化学习框架，并给出了实验结果。"
