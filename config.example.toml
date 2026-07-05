@@ -174,7 +174,8 @@ official_blogs_urls = [
   "https://blog.cloudflare.com/rss/",
   "https://blog.rust-lang.org/feed.xml",
   "https://github.blog/feed/",
-] # 官网 / 官方博客一手来源；适合补 OpenAI、Google、Cloudflare、Rust、GitHub 这类正式发布与技术博客
+  "https://www.ecb.europa.eu/rss/press.html",
+] # 官网 / 官方博客一手来源；适合补 OpenAI、Google、Cloudflare、Rust、GitHub，以及 ECB 这类全球官方政策/宏观信号
 
 reddit_rss_enabled = false
 reddit_rss_max_items = 16

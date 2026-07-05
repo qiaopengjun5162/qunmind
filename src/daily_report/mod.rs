@@ -13,13 +13,16 @@ use crate::source::{PublicNewsItem, PublicNewsSource};
 
 use parser::parse_report_json;
 use prompt::build_json_prompt_with_context;
-use render::{assemble_markdown, canonical_source_label_from_parts, is_low_confidence_fallback_summary, sanitize};
+use render::{
+    assemble_markdown, canonical_source_label_from_parts, is_low_confidence_fallback_summary,
+    sanitize,
+};
 
 const MAX_REPORT_ITEMS: usize = 32;
 const MIN_SECTION_ITEMS: usize = 3;
-const MAX_AI_ITEMS: usize = 4;
+const MAX_AI_ITEMS: usize = 3;
 const MAX_WEB3_ITEMS: usize = 3;
-const MAX_TECH_ITEMS: usize = 6;
+const MAX_TECH_ITEMS: usize = 4;
 const MIN_READS: usize = 3;
 const MAX_READS: usize = 3;
 const PROMPT_MANUAL_ITEM_BUDGET: usize = 10;
@@ -691,6 +694,7 @@ fn is_preferred_read_item(item: &PublicNewsItem) -> bool {
     if is_generic_market_wrap_item(item)
         || is_roundup_style_item(item)
         || is_low_signal_reddit_discussion_item(item)
+        || is_reddit_item(item)
     {
         return false;
     }
@@ -765,20 +769,36 @@ fn fallback_comment(item: &PublicNewsItem) -> String {
     }
 
     if is_official_blog_item(item) || is_primary_source_item(item) {
+        let title = reportable_title(item);
         return format!(
-            "{} 发布了{subject}相关材料，读者应优先核对官方原文里的产品变化、技术细节或适用条件。",
-            display_source_name(item)
+            "{} 发布《{}》，建议优先核对原文中的具体更新、数据口径和适用边界。",
+            display_source_name(item),
+            title
         );
     }
 
     match item.source.as_str() {
         source if source.contains("GitHub") => {
-            format!("{subject} 近期在 GitHub 上保持较高热度，值得继续关注后续演进。")
+            let repo_or_title = reportable_title(item);
+            format!(
+                "GitHub 上的《{}》进入今天的关注范围，建议核对最近 release、README 更新和 issue 讨论。",
+                repo_or_title
+            )
         }
         source if source.contains("Hacker News") => {
-            format!("{subject} 近期在 Hacker News 上引发讨论，可以作为今天的重要补充阅读。")
+            let title = reportable_title(item);
+            format!(
+                "《{}》在 Hacker News 引发讨论，建议回看原文与评论区，区分首发信息和二次解读。",
+                title
+            )
         }
-        _ => format!("{subject} 近期受到关注，读者应打开原文核对事件背景、关键参与方与后续影响。"),
+        _ => {
+            let title = reportable_title(item);
+            format!(
+                "这条材料围绕《{}》，建议打开原文核对关键参与方、具体变化和上下文。",
+                title
+            )
+        }
     }
 }
 
@@ -910,16 +930,16 @@ fn fallback_read_summary(item: &PublicNewsItem) -> String {
 
     if item.url.contains("thedefiant.io/") || item.url.contains("cointelegraph.com/") {
         return format!(
-            "{} 报道了{}，建议打开原文核对事件背景、关键参与方和后续影响。",
+            "{} 报道《{}》，建议打开原文核对事件背景、关键参与方和后续影响。",
             display_source_name(item),
-            chinese_topic_label(item)
+            reportable_title(item)
         );
     }
 
     format!(
-        "{} 提供了{}的延伸材料，建议打开原文核对事实来源、数据口径和关键上下文。",
-        item.source,
-        chinese_topic_label(item)
+        "{} 提供了《{}》的延伸材料，建议打开原文核对事实来源、数据口径和关键上下文。",
+        display_source_name(item),
+        reportable_title(item)
     )
 }
 
@@ -933,9 +953,9 @@ fn official_read_summary(item: &PublicNewsItem) -> Option<String> {
     }
 
     Some(format!(
-        "这篇 {} 官方文章围绕 {} 展开，适合作为今天的延伸阅读，用来从一手发布视角理解相关产品、研究或安全动态。",
+        "这篇 {} 官方文章对应《{}》，适合作为今天的延伸阅读，用来从一手发布视角核对产品变化、研究结论或安全细节。",
         display_source_name(item),
-        compact_title(item.title.trim(), 32)
+        reportable_title(item)
     ))
 }
 
@@ -955,6 +975,10 @@ fn read_summary_quality_score(summary: &str) -> usize {
 
 fn is_tech_worthy_item(item: &PublicNewsItem) -> bool {
     if item.source.contains("GitHub") || is_ai_item(item) || is_web3_item(item) {
+        return true;
+    }
+
+    if is_global_policy_or_macro_item(item) {
         return true;
     }
 
@@ -983,6 +1007,15 @@ fn is_tech_worthy_item(item: &PublicNewsItem) -> bool {
             "toolchain",
             "sdk",
             "infrastructure",
+            "industry",
+            "policy",
+            "central bank",
+            "digital euro",
+            "digital transformation",
+            "payments",
+            "finance",
+            "economy",
+            "macro",
             "runtime",
             "javascript",
             "engine",
@@ -1006,6 +1039,14 @@ fn is_tech_worthy_item(item: &PublicNewsItem) -> bool {
             "数据库",
             "编程",
             "工程",
+            "产业",
+            "政策",
+            "宏观",
+            "央行",
+            "支付",
+            "金融",
+            "经济",
+            "数字欧元",
             "基础设施",
             "运行时",
             "引擎",
@@ -1017,6 +1058,39 @@ fn is_tech_worthy_item(item: &PublicNewsItem) -> bool {
             "指南",
         ],
     )
+}
+
+fn is_global_policy_or_macro_item(item: &PublicNewsItem) -> bool {
+    let haystack = format!(
+        "{} {} {} {}",
+        item.source,
+        item.title,
+        item.url,
+        item.summary.as_deref().unwrap_or("")
+    )
+    .to_lowercase();
+
+    (item.source == "ECB" || item.url.contains("ecb.europa.eu/"))
+        && contains_any_text(
+            &haystack,
+            &[
+                "digital euro",
+                "payments",
+                "finance",
+                "economy",
+                "inflation",
+                "monetary",
+                "central bank",
+                "digital transformation",
+                "数字欧元",
+                "支付",
+                "金融",
+                "经济",
+                "通胀",
+                "货币政策",
+                "央行",
+            ],
+        )
 }
 
 fn is_non_technical_policy_item(item: &PublicNewsItem) -> bool {
@@ -1094,19 +1168,25 @@ fn tech_section_is_worthy(section: &ReportSection, items: &[PublicNewsItem]) -> 
     items
         .iter()
         .find(|item| item.url == section.url)
-        .is_none_or(is_tech_worthy_item)
+        .is_some_and(|item| {
+            !is_reddit_item(item) && is_tech_worthy_item(item) && is_high_signal_item(item)
+        })
 }
 
 fn is_tech_item(item: &PublicNewsItem) -> bool {
     !is_ai_item(item)
         && !is_web3_item(item)
+        && !is_reddit_item(item)
         && !is_low_signal_reddit_discussion_item(item)
         && is_tech_worthy_item(item)
         && is_high_signal_item(item)
 }
 
 fn is_minimum_tech_fill_item(item: &PublicNewsItem) -> bool {
-    if is_non_technical_policy_item(item) || is_low_signal_reddit_discussion_item(item) {
+    if is_non_technical_policy_item(item)
+        || is_low_signal_reddit_discussion_item(item)
+        || is_reddit_item(item)
+    {
         return false;
     }
 
@@ -1126,6 +1206,10 @@ fn is_minimum_tech_fill_item(item: &PublicNewsItem) -> bool {
                     "引擎",
                 ],
             ))
+        && (read_candidate_has_reliable_summary(item)
+            || item.score.unwrap_or(0) >= 80
+            || is_official_blog_item(item)
+            || is_article_like_item(item))
 }
 
 fn is_high_signal_item(item: &PublicNewsItem) -> bool {
@@ -1376,6 +1460,12 @@ fn web3_section_priority(
 
 fn similar_section_story(a: &ReportSection, b: &ReportSection, items: &[PublicNewsItem]) -> bool {
     if a.url.trim() == b.url.trim() {
+        return true;
+    }
+
+    let a_title = normalize_story_text(a.title.trim());
+    let b_title = normalize_story_text(b.title.trim());
+    if !a_title.is_empty() && a_title == b_title {
         return true;
     }
 
@@ -2836,7 +2926,7 @@ fn has_ai_section_signal(haystack: &str) -> bool {
 }
 
 fn clean_summary(summary: &str) -> String {
-    let trimmed = summary.trim().replace('\n', " ");
+    let trimmed = strip_model_artifacts(summary.trim()).replace('\n', " ");
     let compact = trimmed.split_whitespace().collect::<Vec<_>>().join(" ");
     natural_excerpt(&compact, 120)
 }
@@ -3411,6 +3501,10 @@ fn comment_needs_upgrade(comment: &str) -> bool {
             || trimmed.ends_with("这一情况。")
             || trimmed.ends_with("相关情况。")
             || trimmed.ends_with("的话题。"))
+        || trimmed.contains("相关主题相关材料")
+        || trimmed.contains("请注意：如果需要全部条目聚合成单一摘要")
+        || trimmed.ends_with("近期受到关注。")
+        || trimmed.contains("值得继续关注后续演进")
 }
 
 fn is_market_commentary_item(item: &PublicNewsItem) -> bool {
@@ -3476,6 +3570,42 @@ fn natural_excerpt(value: &str, max_chars: usize) -> String {
     let end = excerpt_end_without_short_ascii_tail(&chars, max_chars.min(chars.len()));
     let candidate = chars[..end].iter().collect::<String>();
     candidate.trim().to_string()
+}
+
+fn strip_model_artifacts(value: &str) -> String {
+    let trimmed = value.trim();
+    let trimmed = trimmed
+        .split("请注意：如果需要全部条目聚合成单一摘要")
+        .next()
+        .unwrap_or(trimmed)
+        .trim();
+    trimmed
+        .split("当前文本含多条新闻")
+        .next()
+        .unwrap_or(trimmed)
+        .trim()
+        .to_string()
+}
+
+fn reportable_title(item: &PublicNewsItem) -> String {
+    if item.source.contains("GitHub")
+        && let Some(repo) = extract_github_repo(&item.url)
+    {
+        return repo;
+    }
+
+    let title = strip_model_artifacts(item.title.trim());
+    if title.is_empty() {
+        chinese_topic_label(item)
+    } else {
+        compact_title(&title, 36)
+    }
+}
+
+fn is_reddit_item(item: &PublicNewsItem) -> bool {
+    item.category.as_deref() == Some("reddit_rss")
+        || item.source.to_lowercase().contains("reddit")
+        || item.url.contains("reddit.com/")
 }
 
 fn trim_dangling_ascii_tail(value: &str) -> &str {
@@ -3719,7 +3849,7 @@ mod tests {
             pos_high < pos_low,
             "high score should appear before low score in refs"
         );
-        assert!(report.contains("参考来源"));
+        assert!(report.contains("资料索引"));
     }
 
     #[tokio::test]
@@ -3838,7 +3968,7 @@ mod tests {
 
         assert!(report.contains("## 01. AI 前沿"));
         assert!(report.contains("OpenAI Codex"));
-        assert!(report.contains("参考来源"));
+        assert!(report.contains("资料索引"));
         assert!(report.contains("OpenAI Codex"));
         assert!(report.contains("rustdesk/rustdesk"));
     }
@@ -3868,7 +3998,7 @@ mod tests {
         );
 
         let report = generator.generate().await.expect("report");
-        assert!(report.contains("读者应打开原文核对事件背景、关键参与方与后续影响"));
+        assert!(report.contains("建议打开原文核对关键参与方、具体变化和上下文"));
         assert!(!report.contains("Blockchain intelligence firm AMLBot has confirmed"));
     }
 
@@ -4209,10 +4339,10 @@ mod tests {
         );
 
         let report = generator.generate().await.expect("report");
-        let tech_section = section_body_by_title(&report, "技术与开源");
+        let tech_section = section_body_by_title(&report, "技术、产业与政策");
         assert!(!tech_section.contains("具体用途待进一步了解"));
         assert!(!tech_section.contains("[G](https://example.com/g)"));
-        assert_eq!(tech_section.matches("### 技术｜[").count(), 6);
+        assert_eq!(tech_section.matches("### 技术｜[").count(), 1);
     }
 
     #[test]
@@ -4477,7 +4607,7 @@ mod tests {
         );
 
         let report = generator.generate().await.expect("report");
-        let tech_section = section_body_by_title(&report, "技术与开源");
+        let tech_section = section_body_by_title(&report, "技术、产业与政策");
         assert!(
             tech_section.contains("https://clickhouse.com/blog/walrus-postgres-backups-in-rust")
         );
@@ -4890,7 +5020,7 @@ mod tests {
         ]));
 
         let report = generator.generate().await.expect("report");
-        let tech_section = section_body_by_title(&report, "技术与开源");
+        let tech_section = section_body_by_title(&report, "技术、产业与政策");
         assert!(tech_section.contains("https://example.com/panews-tech"));
         assert!(tech_section.contains("DataFusion 发布新版本并总结查询引擎改进"));
         assert!(!tech_section.contains("https://github.com/spacedriveapp/spacedrive"));
@@ -5667,8 +5797,8 @@ mod tests {
 
         let report = generator.generate().await.expect("report");
         let refs = report.split("### 正文引用来源（").nth(1).unwrap_or("");
-        let used_refs = refs.split("### 完整素材链接").next().unwrap_or(refs);
-        let source_links = refs.split("### 完整素材链接").nth(1).unwrap_or("");
+        let used_refs = refs.split("### 补充阅读池").next().unwrap_or(refs);
+        let source_links = refs.split("### 补充阅读池").nth(1).unwrap_or("");
 
         assert!(used_refs.contains("https://example.com/ai1"));
         assert!(used_refs.contains("https://example.com/tech1"));
@@ -5884,7 +6014,7 @@ mod tests {
         );
 
         let report = generator.generate().await.expect("report");
-        let tech_section = section_body_by_title(&report, "技术与开源");
+        let tech_section = section_body_by_title(&report, "技术、产业与政策");
 
         assert!(report.contains("https://example.com/rlusd"));
         assert!(!tech_section.contains("https://example.com/rlusd"));
@@ -5979,7 +6109,7 @@ mod tests {
 
         let report = generator.generate().await.expect("report");
         let ai_section = section_body_by_title(&report, "AI 前沿");
-        let tech_section = section_body_by_title(&report, "技术与开源");
+        let tech_section = section_body_by_title(&report, "技术、产业与政策");
 
         assert!(ai_section.contains("https://example.com/brown-ai"));
         assert!(!tech_section.contains("https://example.com/brown-ai"));
@@ -6070,7 +6200,7 @@ mod tests {
         );
 
         let report = generator.generate().await.expect("report");
-        let tech_section = section_body_by_title(&report, "技术与开源");
+        let tech_section = section_body_by_title(&report, "技术、产业与政策");
 
         assert!(!tech_section.contains("https://example.com/daisugi"));
         assert!(tech_section.contains("https://github.com/google/comprehensive-rust"));
@@ -6164,7 +6294,7 @@ mod tests {
         );
 
         let report = generator.generate().await.expect("report");
-        let tech_section = section_body_by_title(&report, "技术与开源");
+        let tech_section = section_body_by_title(&report, "技术、产业与政策");
 
         assert!(report.contains("https://example.com/robinhood-prediction"));
         assert!(!tech_section.contains("https://example.com/robinhood-prediction"));
@@ -6240,7 +6370,7 @@ mod tests {
         );
 
         let report = generator.generate().await.expect("report");
-        let tech_section = section_body_by_title(&report, "技术与开源");
+        let tech_section = section_body_by_title(&report, "技术、产业与政策");
 
         assert!(report.contains("https://example.com/robinhood-chinese"));
         assert!(!tech_section.contains("https://example.com/robinhood-chinese"));
@@ -6315,7 +6445,7 @@ mod tests {
         );
 
         let report = generator.generate().await.expect("report");
-        let tech_section = section_body_by_title(&report, "技术与开源");
+        let tech_section = section_body_by_title(&report, "技术、产业与政策");
 
         assert!(report.contains("https://example.com/clarity-act"));
         assert!(!tech_section.contains("https://example.com/clarity-act"));
@@ -6387,7 +6517,7 @@ mod tests {
         );
 
         let report = generator.generate().await.expect("report");
-        let tech_section = section_body_by_title(&report, "技术与开源");
+        let tech_section = section_body_by_title(&report, "技术、产业与政策");
 
         assert!(report.contains("原文：https://example.com/strategy-capital-framework"));
         assert!(!tech_section.contains("https://example.com/strategy-capital-framework"));
@@ -6479,7 +6609,7 @@ mod tests {
         let report = generator.generate().await.expect("report");
         let focus_section = section_body(&report, "## 今日焦点");
         let web3_section = section_body_by_title(&report, "Web3");
-        let tech_section = section_body_by_title(&report, "技术与开源");
+        let tech_section = section_body_by_title(&report, "技术、产业与政策");
 
         assert!(
             focus_section.contains("https://example.com/fhenix-sunscreen")
@@ -6562,7 +6692,7 @@ mod tests {
 
         let report = generator.generate().await.expect("report");
         let ai_section = section_body_by_title(&report, "AI 前沿");
-        let tech_section = section_body_by_title(&report, "技术与开源");
+        let tech_section = section_body_by_title(&report, "技术、产业与政策");
 
         assert!(ai_section.contains("https://example.com/brown-ai"));
         assert!(!tech_section.contains("https://example.com/brown-ai"));
@@ -6954,7 +7084,7 @@ mod tests {
 
         let report = generator.generate().await.expect("report");
         let web3_section = section_body_by_title(&report, "Web3");
-        let tech_section = section_body_by_title(&report, "技术与开源");
+        let tech_section = section_body_by_title(&report, "技术、产业与政策");
 
         assert!(web3_section.contains("https://example.com/binance-delist"));
         assert!(report.contains("https://example.com/binance-delist-panews"));
@@ -7432,12 +7562,35 @@ mod tests {
         );
 
         let report = generator.generate().await.expect("report");
-        let tech_section = section_body_by_title(&report, "技术与开源");
+        let tech_section = section_body_by_title(&report, "技术、产业与政策");
 
         assert!(tech_section.contains("https://example.com/postgres-release"));
         assert!(!tech_section.contains(
             "https://www.hunton.com/privacy-and-cybersecurity-law-blog/virginia-bans-sale-of-geolocation-data"
         ));
+    }
+
+    #[test]
+    fn global_macro_official_signal_is_considered_tech_worthy() {
+        let item = PublicNewsItem {
+            source: "ECB".to_string(),
+            title: "Piero Cipollone: The digital transformation of money, payments and finance"
+                .to_string(),
+            url: "https://www.ecb.europa.eu/press/key/date/2026/html/ecb.sp260702_1~c58dcd8150.en.pdf"
+                .to_string(),
+            summary: Some(
+                "European Central Bank discusses digital euro, payments and finance infrastructure."
+                    .to_string(),
+            ),
+            author: Some("ECB".to_string()),
+            published_at: Some("2026-07-02T00:00:00Z".to_string()),
+            score: Some(180),
+            comments: None,
+            ai_score: None,
+            category: Some("official_blog".to_string()),
+        };
+
+        assert!(is_tech_worthy_item(&item));
     }
 
     #[tokio::test]
@@ -7545,7 +7698,7 @@ mod tests {
         );
 
         let report = generator.generate().await.expect("report");
-        let tech_section = section_body_by_title(&report, "技术与开源");
+        let tech_section = section_body_by_title(&report, "技术、产业与政策");
 
         assert!(tech_section.contains("https://example.com/sqlite-query-planner-release"));
         assert!(tech_section.contains("https://example.com/postgres-release"));
@@ -7642,7 +7795,7 @@ mod tests {
         let report = generator.generate().await.expect("report");
         let ai_section = section_body_by_title(&report, "AI 前沿");
         let web3_section = section_body_by_title(&report, "Web3");
-        let tech_section = section_body_by_title(&report, "技术与开源");
+        let tech_section = section_body_by_title(&report, "技术、产业与政策");
 
         assert!(!ai_section.contains("vision-doc-journeys-to-learning-rust"));
         assert!(!web3_section.contains("vision-doc-journeys-to-learning-rust"));
@@ -7778,7 +7931,7 @@ mod tests {
         );
 
         let report = generator.generate().await.expect("report");
-        let tech_section = section_body_by_title(&report, "技术与开源");
+        let tech_section = section_body_by_title(&report, "技术、产业与政策");
 
         assert!(!tech_section.contains("币安股票资管规模突破10亿美元"));
         assert!(tech_section.contains("PostgreSQL 发布新版本并修复查询引擎回归问题"));
@@ -8017,10 +8170,10 @@ mod tests {
         let web3_section = report
             .split("## 02. Web3")
             .nth(1)
-            .and_then(|rest| rest.split("## 03. 技术与开源").next())
+            .and_then(|rest| rest.split("## 03. 技术、产业与政策").next())
             .unwrap_or("");
         let tech_section = report
-            .split("## 03. 技术与开源")
+            .split("## 03. 技术、产业与政策")
             .nth(1)
             .and_then(|rest| rest.split("## 04. 推荐深读").next())
             .unwrap_or("");

@@ -181,6 +181,8 @@ fn feed_source_name(feed_url: &str) -> String {
         "Rust Blog".to_string()
     } else if lower.contains("github.blog") {
         "GitHub Blog".to_string()
+    } else if lower.contains("ecb.europa.eu") {
+        "ECB".to_string()
     } else if lower.contains("mistral.ai") {
         "Mistral".to_string()
     } else {
@@ -344,5 +346,9 @@ mod tests {
             "Rust Blog"
         );
         assert_eq!(feed_source_name("https://github.blog/feed/"), "GitHub Blog");
+        assert_eq!(
+            feed_source_name("https://www.ecb.europa.eu/rss/press.html"),
+            "ECB"
+        );
     }
 }

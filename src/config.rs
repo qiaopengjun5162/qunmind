@@ -605,6 +605,7 @@ fn default_official_blogs_urls() -> Vec<String> {
         "https://blog.cloudflare.com/rss/".to_string(),
         "https://blog.rust-lang.org/feed.xml".to_string(),
         "https://github.blog/feed/".to_string(),
+        "https://www.ecb.europa.eu/rss/press.html".to_string(),
     ]
 }
 
@@ -956,6 +957,7 @@ mod tests {
                 "https://blog.cloudflare.com/rss/".to_string(),
                 "https://blog.rust-lang.org/feed.xml".to_string(),
                 "https://github.blog/feed/".to_string(),
+                "https://www.ecb.europa.eu/rss/press.html".to_string(),
             ]
         );
         assert_eq!(config.public_sources.official_blogs_max_items, 12);

@@ -38,20 +38,38 @@
 
 ### Done
 
+- **全球官方来源与第三板块升级已落地** — 这轮先没有急着重生成旧稿，而是先把素材与版式策略补对。`official_blogs_urls` 默认新增了 `https://www.ecb.europa.eu/rss/press.html`，并把 `ecb.europa.eu` 视作 curated traceable official source；同时，日报第三板块从“技术与开源”升级为“技术、产业与政策”，不再只承接狭义工程发布，也开始容纳工程基础设施、全球官方信号和高质量政策变化。这样后续重生成的日报才能真正体现更全球、更专业的视角，而不是旧内容换个说法。
+- **新增全球官方来源保留与分类测试** — `src/source/mod.rs` 新增了 `ECB` curated URL 保留测试，`src/source/official_blogs.rs` 补齐了 `ECB` canonical source 命名测试，`src/daily_report/mod.rs` 也新增了“全球官方宏观信号可进入第三板块”的断言，避免后续来源扩展或版块重命名时悄悄退回旧状态。
 - **2026-07-05 公众号日报 v11 已推草稿并发送手机预览** — 已审核稿 `/tmp/wechat-report-2026-07-05-source-expanded-v11.md` 已直接通过 `moonpub --articles /Users/qiaopengjun/Code/Rust/moonpub-data push /tmp/wechat-report-2026-07-05-source-expanded-v11.md --render` 推送到公众号草稿箱，并完成手机预览发送。标题为 `AI · Web3 最新日报｜2026-07-05`，`media_id = EmukC2rjB9X3nj6feGSErwz80kJdb49Hij6-qMyX0NTYNItMKQw5-Wy9D5PII3nx`；后台自动化输出显示 Session 已恢复、赞赏已开启、留言已开启、创作来源保持 `个人观点，仅供参考`、模板插入 skipped、预览发送成功。注意这次为避免重新生成导致内容波动，直接推送已审核 markdown，因此不会写入 QunMind `publish-history`；公众号草稿和手机预览已成功，不影响后台人工发布。
 - **深读与空摘要兜底文案改成自然推荐理由** — `src/daily_report/render.rs` 不再把空摘要或不可靠摘要渲染成生硬的系统提示；现在会根据标题、来源域名和链接类型生成更自然的 `为什么读` / `值得关注` 兜底文案，例如官方博客、论文、ethresear.ch、GitHub 和 AI/Web3 条目都会得到更像正式日报的推荐理由，同时继续保留完整 `原文：https://...` 作为追溯入口。
 - **日报素材来源进一步扩到官方工程博客** — `official_blogs_urls` 默认新增 `Rust Blog` 与 `GitHub Blog`，让技术与开源板块能拿到更稳定的一手工程发布、平台安全实践和工具链文章；同时把当前容易 403 的 `CryptoSlate` 从默认 Web3 media 源移除，减少生成时的失败噪音。
 - **日报分类兜底继续加固** — `src/daily_report/mod.rs` 现在把手工精选、AI、Web3、技术和官方博客分桶保留，避免官方博客或单一热点挤空技术区；最终分类后还会补回最低板块数量，防止技术区在最后一轮清洗中被剪空。
 - **低信号 Reddit 讨论帖不再占正文和深读位** — Reddit RSS 仍作为社区讨论来源，但 `Ask here`、`This Week in Rust`、`should I`、每日/每周讨论帖这类低信号入口不会再填充技术正文或推荐深读，保留“可用信息”而不是把论坛占位帖推给读者。
 - **工程官方博客分类边界修正** — Rust Blog / GitHub Blog 默认归入技术与开源，只有标题或 URL 明确出现硬 AI / Web3 信号时才迁到对应板块，避免模型在 comment 里泛化写了“AI/Web3 相关”就把普通工程文章误分。
+- **日报 JSON 输出约束继续收紧** — `src/daily_report/prompt.rs` 这一轮主动缩短了结构化 schema 描述，减少模型为了“写得完整”而额外输出说明文字、尾注或半自然语言解释。目标不是让 prompt 更花哨，而是让模型更容易稳定返回可 parse 的裸 JSON。
+- **JSON 解析新增坏输出修复层** — `src/daily_report/parser.rs` 现在除了原有的 duplicate key 容忍，还会在 parse 前额外修两类常见脏输出：数组 / 对象尾部多余逗号，以及模型把 `请注意：如果需要全部条目聚合成单一摘要，当前文本含多条新闻` 之类解释性尾巴直接拼在 JSON 后面。这样这类错误不再直接把整篇日报打回空报告。
+- **fallback 文案从“相关主题相关材料”改成“带标题的核对提示”** — `src/daily_report/mod.rs` 现在不再大量输出 `OpenAI 发布了AI相关主题相关材料` 这类模板句。官方博客、GitHub、Hacker News 和通用来源的 fallback comment / read summary 改成了“带具体标题或 repo 名”的核对提示，让正文更像编辑在提醒读者去看什么，而不是系统在机械复述来源类型。
+- **模型脏句与空泛句统一在 Rust 层清洗** — `clean_summary(...)`、`humanize_focus_text(...)` 和最终 summary 渲染现在都会先去掉 `请注意：如果需要全部条目聚合成单一摘要...` 这类模型残留；`comment_needs_upgrade(...)` 也新增了对 `相关主题相关材料`、`近期受到关注`、`值得继续关注后续演进` 等低质量句式的识别，避免它们继续漏进正文。
+- **技术正文与深读默认继续下沉 Reddit** — 这轮不只是挡住低信号 Reddit 问答帖，而是进一步把 Reddit 整体排除出 `推荐深读` 默认候选，同时技术正文与技术补位逻辑也不再允许 Reddit 条目占核心位。Reddit 仍可留在“补充阅读池”，但默认不会再出现在“技术、产业与政策”的正文里凑数。
+- **技术区补位门槛继续提高** — `is_minimum_tech_fill_item(...)` 现在要求条目至少满足“有可靠摘要 / 分数足够高 / 官方博客 / 更像文章型来源”之一，避免为了把技术区补满而把低分、无摘要、无上下文的弱条目硬塞进正文。对应地，`tech_section_is_worthy(...)` 也开始要求 source item 本身是高信号。
+- **相近标题重复去重再收紧** — `similar_section_story(...)` 现在会先比较归一化标题本身，再比较全文归一化文本和 shingles。这样像同一篇 GitHub Blog 因 URL 或 comment 轻微差异而在正文重复出现两次的情况，更容易在最终 section 清洗时被识别掉。
 
 ### Verification
 
+- `cargo test daily_report::parser::tests:: --lib`
+- `cargo test daily_report::render::tests:: --lib`
+- `cargo test daily_report::tests:: --lib`
+- `cargo test daily_report::tests::generate_filters_low_signal_items_and_limits_section_sizes --lib`
+- `cargo test daily_report::tests::low_signal_reddit_discussions_do_not_fill_tech_body_or_reads --lib`
 - `cargo fmt --all -- --check`
 - `cargo clippy --all-targets --all-features --tests --benches -- -D warnings`
 - `cargo test daily_report::tests:: --lib`：86 passed
 - `cargo nextest run --all-features`：436 passed, 2 skipped
 - `moonpub --articles /Users/qiaopengjun/Code/Rust/moonpub-data push /tmp/wechat-report-2026-07-05-source-expanded-v11.md --render`：真实推送草稿并发送手机预览成功，创作来源保持 `个人观点，仅供参考`
+
+### Note
+
+- **今天的新一轮 `clarified-v3` 真实稿还没在本轮完成生成** — 当前代码和测试已经继续收敛，但因为真实 `cargo run -- --config config.toml daily-report ...` 会读取本地数据库并可能把群消息发送到外部 AI / 资讯源，系统要求额外显式授权。也就是说：这轮代码层面的日报质量问题已继续压缩，`/tmp/wechat-report-2026-07-05-clarified-v2.md` 也已证明比前一版明显更干净，但 `clarified-v3` 的真实生成与发布还没有在本轮落成，不应误写成“今日最新版已完成发布”。
 
 ## 2026-07-04
 
