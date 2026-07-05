@@ -926,14 +926,7 @@ fn has_ascii_ellipsis_fragment(value: &str) -> bool {
 }
 
 fn fallback_section_comment(item: &ReportSection) -> String {
-    if item.source.trim().is_empty() {
-        "这条信息摘要不够完整，建议直接阅读原文核对。".to_string()
-    } else {
-        format!(
-            "这条信息近期来自{}，摘要不够完整，建议直接阅读原文核对。",
-            sanitize(item.source.trim())
-        )
-    }
+    fallback_reason_from_title_and_url(&item.title, &item.url)
 }
 
 fn short_title(item: &PublicNewsItem, score: i64) -> String {
@@ -1251,8 +1244,9 @@ mod tests {
 
         let rendered = format_section_item(&item, "AI").expect("section item");
 
-        assert!(rendered.contains("摘要不够完整，建议直接阅读原文核对"));
+        assert!(rendered.contains("这篇材料涉及 AI learns the dark art"));
         assert!(!rendered.contains("AI learns the dark art of R..."));
+        assert!(!rendered.contains("摘要不够完整"));
         assert!(rendered.contains("原文：https://example.com/ai-rfic"));
     }
 
