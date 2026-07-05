@@ -175,6 +175,16 @@ official_blogs_urls = [
   "https://blog.cloudflare.com/rss/",
 ] # 官网 / 官方博客一手来源；适合补 OpenAI、Google、Cloudflare 这类更高层面的正式发布与技术博客
 
+reddit_rss_enabled = false
+reddit_rss_max_items = 16
+reddit_rss_timeout_secs = 15
+reddit_rss_urls = [
+  "https://www.reddit.com/r/rust/.rss",
+  "https://www.reddit.com/r/MachineLearning/.rss",
+  "https://www.reddit.com/r/ethdev/.rss",
+  "https://www.reddit.com/r/cryptography/.rss",
+] # Reddit 社区讨论入口；只消费公开 RSS，用来补充 AI / Web3 / 开源的实用问题、工具反馈和工程讨论
+
 # 手工精选入口：适合临时补入你明确想推荐大家阅读的一手原文、X 原帖或官方文章。
 # 这些条目会进入日报素材池，优先出现在“推荐深读”或“完整素材链接”里。
 [[public_sources.manual_items]]

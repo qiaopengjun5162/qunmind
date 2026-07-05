@@ -8,8 +8,9 @@ use super::{
     coingecko::CoinGeckoTrendingSource, coinmarketcap::CoinMarketCapSource,
     defillama::DeFiLlamaProtocolsSource, dune::DuneQuerySource, ethresear::EthResearchSource,
     github_trending::GitHubTrendingSource, hacker_news::HackerNewsSource, hn_daily::HnDailySource,
-    manual::ManualSource, official_blogs::OfficialBlogsSource, slerf_blog::SlerfBlogSource,
-    web3_media::Web3MediaSource, wechat_rss::WechatRssSource, x_rss::XRssSource,
+    manual::ManualSource, official_blogs::OfficialBlogsSource, reddit_rss::RedditRssSource,
+    slerf_blog::SlerfBlogSource, web3_media::Web3MediaSource, wechat_rss::WechatRssSource,
+    x_rss::XRssSource,
 };
 
 /// 根据配置构建聚合新闻源。所有新闻源的注册都在这里，添加新源只需改这一处。
@@ -54,6 +55,9 @@ pub fn build(config: &PublicSourcesConfig) -> Result<Option<Arc<dyn PublicNewsSo
     }
     if config.official_blogs_enabled {
         sources.push(Arc::new(OfficialBlogsSource::new(config)?));
+    }
+    if config.reddit_rss_enabled {
+        sources.push(Arc::new(RedditRssSource::new(config)?));
     }
     if config.web3_media_enabled {
         sources.push(Arc::new(Web3MediaSource::new(config)?));

@@ -25,7 +25,7 @@ use qunmind::wechat_article_helper::{
     run_wechat_article_url_helper, wechat_article_url_response_json,
 };
 use qunmind::wx_cli_commands::run_wx_cli_command;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tracing::{error, info};
 use tracing_subscriber::EnvFilter;
@@ -111,6 +111,59 @@ fn build_channel(config: &Config) -> anyhow::Result<Arc<dyn Channel>> {
     })
 }
 
+fn previous_markdown_context_for_output(output: &Path) -> Option<String> {
+    let mut chunks = Vec::new();
+
+    if let Ok(markdown) = std::fs::read_to_string(output)
+        && !markdown.trim().is_empty()
+    {
+        chunks.push(markdown);
+    }
+
+    let parent = output.parent().unwrap_or_else(|| Path::new("."));
+    let mut candidates = recent_report_markdown_candidates(parent, output);
+    candidates.sort_by_key(|path| {
+        std::fs::metadata(path)
+            .and_then(|metadata| metadata.modified())
+            .ok()
+    });
+    candidates.reverse();
+
+    for path in candidates.into_iter().take(5) {
+        if let Ok(markdown) = std::fs::read_to_string(&path)
+            && !markdown.trim().is_empty()
+        {
+            chunks.push(markdown);
+        }
+    }
+
+    if chunks.is_empty() {
+        None
+    } else {
+        Some(chunks.join("\n\n"))
+    }
+}
+
+fn recent_report_markdown_candidates(dir: &Path, output: &Path) -> Vec<PathBuf> {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return Vec::new();
+    };
+
+    entries
+        .flatten()
+        .map(|entry| entry.path())
+        .filter(|path| path != output)
+        .filter(|path| path.extension().and_then(|ext| ext.to_str()) == Some("md"))
+        .filter(|path| {
+            path.file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(|name| {
+                    name.starts_with("wechat-report-") || name.starts_with("daily-report-")
+                })
+        })
+        .collect()
+}
+
 async fn run_diagnostic_command(
     command: CliCommand,
     config: &Config,
@@ -132,7 +185,7 @@ async fn run_diagnostic_command(
             let report_target = resolve_manual_daily_report_target(config, &report_name)?;
             let message_store = build_message_store(config).await?;
             let public_news_source = build_public_news_source(config)?;
-            let previous_markdown = std::fs::read_to_string(&output).ok();
+            let previous_markdown = previous_markdown_context_for_output(&output);
             let markdown = generate_manual_daily_report_markdown(
                 config,
                 &report_target,
@@ -930,6 +983,24 @@ mod tests {
 
         assert!(markdown.contains("title: \"AI · Web3 最新日报｜"));
         assert!(markdown.contains("Rust release"));
+    }
+
+    #[test]
+    fn previous_markdown_context_includes_recent_report_files() {
+        let dir = std::env::temp_dir().join(format!(
+            "qunmind-previous-markdown-test-{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&dir).expect("create temp dir");
+        let previous_path = dir.join("wechat-report-2026-07-04.md");
+        let output_path = dir.join("wechat-report-2026-07-05.md");
+        std::fs::write(&previous_path, "> 原文：https://example.com/yesterday\n")
+            .expect("write previous report");
+
+        let context = previous_markdown_context_for_output(&output_path).expect("context");
+
+        assert!(context.contains("https://example.com/yesterday"));
+        std::fs::remove_dir_all(&dir).expect("remove temp dir");
     }
 
     #[test]

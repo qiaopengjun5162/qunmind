@@ -149,7 +149,7 @@ fn enrich_report(
 
     promote_web3_focus(&mut report, items);
     polish_sections(&mut report, items);
-    refresh_focus_candidate(&mut report, items);
+    refresh_focus_candidate(&mut report, items, recent_used_urls);
     deprioritize_recently_used_urls(&mut report, items, recent_used_urls);
     remove_focus_duplicates_from_sections(&mut report);
     backfill_sections_after_focus_removal(&mut report, items, recent_used_urls);
@@ -158,6 +158,7 @@ fn enrich_report(
     finalize_section_classification(&mut report, items);
     ensure_minimum_section_items(&mut report, items, recent_used_urls);
     finalize_section_classification(&mut report, items);
+    remove_focus_duplicates_from_sections(&mut report);
     ensure_minimum_reads(&mut report, items, recent_used_urls);
 
     report
@@ -211,7 +212,11 @@ fn promote_web3_focus(report: &mut ReportJson, items: &[PublicNewsItem]) {
     }
 }
 
-fn refresh_focus_candidate(report: &mut ReportJson, items: &[PublicNewsItem]) {
+fn refresh_focus_candidate(
+    report: &mut ReportJson,
+    items: &[PublicNewsItem],
+    recent_used_urls: &HashSet<String>,
+) {
     if should_prioritize_web3(report, items)
         && current_focus_is_web3(report, items)
         && !focus_text_needs_upgrade(report.focus_text.trim())
@@ -219,7 +224,8 @@ fn refresh_focus_candidate(report: &mut ReportJson, items: &[PublicNewsItem]) {
         return;
     }
 
-    let Some(best_focus) = best_focus_candidate(items, &report.focus_url) else {
+    let Some(best_focus) = best_fresh_focus_candidate(items, &report.focus_url, recent_used_urls)
+    else {
         return;
     };
 
@@ -1746,9 +1752,9 @@ fn deprioritize_recently_used_urls(
         return;
     }
 
-    drop_recent_duplicates_if_possible(&mut report.ai_items, recent_used_urls);
-    drop_recent_duplicates_if_possible(&mut report.web3_items, recent_used_urls);
-    drop_recent_duplicates_if_possible(&mut report.tech_items, recent_used_urls);
+    drop_recent_duplicates_if_possible(&mut report.ai_items, items, recent_used_urls);
+    drop_recent_duplicates_if_possible(&mut report.web3_items, items, recent_used_urls);
+    drop_recent_duplicates_if_possible(&mut report.tech_items, items, recent_used_urls);
 
     backfill_recently_pruned_sections(&mut report.ai_items, items, recent_used_urls, is_ai_item);
     backfill_recently_pruned_sections(
@@ -1763,28 +1769,6 @@ fn deprioritize_recently_used_urls(
         recent_used_urls,
         is_tech_item,
     );
-    top_up_section_with_recent_items_if_thin(
-        &mut report.ai_items,
-        items,
-        recent_used_urls,
-        is_ai_item,
-        MIN_SECTION_ITEMS.min(MAX_AI_ITEMS),
-    );
-    top_up_section_with_recent_items_if_thin(
-        &mut report.web3_items,
-        items,
-        recent_used_urls,
-        is_web3_item,
-        MAX_WEB3_ITEMS,
-    );
-    top_up_section_with_recent_items_if_thin(
-        &mut report.tech_items,
-        items,
-        recent_used_urls,
-        is_tech_item,
-        MIN_SECTION_ITEMS.min(MAX_TECH_ITEMS),
-    );
-
     report.ai_items.truncate(MAX_AI_ITEMS);
     report.web3_items.truncate(MAX_WEB3_ITEMS);
     report.tech_items.truncate(MAX_TECH_ITEMS);
@@ -1803,6 +1787,7 @@ fn deprioritize_recently_used_urls(
 
 fn drop_recent_duplicates_if_possible(
     items: &mut Vec<ReportSection>,
+    source_items: &[PublicNewsItem],
     recent_used_urls: &HashSet<String>,
 ) {
     if items.len() <= 1 {
@@ -1813,11 +1798,20 @@ fn drop_recent_duplicates_if_possible(
         .iter()
         .filter(|item| !recent_used_urls.contains(item.url.trim()))
         .count();
-    if keep_count == 0 {
+    if keep_count > 0 {
+        items.retain(|item| !recent_used_urls.contains(item.url.trim()));
         return;
     }
 
-    items.retain(|item| !recent_used_urls.contains(item.url.trim()));
+    items.retain(|item| {
+        let Some(source_item) = source_items
+            .iter()
+            .find(|source| source.url.trim() == item.url.trim())
+        else {
+            return true;
+        };
+        !is_repeat_prone_recent_body_item(source_item)
+    });
 }
 
 fn backfill_recently_pruned_sections(
@@ -1855,60 +1849,6 @@ fn backfill_recently_pruned_sections(
                 String::new()
             },
         });
-    }
-
-    section_items.extend(additions);
-    dedup_sections(section_items);
-}
-
-fn top_up_section_with_recent_items_if_thin(
-    section_items: &mut Vec<ReportSection>,
-    items: &[PublicNewsItem],
-    recent_used_urls: &HashSet<String>,
-    predicate: impl Fn(&PublicNewsItem) -> bool,
-    min_items: usize,
-) {
-    if section_items.len() >= min_items {
-        return;
-    }
-
-    let existing_urls = section_items
-        .iter()
-        .map(|item| item.url.clone())
-        .collect::<HashSet<_>>();
-
-    let mut additions = Vec::new();
-    for item in items {
-        if !recent_used_urls.contains(item.url.trim()) {
-            continue;
-        }
-        if existing_urls.contains(&item.url) {
-            continue;
-        }
-        if !predicate(item) {
-            continue;
-        }
-
-        additions.push(ReportSection {
-            title: compact_title(item.title.trim(), 50),
-            url: item.url.clone(),
-            comment: fallback_comment(item),
-            source: item.source.clone(),
-            points: item.score.unwrap_or(0),
-            subsection: if is_ai_item(item) {
-                infer_ai_subsection(item).to_string()
-            } else {
-                String::new()
-            },
-        });
-
-        if section_items.len() + additions.len() >= min_items {
-            break;
-        }
-    }
-
-    if additions.is_empty() {
-        return;
     }
 
     section_items.extend(additions);
@@ -2011,6 +1951,9 @@ fn top_up_tech_section_with_general_items(
             if is_recent != prefer_recent {
                 continue;
             }
+            if is_recent && is_repeat_prone_recent_body_item(item) {
+                continue;
+            }
             if item.url.trim() == focus_url {
                 continue;
             }
@@ -2077,7 +2020,7 @@ fn backfill_section_after_focus_removal(
             if is_recent != prefer_recent {
                 continue;
             }
-            if is_recent && is_repeat_prone_public_item(item) {
+            if is_recent && is_repeat_prone_recent_body_item(item) {
                 continue;
             }
             if item.url.trim() == focus_url {
@@ -2281,6 +2224,13 @@ fn is_repeat_prone_public_item(item: &PublicNewsItem) -> bool {
     item.source.contains("GitHub Trending")
         && is_plain_github_repo_url(&item.url)
         && !is_fresh_tech_candidate(item)
+}
+
+fn is_repeat_prone_recent_body_item(item: &PublicNewsItem) -> bool {
+    is_repeat_prone_public_item(item)
+        || is_manual_category(item)
+        || is_generic_market_wrap_item(item)
+        || is_roundup_style_item(item)
 }
 
 fn is_manual_category(item: &PublicNewsItem) -> bool {
@@ -3007,17 +2957,28 @@ fn best_focus_candidate<'a>(
     items: &'a [PublicNewsItem],
     current_focus_url: &str,
 ) -> Option<&'a PublicNewsItem> {
+    best_focus_candidate_with_filter(items, current_focus_url, |_| true)
+}
+
+fn best_focus_candidate_with_filter<'a>(
+    items: &'a [PublicNewsItem],
+    current_focus_url: &str,
+    include: impl Fn(&PublicNewsItem) -> bool,
+) -> Option<&'a PublicNewsItem> {
     let had_preferred_focus_candidates = items
         .iter()
+        .filter(|item| include(item))
         .filter(|item| is_focus_worthy_item(item))
         .any(focus_candidate_has_readable_summary);
     let had_non_newswire_focus_candidates = items
         .iter()
+        .filter(|item| include(item))
         .filter(|item| is_focus_worthy_item(item))
         .any(|item| !is_newswire_style_read_item(item));
 
     let current = items
         .iter()
+        .filter(|item| include(item))
         .find(|item| item.url.trim() == current_focus_url.trim())
         .filter(|item| {
             (!had_preferred_focus_candidates || focus_candidate_has_readable_summary(item))
@@ -3027,6 +2988,7 @@ fn best_focus_candidate<'a>(
 
     let best = items
         .iter()
+        .filter(|item| include(item))
         .filter(|item| is_focus_worthy_item(item))
         .filter(|item| {
             (!had_preferred_focus_candidates || focus_candidate_has_readable_summary(item))
@@ -3039,6 +3001,21 @@ fn best_focus_candidate<'a>(
     } else {
         Some(best)
     }
+}
+
+fn best_fresh_focus_candidate<'a>(
+    items: &'a [PublicNewsItem],
+    current_focus_url: &str,
+    recent_used_urls: &HashSet<String>,
+) -> Option<&'a PublicNewsItem> {
+    if recent_used_urls.is_empty() {
+        return best_focus_candidate(items, current_focus_url);
+    }
+
+    best_focus_candidate_with_filter(items, current_focus_url, |item| {
+        !recent_used_urls.contains(item.url.trim())
+    })
+    .or_else(|| best_focus_candidate(items, current_focus_url))
 }
 
 fn is_focus_worthy_item(item: &PublicNewsItem) -> bool {
@@ -4888,6 +4865,129 @@ mod tests {
             .collect::<Vec<_>>();
         assert!(!urls.contains(&"https://example.com/old-read"));
         assert!(urls.contains(&"https://example.com/fresh-read"));
+    }
+
+    #[test]
+    fn deprioritize_recently_used_urls_does_not_top_up_with_recent_links() {
+        let recent = PublicNewsItem {
+            source: "GitHub Trending".to_string(),
+            title: "recent/repo".to_string(),
+            url: "https://github.com/recent/repo".to_string(),
+            summary: None,
+            author: None,
+            published_at: None,
+            score: Some(100),
+            comments: None,
+            ai_score: None,
+            category: None,
+        };
+        let fresh = PublicNewsItem {
+            source: "Hacker News".to_string(),
+            title: "Fresh technical release".to_string(),
+            url: "https://example.com/fresh-tech".to_string(),
+            summary: Some("新技术发布，读者应核对迁移说明和实现边界。".to_string()),
+            author: None,
+            published_at: Some("2026-07-05T00:00:00Z".to_string()),
+            score: Some(90),
+            comments: None,
+            ai_score: None,
+            category: None,
+        };
+        let mut report = ReportJson {
+            tech_items: vec![
+                ReportSection {
+                    title: "recent/repo".to_string(),
+                    url: recent.url.clone(),
+                    comment: "旧链接".to_string(),
+                    source: recent.source.clone(),
+                    points: 100,
+                    subsection: String::new(),
+                },
+                ReportSection {
+                    title: "Fresh technical release".to_string(),
+                    url: fresh.url.clone(),
+                    comment: "新链接".to_string(),
+                    source: fresh.source.clone(),
+                    points: 90,
+                    subsection: String::new(),
+                },
+            ],
+            ..Default::default()
+        };
+        let recent_used_urls = std::collections::HashSet::from([recent.url.clone()]);
+
+        deprioritize_recently_used_urls(&mut report, &[recent, fresh], &recent_used_urls);
+
+        let urls = report
+            .tech_items
+            .iter()
+            .map(|item| item.url.as_str())
+            .collect::<Vec<_>>();
+        assert!(!urls.contains(&"https://github.com/recent/repo"));
+        assert!(urls.contains(&"https://example.com/fresh-tech"));
+    }
+
+    #[test]
+    fn deprioritize_recently_used_urls_removes_repeat_prone_items_even_without_fresh_replacement() {
+        let manual = PublicNewsItem {
+            source: "Paragraph".to_string(),
+            title: "公开我个人全部的投资、研究与写作的逻辑和方法论".to_string(),
+            url: "https://paragraph.com/@jason-chen/GtQDLkp2k1Rb15VAOhgx".to_string(),
+            summary: Some("上一版已经用过的手工精选材料。".to_string()),
+            author: None,
+            published_at: None,
+            score: Some(1000),
+            comments: None,
+            ai_score: None,
+            category: Some("manual:web3_research".to_string()),
+        };
+        let research = PublicNewsItem {
+            source: "ethresear.ch".to_string(),
+            title: "Post-quantum Ethereum".to_string(),
+            url: "https://ethresear.ch/t/post-quantum-ethereum/1".to_string(),
+            summary: Some(
+                "研究者讨论以太坊后量子认证机制，读者应核对安全模型和协议约束。".to_string(),
+            ),
+            author: None,
+            published_at: Some("2026-07-05T00:00:00Z".to_string()),
+            score: Some(90),
+            comments: None,
+            ai_score: None,
+            category: None,
+        };
+        let mut report = ReportJson {
+            web3_items: vec![
+                ReportSection {
+                    title: manual.title.clone(),
+                    url: manual.url.clone(),
+                    comment: manual.summary.clone().unwrap(),
+                    source: manual.source.clone(),
+                    points: 1000,
+                    subsection: String::new(),
+                },
+                ReportSection {
+                    title: research.title.clone(),
+                    url: research.url.clone(),
+                    comment: research.summary.clone().unwrap(),
+                    source: research.source.clone(),
+                    points: 90,
+                    subsection: String::new(),
+                },
+            ],
+            ..Default::default()
+        };
+        let recent_used_urls =
+            std::collections::HashSet::from([manual.url.clone(), research.url.clone()]);
+
+        deprioritize_recently_used_urls(&mut report, &[manual, research], &recent_used_urls);
+
+        let urls = report
+            .web3_items
+            .iter()
+            .map(|item| item.url.as_str())
+            .collect::<Vec<_>>();
+        assert!(!urls.contains(&"https://paragraph.com/@jason-chen/GtQDLkp2k1Rb15VAOhgx"));
+        assert!(urls.contains(&"https://ethresear.ch/t/post-quantum-ethereum/1"));
     }
 
     #[test]

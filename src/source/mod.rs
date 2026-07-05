@@ -10,6 +10,7 @@ pub mod hn_daily;
 pub mod http_client;
 pub mod manual;
 pub mod official_blogs;
+pub mod reddit_rss;
 pub mod registry;
 pub mod slerf_blog;
 pub mod web3_media;
@@ -134,6 +135,7 @@ fn is_curated_source_url(url: &str) -> bool {
         || url.contains("openai.com/")
         || url.contains("blog.google/")
         || url.contains("blog.cloudflare.com/")
+        || url.contains("reddit.com/r/")
 }
 
 fn is_manual_item(item: &PublicNewsItem) -> bool {
@@ -156,6 +158,9 @@ fn source_preference_score(item: &PublicNewsItem) -> i64 {
     }
     if is_official_blog_item(item) {
         score += 3;
+    }
+    if item.category.as_deref() == Some("reddit_rss") {
+        score += 1;
     }
     if item.url.contains("openai.com/")
         || item.url.contains("blog.google/")
@@ -407,6 +412,33 @@ mod tests {
 
         assert_eq!(items.len(), 1);
         assert_eq!(items[0].source, "吴说区块链");
+    }
+
+    #[tokio::test]
+    async fn composite_keeps_curated_reddit_links_even_without_keyword_match() {
+        let source = Arc::new(StaticSource {
+            items: vec![PublicNewsItem {
+                source: "Reddit r/ethdev".to_string(),
+                title: "Daily discussion".to_string(),
+                url: "https://www.reddit.com/r/ethdev/comments/abc/daily_discussion/".to_string(),
+                summary: Some("社区讨论以太坊开发工具链。".to_string()),
+                author: Some("/u/builder".to_string()),
+                published_at: Some("2026-07-05T00:00:00Z".to_string()),
+                score: Some(90),
+                comments: None,
+                ai_score: None,
+                category: Some("reddit_rss".to_string()),
+            }],
+        });
+        let composite = CompositePublicNewsSource::new(vec![source], vec!["rust".to_string()], 10);
+
+        let items = match composite.fetch_top_items().await {
+            Ok(items) => items,
+            Err(err) => panic!("items: {err}"),
+        };
+
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].source, "Reddit r/ethdev");
     }
 
     struct FailingSource;

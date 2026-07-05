@@ -14,7 +14,7 @@
 
 项目初心是微信/微信群 AI 中枢；公共投研来源只是日报缺少群消息时的辅助素材，不应压过微信收发、消息归一化、群配置、上下文记忆和真实联调。
 
-当前已有 PostgreSQL 消息持久化。`BotHandler` 会在 mention 过滤前保存入站消息；命中回复时会按 `bot.context_messages` 读取最近同会话文本作为基础对话上下文，默认 8 条，配置为 0 时只使用当前消息；`PostgresMessageStore` 会从文本消息中抽取 URL 并写入 `message_links`；`scheduler` 的日报会按 `schedule.daily_report_lookback_hours`、`schedule.daily_report_max_messages` 和 `schedule.daily_report_max_links` 读取已保存群消息与链接情报后再调用模型生成。群消息为空且 `[public_sources]` 中至少一个来源启用时，会读取 Hacker News、CoinMarketCap、CoinGecko、DeFi Llama、Dune、GitHub Trending、Slerf Blog、WeChat RSS、X RSS、Web3 Media 等公共信息参考日报素材，并按 `topic_keywords` 聚焦 Rust、Web3、crypto、AI、ZKP 等前沿技术。当前还没有前端 UI。
+当前已有 PostgreSQL 消息持久化。`BotHandler` 会在 mention 过滤前保存入站消息；命中回复时会按 `bot.context_messages` 读取最近同会话文本作为基础对话上下文，默认 8 条，配置为 0 时只使用当前消息；`PostgresMessageStore` 会从文本消息中抽取 URL 并写入 `message_links`；`scheduler` 的日报会按 `schedule.daily_report_lookback_hours`、`schedule.daily_report_max_messages` 和 `schedule.daily_report_max_links` 读取已保存群消息与链接情报后再调用模型生成。群消息为空且 `[public_sources]` 中至少一个来源启用时，会读取 Hacker News、CoinMarketCap、CoinGecko、DeFi Llama、Dune、GitHub Trending、Slerf Blog、WeChat RSS、X RSS、Reddit RSS、Web3 Media 等公共信息参考日报素材，并按 `topic_keywords` 聚焦 Rust、Web3、crypto、AI、ZKP 等前沿技术。当前还没有前端 UI。
 
 `PANews` 当前先沿 `web3_media` RSS 边界接入，默认 feed 使用 `https://www.panewslab.com/rss.xml?lang=zh&type=NEWS`。同时 `panewslab.com` 域名被视作精选可追溯来源，避免中文 Web3 原文因为标题没命中 `topic_keywords` 而在聚合层被误过滤。
 
@@ -73,6 +73,8 @@ X / Twitter 这类一手信息入口也优先走 `PublicNewsSource` 边界。当
 
 官网 / 官方博客这类“更高层面”的一手来源也应优先走 `PublicNewsSource` 边界。当前推荐形态是 `[public_sources] official_blogs_*`：统一消费 OpenAI、Google Blog、Cloudflare Blog 一类稳定可访问的 RSS / Atom 上游，把正式发布、研究博客、技术公告沉淀成长期来源；不要每次都退回成靠 `manual_items` 临时补几条官方链接。
 
+Reddit 这类社区讨论来源也优先走 `PublicNewsSource` 边界。当前落地形态是 `[public_sources] reddit_rss_*`，只消费公开 subreddit RSS / Atom，用于补充 AI / Web3 / 开源社区的实用问题、工具反馈和工程讨论；不要把 Reddit 登录态、cookie、抓取绕过、私信或 API key 采集塞进 `QunMind` 主进程。
+
 如果同一篇原文同时被 `Hacker News`、聚合媒体和 `official_blogs` / `manual_items` 抓到，聚合层必须优先保留官方 / 手工精选版本，不能因为抓取顺序把一手原文显示成二手来源。日报正文与参考链接里的来源标签也应优先按原始官网域名纠正成 `OpenAI`、`Google Blog`、`Cloudflare Blog` 等 canonical 名称。
 
 当用户临时给出明确想推荐大家阅读的优质链接（例如 OpenAI 官方文章、项目公告、论文、X 原帖、ZK / cryptography 资料）时，优先接到 `[[public_sources.manual_items]]` 手工精选入口，而不是临时硬编码进日报正文。`manual_items` 仍属于 `PublicNewsSource` 素材边界，适合作为“RSS 尚未覆盖但人工确认值得推荐”的补充来源；如果 X 原帖正文暂时拿不到，也可以先放 URL、标题、作者和人工摘要，让它进入“完整素材链接”或“推荐深读”候选。`ManualSource` 会把这类条目标记为 `manual:*`，聚合层必须把它们视为用户显式精选并跳过 topic keyword 过滤，不要再靠不断追加 URL 域名白名单来保留手工来源。
@@ -100,7 +102,7 @@ X / Twitter 这类一手信息入口也优先走 `PublicNewsSource` 边界。当
 
 `src/daily_report/` 当前除了“模型生成正文”之外，还承担一层质量兜底：如果 AI 返回的 JSON 非法、字段过空、板块误分或摘要质量过低，优先在 Rust 侧补齐非空板块、修正 AI/Web3/技术分类、过滤低信号条目，并把链接区分为“正文实际引用的参考来源”和“未写入正文但来自本次素材池的完整素材链接”。后续继续优化日报质量时，优先沿这条“AI 生成 + Rust 兜底收敛”边界演进，不要把容错逻辑散回 CLI、scheduler 或 publisher。
 
-手工 `daily-report --output <path>` 在回退到 `public_sources` 生成公众号日报时，会优先读取同一路径上一次生成的 markdown，并提取其中正文 `原文：https://...` URL 作为“近期已用链接”降权信号。该信号只影响本次正文板块与推荐深读的选材新鲜度，不会删除“完整素材链接”区里的可追溯来源。优化同一天多次重跑体验时，优先沿这个轻量降权边界演进，不要急着引入复杂的跨日状态库。
+手工 `daily-report --output <path>` 在回退到 `public_sources` 生成公众号日报时，会优先读取同路径上一次生成的 markdown，并额外读取同目录最近几份 `wechat-report-*.md` / `daily-report-*.md`，提取正文 `原文：https://...` 与 `compact-links` 里的完整 URL 作为“近期已用链接”降权信号。该信号只影响本次焦点、正文板块与推荐深读的选材新鲜度，不会删除“完整素材链接”区里的可追溯来源。优化同一天或跨天连续重跑体验时，优先沿这个轻量降权边界演进，不要急着引入复杂的跨日状态库。
 
 `推荐深读` 当前优先选择更像文章、论文、官方说明或手工精选的入口；普通 `GitHub Trending` 榜单仓库只有在缺少更好替代项时才作为保底保留 1 条。目标是减少“深读区看起来像又重复了一遍技术榜单”的问题，但不能把深读区直接过滤成空白。
 
@@ -114,7 +116,7 @@ X / Twitter 这类一手信息入口也优先走 `PublicNewsSource` 边界。当
 
 当同一天重复生成公众号日报时，`src/daily_report/` 现在会主动压制“长期稳定霸榜但缺少今天新事件”的 GitHub Trending 仓库：技术区最多保留少量这类熟面孔，其余优先让位给安全事件、发布公告、部署指南、工程复盘等更像“今天发生了什么”的技术项；被挤出的稳定榜单继续留在“完整素材链接”，不要再让正文技术区被 `rust/rustdesk/zed` 一类条目反复占满。
 
-公众号日报排版优先使用 `moonpub` 已支持的 block fence，例如 `intro`、`tip`、`callout`、`divider`、`steps`、`timeline`、`summary` 和 `compact-links`。当前正文结构是“`intro` 导语卡片 -> `divider` 今日速览 -> `summary` 今日三件事 -> `divider` 主线 -> `callout` 今日焦点 -> 编号 AI / Web3 / 技术 / 深读分区 -> `intro` 今日收束卡片 -> 参考来源 / 完整素材链接”；不同区域必须有明确视觉层级，不要让首屏、正文条目和参考链接都长成同一种卡片。正文条目采用紧凑引用卡片：标题行带板块标签，卡片内固定显示 `值得关注`、`来源依据`、`原文` 三行；深读区固定显示 `为什么读` 和 `原文`。参考来源和完整素材链接区统一使用 `:::compact-links` 资料索引：单条尽量压成“序号｜短标题｜来源/短说明｜原文完整 URL”，由 `moonpub` 渲染为 12px 小字号；标题不要再单独做链接，唯一链接入口是完整 `原文：https://...`，避免尾部链接篇幅压过正文；不要用 `####` 四级标题渲染每条链接，否则公众号里颜色和标题层级会显得混乱。首屏排版避免使用会固定产生白色标签或白色数字徽章的 block 作为主结构，除非先用手机预览确认对比度；当前更稳的主结构是 `intro` + `divider` + `summary`。每个正文观点、焦点、深读推荐、参考来源和完整素材链接都必须直接显示裸 `原文：https://...`，正文条目必须显示 `来源依据：...`，不能只依赖 Markdown 链接文字或公众号渲染后的可点击标题；如果拿不到可靠摘要或正文，就明确提示读者“请直接阅读原文核对”，不要假装已经理解全文。日报的可追溯性优先级高于版面简洁；如果模型无法把观点追溯到具体 URL，宁可只展示标题和完整原文链接，也不要写成不可核验的“系统观点”。后续优化排版时先确认 `moonpub` renderer 支持对应 block，不要随手造新语法导致草稿渲染退化。
+公众号日报排版优先使用 `moonpub` 已支持的 block fence，例如 `intro`、`tip`、`callout`、`divider`、`steps`、`timeline`、`summary` 和 `compact-links`。当前正文结构是“`intro` 导语卡片 -> `divider` 今日速览 -> `summary` 今日三件事 -> `divider` 主线 -> `callout` 今日焦点 -> 编号 AI / Web3 / 技术 / 深读分区 -> `intro` 今日收束卡片 -> 参考来源 / 完整素材链接”；不同区域必须有明确视觉层级，不要让首屏、正文条目和参考链接都长成同一种卡片。今日焦点必须是可直接阅读的实用模块，固定呈现 `发生了什么`、`为什么有用`、`你可以怎么用` 和 `核对入口`，避免只写一两句话后把读者丢给原文。正文条目采用紧凑引用卡片：标题行带板块标签，卡片内固定显示 `值得关注`、`来源依据`、`原文` 三行；深读区固定显示 `为什么读` 和 `原文`。参考来源和完整素材链接区统一使用 `:::compact-links` 资料索引：单条尽量压成“序号｜短标题｜来源/短说明｜原文完整 URL”，由 `moonpub` 渲染为 12px 小字号；标题不要再单独做链接，唯一链接入口是完整 `原文：https://...`，避免尾部链接篇幅压过正文；不要用 `####` 四级标题渲染每条链接，否则公众号里颜色和标题层级会显得混乱。首屏排版避免使用会固定产生白色标签或白色数字徽章的 block 作为主结构，除非先用手机预览确认对比度；当前更稳的主结构是 `intro` + `divider` + `summary`。每个正文观点、焦点、深读推荐、参考来源和完整素材链接都必须直接显示裸 `原文：https://...`，正文条目必须显示 `来源依据：...`，不能只依赖 Markdown 链接文字或公众号渲染后的可点击标题；如果拿不到可靠摘要或正文，就明确提示读者“请直接阅读原文核对”，不要假装已经理解全文。日报的可追溯性优先级高于版面简洁；如果模型无法把观点追溯到具体 URL，宁可只展示标题和完整原文链接，也不要写成不可核验的“系统观点”。后续优化排版时先确认 `moonpub` renderer 支持对应 block，不要随手造新语法导致草稿渲染退化。
 
 公众号日报当前面向个人公众号 `寻月隐君` 使用固定封面母版。封面应保持浅色背景和深色主标题，避免移动端预览里白色文字对比度不足。`QunMind` 在 `publish_markdown(...)` 的 WeChat publisher 边界写出随本次临时稿件命名的 PNG，并向交给 `moonpub --render` 的临时 markdown frontmatter 注入相对 `cover:`，再由 `moonpub` 负责上传为公众号草稿封面。不要把本机绝对路径写进正文 markdown，也不要只改 `moonpub-data` 里的旧 `thumb_media_id`，否则手工生成稿和真实发布会再次分叉。
 手工 `daily-report --output <path>` 与 MCP `report_markdown` 对 `output = "wechat"` 的目标，也必须先走同一层微信稿准备逻辑，再把 markdown 落盘。也就是说，本地输出稿要和后续真实 `publish_markdown(...)` 看到的 frontmatter 形态保持一致；不要再让“本地写出的稿”和“发布时临时补过封面/作者的稿”分叉成两份。

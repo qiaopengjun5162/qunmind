@@ -24,7 +24,7 @@
 - Cron 定时日报。
 - 基于最近已保存群消息和链接情报生成日报。
 - 多群日报目标配置，可按群覆盖 cron、prompt、回看窗口、消息数量和链接数量。
-- 群消息为空时可选使用 Hacker News、CoinMarketCap、CoinGecko、DeFi Llama、Dune、GitHub Trending、Slerf Blog 生成公共信息参考日报。
+- 群消息为空时可选使用 Hacker News、CoinMarketCap、CoinGecko、DeFi Llama、Dune、GitHub Trending、Slerf Blog、Reddit RSS 生成公共信息参考日报。
 - 支持 `[[public_sources.manual_items]]` 手工精选入口，用来补入你明确想推荐大家阅读的一手官方文章、X 原帖或其他优质链接。
 - 默认 `web3_media_urls` 现已包含 `PANews RSS`，`panewslab.com` 这类中文 Web3 原文也会作为可追溯精选来源保留下来。
 - 默认 `web3_media_urls` 现已同时包含 `吴说区块链 Atom feed`，`wublock123.com` 这类中文 Web3 / 交易所快讯也会作为可追溯精选来源保留下来。
@@ -258,6 +258,8 @@ X / Twitter 这类一手信息也走同样的轻量边界：通过 `[public_sour
 
 如果你想让日报不只是“快讯聚合”，而是更多吸收官网 / 官方博客 / 正式技术公告，现在也可以直接启用 `[public_sources] official_blogs_*`。这条来源边界默认面向 OpenAI、Google Blog、Cloudflare Blog 这类稳定可抓取的 RSS / Atom 上游，适合补充模型发布、研究博客、基础设施公告与官方技术文章，让日报更容易产出“高层面”的内容，而不是只剩市场快讯。
 
+如果想补充社区讨论和实用问题信号，可以启用 `[public_sources] reddit_rss_*`。它只消费 `r/rust`、`r/MachineLearning`、`r/ethdev`、`r/cryptography` 这类公开 subreddit RSS / Atom，不在主进程里集成 Reddit 登录、cookie、反爬或 API key 采集。
+
 如果临时看到特别值得推荐大家阅读的原文，但 RSS / X 上游还没稳定抓到，可以直接加到 `[[public_sources.manual_items]]`。它适合放 OpenAI 官方文章、项目公告、论文链接、X 原帖等“人工精选”素材；这些条目会进入日报素材池，并优先出现在“推荐深读”或“完整素材链接”里。
 
 `manual_items` 会被当成用户显式精选素材，不会因为标题没有命中 `topic_keywords` 或链接域名不在内置白名单里就被过滤掉；关键词过滤主要用于 Hacker News 这类宽泛公共 feed 降噪。
@@ -313,6 +315,8 @@ cargo run -- --config config.toml report-network-status --report-name '微信公
 - `moonpub` 原始输出里即使带 `automation: login timeout: QR code not scanned within 120s`，也没有阻止草稿成功推入公众号草稿箱
 - 现在这类成功后的自动化提示也会作为结构化 `warnings` 出现在发布回执 JSON 里，不必再手工翻 `raw_output`
 - 现在回执和 `report-status` 还会把这类 warning 进一步标记成 `automation_state = "login_required"`，语义不是“完全没走自动化”，而是“草稿已推成功，但浏览器自动化没真正进入后续预览/配置步骤”
+
+近期日报重跑也会把当前输出文件和同目录最近几份 `wechat-report-*.md` / `daily-report-*.md` 作为新鲜度上下文，提取其中所有可见 `https://...` 来源链接用于焦点、正文和深读降权，避免换了输出文件名后又重复昨天的焦点与深读材料。
 
 日报内容质量这轮也已经补了一层 Rust 侧兜底，而不是只靠多试几次模型输出：
 - AI JSON 非法或字段太空时，会自动补齐非空板块，避免退化成接近空白的草稿
