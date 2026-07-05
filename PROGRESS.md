@@ -34,6 +34,24 @@
 - **wx-cli 命令编排层第二轮收口进行中**
 - **公众号日报最小可用目标已经真实打通**
 
+## 2026-07-05
+
+### Done
+
+- **2026-07-05 公众号日报 v11 已推草稿并发送手机预览** — 已审核稿 `/tmp/wechat-report-2026-07-05-source-expanded-v11.md` 已直接通过 `moonpub --articles /Users/qiaopengjun/Code/Rust/moonpub-data push /tmp/wechat-report-2026-07-05-source-expanded-v11.md --render` 推送到公众号草稿箱，并完成手机预览发送。标题为 `AI · Web3 最新日报｜2026-07-05`，`media_id = EmukC2rjB9X3nj6feGSErwz80kJdb49Hij6-qMyX0NTYNItMKQw5-Wy9D5PII3nx`；后台自动化输出显示 Session 已恢复、赞赏已开启、留言已开启、创作来源保持 `个人观点，仅供参考`、模板插入 skipped、预览发送成功。注意这次为避免重新生成导致内容波动，直接推送已审核 markdown，因此不会写入 QunMind `publish-history`；公众号草稿和手机预览已成功，不影响后台人工发布。
+- **日报素材来源进一步扩到官方工程博客** — `official_blogs_urls` 默认新增 `Rust Blog` 与 `GitHub Blog`，让技术与开源板块能拿到更稳定的一手工程发布、平台安全实践和工具链文章；同时把当前容易 403 的 `CryptoSlate` 从默认 Web3 media 源移除，减少生成时的失败噪音。
+- **日报分类兜底继续加固** — `src/daily_report/mod.rs` 现在把手工精选、AI、Web3、技术和官方博客分桶保留，避免官方博客或单一热点挤空技术区；最终分类后还会补回最低板块数量，防止技术区在最后一轮清洗中被剪空。
+- **低信号 Reddit 讨论帖不再占正文和深读位** — Reddit RSS 仍作为社区讨论来源，但 `Ask here`、`This Week in Rust`、`should I`、每日/每周讨论帖这类低信号入口不会再填充技术正文或推荐深读，保留“可用信息”而不是把论坛占位帖推给读者。
+- **工程官方博客分类边界修正** — Rust Blog / GitHub Blog 默认归入技术与开源，只有标题或 URL 明确出现硬 AI / Web3 信号时才迁到对应板块，避免模型在 comment 里泛化写了“AI/Web3 相关”就把普通工程文章误分。
+
+### Verification
+
+- `cargo fmt --all -- --check`
+- `cargo clippy --all-targets --all-features --tests --benches -- -D warnings`
+- `cargo test daily_report::tests:: --lib`：86 passed
+- `cargo nextest run --all-features`：436 passed, 2 skipped
+- `moonpub --articles /Users/qiaopengjun/Code/Rust/moonpub-data push /tmp/wechat-report-2026-07-05-source-expanded-v11.md --render`：真实推送草稿并发送手机预览成功，创作来源保持 `个人观点，仅供参考`
+
 ## 2026-07-04
 
 ### Done
@@ -191,6 +209,7 @@
 - **深读区避免与焦点/正文撞车** — 推荐深读现在会自动避开已经出现在今日焦点、AI/Web3/技术正文里的同一链接，再从剩余素材池补新的阅读入口，降低同一篇文章在一篇日报里反复出现的重复感。
 - **连续重跑开始主动换新** — 当手工 `daily-report --output <path>` 回退到 `public_sources` 生成公众号日报时，系统现在会读取同一路径上一次生成稿，并额外扫描同目录最近几份 `wechat-report-*.md` / `daily-report-*.md`，从正文 `原文：https://...` 和 `compact-links` 中提取 URL 作为本次焦点、正文与深读的轻量降权信号。这样即使今天换了输出文件名，也不容易又回到昨天那批链接，但“完整素材链接”仍会继续保留全部可追溯来源。
 - **Reddit RSS 社区讨论来源落地** — 新增 `[public_sources] reddit_rss_*` 与 `src/source/reddit_rss.rs`，默认示例覆盖 `r/rust`、`r/MachineLearning`、`r/ethdev`、`r/cryptography`。它只消费公开 subreddit RSS / Atom，用来补充 AI / Web3 / 开源社区的实用问题、工具反馈和工程讨论，不把 Reddit 登录态、cookie、API key 或反爬逻辑塞进主进程。
+- **官方工程博客来源扩展** — `official_blogs_urls` 默认新增 `Rust Blog` 与 `GitHub Blog`，用于给“技术与开源”板块补充更稳定的一手工程发布和平台技术文章；同时默认 Web3 media 移除当前容易 403 的 `CryptoSlate`，避免日报生成每次都带失败噪音。
 - **PANews 已纳入 Web3 来源默认链路** — `web3_media_urls` 默认新增 `https://www.panewslab.com/rss.xml?lang=zh&type=NEWS`，并把 `panewslab.com` 视作精选可追溯来源域名。这样像 `PANews` 这类中文 Web3 原文既能通过 RSS 正式进入素材池，也不会因为标题没命中 `topic_keywords` 而在聚合层被误过滤。
 - **吴说区块链已纳入 Web3 来源默认链路** — `web3_media_urls` 默认新增 `https://www.wublock123.com/feed`，并把 `wublock123.com` 视作精选可追溯来源域名。同时 `web3_media` 补齐了 Atom `entry` 解析能力，避免这类中文 Web3 / 交易所快讯源因为不是传统 RSS `<item>` 而接入后抓不到内容。
 - **深读区开始优先文章型来源** — `推荐深读` 现在会优先选择更像文章、论文、官方说明或手工精选的入口，而不是普通 `GitHub Trending` 榜单仓库；只有在当天素材池确实缺少更好替代项时，才保底保留 1 条仓库链接，避免深读区看起来只是把技术榜单重复了一遍。

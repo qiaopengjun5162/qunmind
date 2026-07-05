@@ -5,6 +5,7 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use regex::Regex;
 use reqwest::Client;
+use tokio::time::sleep;
 
 use super::{PublicNewsItem, PublicNewsSource};
 use crate::config::PublicSourcesConfig;
@@ -48,7 +49,11 @@ impl RedditRssSource {
 impl PublicNewsSource for RedditRssSource {
     async fn fetch_top_items(&self) -> Result<Vec<PublicNewsItem>> {
         let mut batches = Vec::new();
-        for url in &self.urls {
+        for (index, url) in self.urls.iter().enumerate() {
+            if index > 0 {
+                sleep(Duration::from_millis(800)).await;
+            }
+
             match self.fetch_feed(url).await {
                 Ok(items) => {
                     if !items.is_empty() {

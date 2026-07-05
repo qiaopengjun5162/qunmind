@@ -135,6 +135,8 @@ fn is_curated_source_url(url: &str) -> bool {
         || url.contains("openai.com/")
         || url.contains("blog.google/")
         || url.contains("blog.cloudflare.com/")
+        || url.contains("blog.rust-lang.org/")
+        || url.contains("github.blog/")
         || url.contains("reddit.com/r/")
 }
 
@@ -165,6 +167,8 @@ fn source_preference_score(item: &PublicNewsItem) -> i64 {
     if item.url.contains("openai.com/")
         || item.url.contains("blog.google/")
         || item.url.contains("blog.cloudflare.com/")
+        || item.url.contains("blog.rust-lang.org/")
+        || item.url.contains("github.blog/")
     {
         score += 2;
     }

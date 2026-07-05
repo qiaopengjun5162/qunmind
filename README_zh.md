@@ -256,7 +256,7 @@ wechat_article_helper_output_dir = "/tmp/qunmind-wechat-article-helper"
 
 X / Twitter 这类一手信息也走同样的轻量边界：通过 `[public_sources] x_rss_*` 配置 RSSHub、Nitter 兼容源或自建 X List RSS / Atom 上游，QunMind 会把它们归一成 `X RSS` 公共素材。主进程不内嵌 X 登录、抓取、代理或反风控逻辑。
 
-如果你想让日报不只是“快讯聚合”，而是更多吸收官网 / 官方博客 / 正式技术公告，现在也可以直接启用 `[public_sources] official_blogs_*`。这条来源边界默认面向 OpenAI、Google Blog、Cloudflare Blog 这类稳定可抓取的 RSS / Atom 上游，适合补充模型发布、研究博客、基础设施公告与官方技术文章，让日报更容易产出“高层面”的内容，而不是只剩市场快讯。
+如果你想让日报不只是“快讯聚合”，而是更多吸收官网 / 官方博客 / 正式技术公告，现在也可以直接启用 `[public_sources] official_blogs_*`。这条来源边界默认面向 OpenAI、Google Blog、Cloudflare Blog、Rust Blog、GitHub Blog 这类稳定可抓取的 RSS / Atom 上游，适合补充模型发布、研究博客、基础设施公告与官方技术文章，让日报更容易产出“高层面”的内容，而不是只剩市场快讯。
 
 如果想补充社区讨论和实用问题信号，可以启用 `[public_sources] reddit_rss_*`。它只消费 `r/rust`、`r/MachineLearning`、`r/ethdev`、`r/cryptography` 这类公开 subreddit RSS / Atom，不在主进程里集成 Reddit 登录、cookie、反爬或 API key 采集。
 

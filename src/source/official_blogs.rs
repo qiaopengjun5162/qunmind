@@ -177,6 +177,10 @@ fn feed_source_name(feed_url: &str) -> String {
         "Google Blog".to_string()
     } else if lower.contains("blog.cloudflare.com") {
         "Cloudflare Blog".to_string()
+    } else if lower.contains("blog.rust-lang.org") {
+        "Rust Blog".to_string()
+    } else if lower.contains("github.blog") {
+        "GitHub Blog".to_string()
     } else if lower.contains("mistral.ai") {
         "Mistral".to_string()
     } else {
@@ -335,5 +339,10 @@ mod tests {
             feed_source_name("https://blog.cloudflare.com/rss/"),
             "Cloudflare Blog"
         );
+        assert_eq!(
+            feed_source_name("https://blog.rust-lang.org/feed.xml"),
+            "Rust Blog"
+        );
+        assert_eq!(feed_source_name("https://github.blog/feed/"), "GitHub Blog");
     }
 }

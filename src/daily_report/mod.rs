@@ -16,13 +16,15 @@ use prompt::build_json_prompt_with_context;
 use render::assemble_markdown;
 use render::sanitize;
 
-const MAX_REPORT_ITEMS: usize = 25;
+const MAX_REPORT_ITEMS: usize = 32;
 const MIN_SECTION_ITEMS: usize = 3;
 const MAX_AI_ITEMS: usize = 4;
 const MAX_WEB3_ITEMS: usize = 3;
 const MAX_TECH_ITEMS: usize = 6;
 const MIN_READS: usize = 3;
 const MAX_READS: usize = 3;
+const PROMPT_MANUAL_ITEM_BUDGET: usize = 10;
+const PROMPT_OFFICIAL_ITEM_BUDGET: usize = 8;
 const PROMPT_AI_ITEM_BUDGET: usize = 10;
 const PROMPT_WEB3_ITEM_BUDGET: usize = 10;
 const PROMPT_TECH_ITEM_BUDGET: usize = 8;
@@ -158,6 +160,10 @@ fn enrich_report(
     finalize_section_classification(&mut report, items);
     ensure_minimum_section_items(&mut report, items, recent_used_urls);
     finalize_section_classification(&mut report, items);
+    restore_minimum_sections_after_classification(&mut report, items, recent_used_urls);
+    remove_focus_duplicates_from_sections(&mut report);
+    finalize_section_classification(&mut report, items);
+    restore_minimum_sections_after_classification(&mut report, items, recent_used_urls);
     remove_focus_duplicates_from_sections(&mut report);
     ensure_minimum_reads(&mut report, items, recent_used_urls);
 
@@ -683,7 +689,10 @@ fn fallback_web3_summary(report: &ReportJson, items: &[PublicNewsItem]) -> Strin
 }
 
 fn is_preferred_read_item(item: &PublicNewsItem) -> bool {
-    if is_generic_market_wrap_item(item) || is_roundup_style_item(item) {
+    if is_generic_market_wrap_item(item)
+        || is_roundup_style_item(item)
+        || is_low_signal_reddit_discussion_item(item)
+    {
         return false;
     }
 
@@ -972,8 +981,12 @@ fn is_tech_worthy_item(item: &PublicNewsItem) -> bool {
             "developer",
             "framework",
             "tool",
+            "toolchain",
             "sdk",
             "infrastructure",
+            "runtime",
+            "javascript",
+            "engine",
             "security",
             "release",
             "release notes",
@@ -990,10 +1003,13 @@ fn is_tech_worthy_item(item: &PublicNewsItem) -> bool {
             "开源",
             "框架",
             "工具",
+            "工具链",
             "数据库",
             "编程",
             "工程",
             "基础设施",
+            "运行时",
+            "引擎",
             "安全",
             "发布",
             "版本",
@@ -1085,12 +1101,13 @@ fn tech_section_is_worthy(section: &ReportSection, items: &[PublicNewsItem]) -> 
 fn is_tech_item(item: &PublicNewsItem) -> bool {
     !is_ai_item(item)
         && !is_web3_item(item)
+        && !is_low_signal_reddit_discussion_item(item)
         && is_tech_worthy_item(item)
         && is_high_signal_item(item)
 }
 
 fn is_minimum_tech_fill_item(item: &PublicNewsItem) -> bool {
-    if is_non_technical_policy_item(item) {
+    if is_non_technical_policy_item(item) || is_low_signal_reddit_discussion_item(item) {
         return false;
     }
 
@@ -1182,6 +1199,7 @@ fn finalize_section_classification(report: &mut ReportJson, items: &[PublicNewsI
     report
         .tech_items
         .retain(|item| tech_section_is_worthy(item, items));
+    prioritize_fresh_tech_items(&mut report.tech_items, items);
     dedup_sections(&mut report.ai_items);
     dedup_sections(&mut report.web3_items);
     dedup_sections(&mut report.tech_items);
@@ -1191,6 +1209,45 @@ fn finalize_section_classification(report: &mut ReportJson, items: &[PublicNewsI
     report.ai_items.truncate(MAX_AI_ITEMS);
     report.web3_items.truncate(MAX_WEB3_ITEMS);
     report.tech_items.truncate(MAX_TECH_ITEMS);
+}
+
+fn restore_minimum_sections_after_classification(
+    report: &mut ReportJson,
+    items: &[PublicNewsItem],
+    recent_used_urls: &HashSet<String>,
+) {
+    backfill_section_after_focus_removal(
+        &mut report.ai_items,
+        items,
+        recent_used_urls,
+        is_ai_item,
+        MIN_SECTION_ITEMS.min(MAX_AI_ITEMS),
+        report.focus_url.trim(),
+    );
+    backfill_section_after_focus_removal(
+        &mut report.web3_items,
+        items,
+        recent_used_urls,
+        is_web3_item,
+        MIN_SECTION_ITEMS.min(MAX_WEB3_ITEMS),
+        report.focus_url.trim(),
+    );
+    backfill_section_after_focus_removal(
+        &mut report.tech_items,
+        items,
+        recent_used_urls,
+        is_tech_item,
+        MIN_SECTION_ITEMS.min(MAX_TECH_ITEMS),
+        report.focus_url.trim(),
+    );
+    top_up_tech_section_with_general_items(
+        &mut report.tech_items,
+        items,
+        recent_used_urls,
+        MIN_SECTION_ITEMS.min(MAX_TECH_ITEMS),
+        report.focus_url.trim(),
+    );
+    finalize_section_classification(report, items);
 }
 
 fn migrate_web3_items_out_of_ai(report: &mut ReportJson, items: &[PublicNewsItem]) {
@@ -2087,8 +2144,8 @@ fn select_report_items(ranked: Vec<PublicNewsItem>) -> Vec<PublicNewsItem> {
         &ranked,
         &mut selected,
         &mut seen,
-        |item| is_manual_category(item) || is_official_blog_item(item),
-        MAX_REPORT_ITEMS,
+        is_manual_category,
+        PROMPT_MANUAL_ITEM_BUDGET,
     );
     push_ranked_items(
         &ranked,
@@ -2110,6 +2167,13 @@ fn select_report_items(ranked: Vec<PublicNewsItem>) -> Vec<PublicNewsItem> {
         &mut seen,
         |item| is_tech_item(item) || is_minimum_tech_fill_item(item),
         PROMPT_TECH_ITEM_BUDGET,
+    );
+    push_ranked_items(
+        &ranked,
+        &mut selected,
+        &mut seen,
+        is_official_blog_item,
+        PROMPT_OFFICIAL_ITEM_BUDGET,
     );
     push_ranked_items(
         &ranked,
@@ -2343,12 +2407,40 @@ fn is_roundup_style_item(item: &PublicNewsItem) -> bool {
             "roundup",
             "morning briefing",
             "weekly recap",
+            "this week in rust",
+            "this week in",
             "what happened in crypto today",
             "here’s what happened in crypto today",
             "今日精选",
             "今日速览",
             "今日快讯汇总",
             "快讯汇总",
+        ],
+    )
+}
+
+fn is_low_signal_reddit_discussion_item(item: &PublicNewsItem) -> bool {
+    if item.category.as_deref() != Some("reddit_rss")
+        && !item.source.to_lowercase().contains("reddit")
+        && !item.url.contains("reddit.com/")
+    {
+        return false;
+    }
+
+    let haystack = format!("{} {}", item.title, item.url).to_lowercase();
+    contains_any_text(
+        &haystack,
+        &[
+            "ask here",
+            "got a question",
+            "question?",
+            "questions?",
+            "should i",
+            "should we",
+            "help thread",
+            "daily discussion",
+            "weekly discussion",
+            "this week in rust",
         ],
     )
 }
@@ -2489,15 +2581,17 @@ fn normalize_story_url(url: &str) -> String {
 }
 
 fn is_web3_section_item(item: &ReportSection, source_items: &[PublicNewsItem]) -> bool {
+    if source_items
+        .iter()
+        .find(|source_item| source_item.url == item.url)
+        .is_some_and(is_web3_item)
+    {
+        return true;
+    }
+
     let title_source = format!("{} {}", item.title, item.source).to_lowercase();
-    let comment_source = format!("{} {} {}", item.title, item.comment, item.source).to_lowercase();
-    let haystack = if has_ai_section_signal(&title_source) {
-        title_source.as_str()
-    } else {
-        comment_source.as_str()
-    };
-    if contains_any_text(
-        haystack,
+    contains_any_text(
+        &title_source,
         &[
             "web3",
             "blockchain",
@@ -2556,6 +2650,8 @@ fn is_web3_section_item(item: &ReportSection, source_items: &[PublicNewsItem]) -
             "stablecoin",
             "rwa",
             "tokenization",
+            "x402",
+            "monetization gateway",
             "预测市场",
             "加密货币",
             "比特币",
@@ -2594,14 +2690,7 @@ fn is_web3_section_item(item: &ReportSection, source_items: &[PublicNewsItem]) -
             "a16z",
             "multicoin",
         ],
-    ) {
-        return true;
-    }
-
-    source_items
-        .iter()
-        .find(|source_item| source_item.url == item.url)
-        .is_some_and(is_web3_item)
+    )
 }
 
 fn is_repeat_prone_github_trending_repo(
@@ -2717,16 +2806,14 @@ fn is_ai_section_item(item: &ReportSection, source_items: &[PublicNewsItem]) -> 
         return false;
     }
 
-    if has_ai_section_signal(
-        &format!("{} {} {}", item.title, item.comment, item.source).to_lowercase(),
-    ) {
-        return true;
-    }
-
-    source_items
+    if let Some(source_item) = source_items
         .iter()
         .find(|source_item| source_item.url == item.url)
-        .is_some_and(is_ai_item)
+    {
+        return is_ai_item(source_item);
+    }
+
+    has_ai_section_signal(&format!("{} {}", item.title, item.source).to_lowercase())
 }
 
 fn has_ai_section_signal(haystack: &str) -> bool {
@@ -2824,6 +2911,9 @@ fn is_ai_item(item: &PublicNewsItem) -> bool {
     if is_web3_item(item) {
         return false;
     }
+    if is_engineering_official_blog_item(item) && !has_hard_ai_title_or_url_signal(item) {
+        return false;
+    }
 
     contains_any(
         item,
@@ -2845,7 +2935,32 @@ fn is_ai_item(item: &PublicNewsItem) -> bool {
     )
 }
 
+fn has_hard_ai_title_or_url_signal(item: &PublicNewsItem) -> bool {
+    let haystack = format!("{} {} {}", item.source, item.title, item.url).to_lowercase();
+    contains_any_text(
+        &haystack,
+        &[
+            "ai",
+            "llm",
+            "agent",
+            "model",
+            "openai",
+            "anthropic",
+            "claude",
+            "qwen",
+            "glm",
+            "inference",
+            "gpu",
+            "genebench",
+        ],
+    )
+}
+
 fn is_web3_item(item: &PublicNewsItem) -> bool {
+    if is_engineering_official_blog_item(item) && !has_hard_web3_title_or_url_signal(item) {
+        return false;
+    }
+
     contains_any(
         item,
         &[
@@ -2946,6 +3061,44 @@ fn is_web3_item(item: &PublicNewsItem) -> bool {
     )
 }
 
+fn is_engineering_official_blog_item(item: &PublicNewsItem) -> bool {
+    let source = item.source.to_lowercase();
+    let url = item.url.to_lowercase();
+    source.contains("rust blog")
+        || source.contains("github blog")
+        || url.contains("blog.rust-lang.org/")
+        || url.contains("github.blog/")
+}
+
+fn has_hard_web3_title_or_url_signal(item: &PublicNewsItem) -> bool {
+    let haystack = format!("{} {} {}", item.source, item.title, item.url).to_lowercase();
+    contains_any_text(
+        &haystack,
+        &[
+            "web3",
+            "blockchain",
+            "crypto",
+            "ethereum",
+            "bitcoin",
+            "solana",
+            "defi",
+            "rollup",
+            "zkp",
+            "zero knowledge",
+            "stablecoin",
+            "tokenization",
+            "x402",
+            "monetization gateway",
+            "加密货币",
+            "比特币",
+            "以太坊",
+            "稳定币",
+            "链上",
+            "代币",
+        ],
+    )
+}
+
 fn should_prioritize_web3(report: &ReportJson, items: &[PublicNewsItem]) -> bool {
     let source_web3 = items.iter().filter(|item| is_web3_item(item)).count();
     let rendered_web3 = report.web3_items.len();
@@ -3028,13 +3181,19 @@ fn is_focus_worthy_item(item: &PublicNewsItem) -> bool {
 }
 
 fn focus_candidate_has_readable_summary(item: &PublicNewsItem) -> bool {
-    read_candidate_has_reliable_summary(item) || contains_useful_chinese_text(item.title.trim())
+    read_candidate_has_reliable_summary(item)
+        || item
+            .summary
+            .as_deref()
+            .map(clean_summary)
+            .is_some_and(|summary| contains_useful_chinese_text(&summary))
+        || contains_useful_chinese_text(item.title.trim())
 }
 
 fn focus_candidate_priority(item: &PublicNewsItem) -> (i64, i64, i64, i64, i64, i64, i64) {
     (
-        is_official_blog_item(item) as i64,
         focus_theme_score(item),
+        is_official_blog_item(item) as i64,
         source_quality_score(item),
         item.published_at.is_some() as i64,
         read_candidate_has_reliable_summary(item) as i64,
@@ -7294,6 +7453,215 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn generate_restores_tech_section_after_final_classification_prunes_it() {
+        let json = r#"{
+            "title_hint":"测试日报",
+            "intro":"今天以 AI 和 Web3 为主。",
+            "focus_text":"Cloudflare 推出 Monetization Gateway。",
+            "focus_url":"https://blog.cloudflare.com/monetization-gateway/",
+            "ai_items":[
+                {
+                    "title":"Introducing GeneBench-Pro",
+                    "url":"https://openai.com/index/introducing-genebench-pro",
+                    "comment":"OpenAI 发布用于基因组学和科学研究的新 AI 基准。",
+                    "source":"OpenAI",
+                    "points":180
+                }
+            ],
+            "ai_signals":[],
+            "web3_items":[
+                {
+                    "title":"Confirmation Rule for Ethereum PoS",
+                    "url":"https://ethresear.ch/t/confirmation-rule-for-ethereum-pos/15454",
+                    "comment":"以太坊研究社区讨论 PoS 确认规则。",
+                    "source":"ethresear.ch",
+                    "points":12
+                }
+            ],
+            "tech_items":[],
+            "tech_timeline":[],
+            "reads":[],
+            "summary":"今天以 AI 和 Web3 为主。"
+        }"#;
+        let generator = DailyReportGenerator::new(
+            Arc::new(FakeAi::new(vec![json.to_string()])),
+            Arc::new(FakeNewsSource {
+                items: vec![
+                    PublicNewsItem {
+                        source: "OpenAI".to_string(),
+                        title: "Introducing GeneBench-Pro".to_string(),
+                        url: "https://openai.com/index/introducing-genebench-pro".to_string(),
+                        summary: Some(
+                            "OpenAI 发布用于基因组学和科学研究的新 AI 基准。".to_string(),
+                        ),
+                        author: Some("OpenAI".to_string()),
+                        published_at: Some("2026-07-05T00:00:00Z".to_string()),
+                        score: Some(180),
+                        comments: None,
+                        ai_score: None,
+                        category: Some("official_blog".to_string()),
+                    },
+                    PublicNewsItem {
+                        source: "ethresear.ch".to_string(),
+                        title: "Confirmation Rule for Ethereum PoS".to_string(),
+                        url: "https://ethresear.ch/t/confirmation-rule-for-ethereum-pos/15454"
+                            .to_string(),
+                        summary: Some("以太坊研究社区讨论 PoS 确认规则。".to_string()),
+                        author: None,
+                        published_at: Some("2026-07-05T00:00:00Z".to_string()),
+                        score: Some(12),
+                        comments: None,
+                        ai_score: None,
+                        category: Some("web3".to_string()),
+                    },
+                    PublicNewsItem {
+                        source: "Hacker News".to_string(),
+                        title: "SQLite query planner regression fixed in new release".to_string(),
+                        url: "https://example.com/sqlite-query-planner-release".to_string(),
+                        summary: Some("SQLite 发布新版本并修复查询规划器回归问题。".to_string()),
+                        author: None,
+                        published_at: Some("2026-07-05T00:00:00Z".to_string()),
+                        score: Some(80),
+                        comments: None,
+                        ai_score: None,
+                        category: None,
+                    },
+                    PublicNewsItem {
+                        source: "Hacker News".to_string(),
+                        title: "PostgreSQL query engine regression fixed in new release"
+                            .to_string(),
+                        url: "https://example.com/postgres-release".to_string(),
+                        summary: Some("PostgreSQL 发布新版本并修复查询引擎回归问题。".to_string()),
+                        author: None,
+                        published_at: Some("2026-07-05T01:00:00Z".to_string()),
+                        score: Some(90),
+                        comments: None,
+                        ai_score: None,
+                        category: None,
+                    },
+                    PublicNewsItem {
+                        source: "GitHub Trending".to_string(),
+                        title: "rust-lang/rust".to_string(),
+                        url: "https://github.com/rust-lang/rust".to_string(),
+                        summary: Some("Rust 编译器项目保持活跃。".to_string()),
+                        author: None,
+                        published_at: Some("2026-07-05T02:00:00Z".to_string()),
+                        score: Some(70),
+                        comments: None,
+                        ai_score: None,
+                        category: None,
+                    },
+                ],
+            }),
+            String::new(),
+        );
+
+        let report = generator.generate().await.expect("report");
+        let tech_section = section_body_by_title(&report, "技术与开源");
+
+        assert!(tech_section.contains("https://example.com/sqlite-query-planner-release"));
+        assert!(tech_section.contains("https://example.com/postgres-release"));
+        assert!(tech_section.contains("https://github.com/rust-lang/rust"));
+    }
+
+    #[tokio::test]
+    async fn generate_removes_generic_rust_blog_from_web3_section_at_final_cleanup() {
+        let json = r#"{
+            "title_hint":"测试日报",
+            "intro":"今天以 Web3 和技术动态为主。",
+            "focus_text":"Cloudflare 推出 Monetization Gateway，支持通过 x402 协议对资源收费。",
+            "focus_url":"https://blog.cloudflare.com/monetization-gateway/",
+            "ai_items":[],
+            "ai_signals":[],
+            "web3_items":[
+                {
+                    "title":"The many journeys of learning Rust",
+                    "url":"https://blog.rust-lang.org/2026/06/25/vision-doc-journeys-to-learning-rust/",
+                    "comment":"Rust Blog 发布了Web3相关主题相关材料。",
+                    "source":"Rust Blog",
+                    "points":180
+                },
+                {
+                    "title":"What if post-quantum Ethereum doesn’t need signatures at all?",
+                    "url":"https://ethresear.ch/t/what-if-post-quantum-ethereum-doesn-t-need-signatures-at-all/24427",
+                    "comment":"ethresear.ch 讨论后量子以太坊签名替代方案。",
+                    "source":"ethresear.ch",
+                    "points":15
+                }
+            ],
+            "tech_items":[],
+            "tech_timeline":[],
+            "reads":[],
+            "summary":"今天以 Web3 和技术动态为主。"
+        }"#;
+        let generator = DailyReportGenerator::new(
+            Arc::new(FakeAi::new(vec![json.to_string()])),
+            Arc::new(FakeNewsSource {
+                items: vec![
+                    PublicNewsItem {
+                        source: "Cloudflare Blog".to_string(),
+                        title: "Announcing the Monetization Gateway: charge for any resource behind Cloudflare via x402".to_string(),
+                        url: "https://blog.cloudflare.com/monetization-gateway/".to_string(),
+                        summary: Some("Cloudflare 推出 Monetization Gateway，支持通过 x402 协议对资源收费并以稳定币结算。".to_string()),
+                        author: Some("Cloudflare".to_string()),
+                        published_at: Some("2026-07-05T00:00:00Z".to_string()),
+                        score: Some(180),
+                        comments: None,
+                        ai_score: None,
+                        category: Some("official_blog".to_string()),
+                    },
+                    PublicNewsItem {
+                        source: "Rust Blog".to_string(),
+                        title: "The many journeys of learning Rust".to_string(),
+                        url: "https://blog.rust-lang.org/2026/06/25/vision-doc-journeys-to-learning-rust/".to_string(),
+                        summary: Some("Rust 项目团队发布学习路径愿景文档。".to_string()),
+                        author: Some("Rust Team".to_string()),
+                        published_at: Some("2026-06-25T00:00:00Z".to_string()),
+                        score: Some(180),
+                        comments: None,
+                        ai_score: None,
+                        category: Some("official_blog".to_string()),
+                    },
+                    PublicNewsItem {
+                        source: "ethresear.ch".to_string(),
+                        title: "What if post-quantum Ethereum doesn’t need signatures at all?".to_string(),
+                        url: "https://ethresear.ch/t/what-if-post-quantum-ethereum-doesn-t-need-signatures-at-all/24427".to_string(),
+                        summary: Some("以太坊研究社区讨论后量子场景下的签名替代方案。".to_string()),
+                        author: None,
+                        published_at: Some("2026-07-05T00:00:00Z".to_string()),
+                        score: Some(15),
+                        comments: None,
+                        ai_score: None,
+                        category: Some("web3".to_string()),
+                    },
+                    PublicNewsItem {
+                        source: "GitHub Blog".to_string(),
+                        title: "How GitHub used secret scanning to reach inbox zero".to_string(),
+                        url: "https://github.blog/security/application-security/how-github-used-secret-scanning-to-reach-inbox-zero/".to_string(),
+                        summary: Some("GitHub 分享 secret scanning 的工程治理流程。".to_string()),
+                        author: Some("GitHub".to_string()),
+                        published_at: Some("2026-07-05T00:00:00Z".to_string()),
+                        score: Some(180),
+                        comments: None,
+                        ai_score: None,
+                        category: Some("official_blog".to_string()),
+                    },
+                ],
+            }),
+            String::new(),
+        );
+
+        let report = generator.generate().await.expect("report");
+        let ai_section = section_body_by_title(&report, "AI 前沿");
+        let web3_section = section_body_by_title(&report, "Web3");
+        let tech_section = section_body_by_title(&report, "技术与开源");
+
+        assert!(!ai_section.contains("vision-doc-journeys-to-learning-rust"));
+        assert!(!web3_section.contains("vision-doc-journeys-to-learning-rust"));
+        assert!(tech_section.contains("vision-doc-journeys-to-learning-rust"));
+    }
+
+    #[tokio::test]
     async fn generate_dedups_same_web3_story_across_sources() {
         let json = r#"{
             "title_hint":"测试日报",
@@ -7753,5 +8121,205 @@ mod tests {
                 .count()
                 >= 3
         );
+    }
+
+    #[test]
+    fn report_item_selection_does_not_let_official_blogs_crowd_out_tech() {
+        let mut ranked = Vec::new();
+        for index in 0..18 {
+            ranked.push(PublicNewsItem {
+                source: "OpenAI".to_string(),
+                title: format!("OpenAI research update {index}"),
+                url: format!("https://openai.com/index/research-update-{index}"),
+                summary: Some("OpenAI 发布新的模型与研究更新。".to_string()),
+                author: Some("OpenAI".to_string()),
+                published_at: Some("2026-07-05T08:00:00Z".to_string()),
+                score: Some(180),
+                comments: None,
+                ai_score: None,
+                category: Some("official_blog".to_string()),
+            });
+        }
+        for index in 0..4 {
+            ranked.push(PublicNewsItem {
+                source: "Rust Blog".to_string(),
+                title: format!("Rust toolchain release {index}"),
+                url: format!("https://blog.rust-lang.org/2026/07/05/release-{index}.html"),
+                summary: Some("Rust 工具链发布新版本并包含编译器与 Cargo 改进。".to_string()),
+                author: Some("Rust Team".to_string()),
+                published_at: Some("2026-07-05T09:00:00Z".to_string()),
+                score: Some(180),
+                comments: None,
+                ai_score: None,
+                category: Some("official_blog".to_string()),
+            });
+        }
+        for index in 0..4 {
+            ranked.push(PublicNewsItem {
+                source: "Hacker News".to_string(),
+                title: format!("PostgreSQL query engine release {index}"),
+                url: format!("https://example.com/postgres-release-{index}"),
+                summary: Some("数据库查询引擎发布新版本并修复工程问题。".to_string()),
+                author: None,
+                published_at: Some("2026-07-05T10:00:00Z".to_string()),
+                score: Some(80),
+                comments: None,
+                ai_score: None,
+                category: None,
+            });
+        }
+
+        let selected = select_report_items(ranked);
+
+        assert!(selected.len() <= MAX_REPORT_ITEMS);
+        assert!(
+            selected
+                .iter()
+                .filter(|item| is_tech_item(item) || is_minimum_tech_fill_item(item))
+                .count()
+                >= MIN_SECTION_ITEMS
+        );
+        assert!(selected.iter().any(|item| item.source == "Rust Blog"));
+        assert!(selected.iter().any(|item| item.source == "Hacker News"));
+    }
+
+    #[test]
+    fn low_signal_reddit_discussions_do_not_fill_tech_body_or_reads() {
+        let ask_thread = PublicNewsItem {
+            source: "Reddit r/rust".to_string(),
+            title: "Hey Rustaceans! Got a question? Ask here".to_string(),
+            url: "https://www.reddit.com/r/rust/comments/abc/ask_here/".to_string(),
+            summary: Some("社区问答帖。".to_string()),
+            author: Some("/u/mod".to_string()),
+            published_at: Some("2026-07-05T00:00:00Z".to_string()),
+            score: Some(90),
+            comments: None,
+            ai_score: None,
+            category: Some("reddit_rss".to_string()),
+        };
+        let weekly = PublicNewsItem {
+            title: "This Week in Rust #658".to_string(),
+            url: "https://www.reddit.com/r/rust/comments/def/this_week_in_rust_658/".to_string(),
+            ..ask_thread.clone()
+        };
+
+        assert!(!is_tech_item(&ask_thread));
+        assert!(!is_minimum_tech_fill_item(&ask_thread));
+        assert!(!is_preferred_read_item(&ask_thread));
+        assert!(!is_tech_item(&weekly));
+        assert!(!is_preferred_read_item(&weekly));
+    }
+
+    #[test]
+    fn focus_candidate_prefers_web3_over_generic_official_tech_blog() {
+        let rust_blog = PublicNewsItem {
+            source: "Rust Blog".to_string(),
+            title: "The many journeys of learning Rust".to_string(),
+            url: "https://blog.rust-lang.org/2026/06/25/vision-doc-journeys-to-learning-rust/"
+                .to_string(),
+            summary: Some("Rust 项目团队发布学习路径愿景文档。".to_string()),
+            author: Some("Rust Team".to_string()),
+            published_at: Some("2026-06-25T00:00:00Z".to_string()),
+            score: Some(180),
+            comments: None,
+            ai_score: None,
+            category: Some("official_blog".to_string()),
+        };
+        let web3 = PublicNewsItem {
+            source: "Cloudflare Blog".to_string(),
+            title: "Announcing the Monetization Gateway: charge for any resource behind Cloudflare via x402".to_string(),
+            url: "https://blog.cloudflare.com/monetization-gateway/".to_string(),
+            summary: Some("Cloudflare 开放 Monetization Gateway 候补名单，结算通过 x402 协议使用稳定币完成。".to_string()),
+            author: Some("Cloudflare".to_string()),
+            published_at: Some("2026-07-02T00:00:00Z".to_string()),
+            score: Some(180),
+            comments: None,
+            ai_score: None,
+            category: Some("official_blog".to_string()),
+        };
+
+        let items = vec![rust_blog, web3.clone()];
+        assert!(!is_web3_item(&items[0]));
+        assert!(is_web3_item(&items[1]));
+        assert!(is_focus_worthy_item(&items[1]));
+        assert!(focus_candidate_has_readable_summary(&items[1]));
+        assert!(!is_newswire_style_read_item(&items[1]));
+        assert!(
+            focus_candidate_priority(&items[1]) > focus_candidate_priority(&items[0]),
+            "{:?} <= {:?}",
+            focus_candidate_priority(&items[1]),
+            focus_candidate_priority(&items[0])
+        );
+        let focus = best_focus_candidate(&items, "").expect("focus");
+
+        assert_eq!(focus.url, web3.url);
+    }
+
+    #[test]
+    fn web3_section_does_not_trust_generic_model_web3_label_without_source_signal() {
+        let source_items = vec![PublicNewsItem {
+            source: "Rust Blog".to_string(),
+            title: "The many journeys of learning Rust".to_string(),
+            url: "https://blog.rust-lang.org/2026/06/25/vision-doc-journeys-to-learning-rust/"
+                .to_string(),
+            summary: Some("Rust 项目团队发布学习路径愿景文档。".to_string()),
+            author: Some("Rust Team".to_string()),
+            published_at: Some("2026-06-25T00:00:00Z".to_string()),
+            score: Some(180),
+            comments: None,
+            ai_score: None,
+            category: Some("official_blog".to_string()),
+        }];
+        let section = ReportSection {
+            title: "The many journeys of learning Rust".to_string(),
+            url: source_items[0].url.clone(),
+            comment: "Rust Blog 发布了Web3相关主题相关材料。".to_string(),
+            source: "Rust Blog".to_string(),
+            points: 180,
+            subsection: String::new(),
+        };
+
+        assert!(!is_web3_section_item(&section, &source_items));
+    }
+
+    #[test]
+    fn rust_blog_engineering_posts_are_not_web3_without_hard_title_or_url_signal() {
+        let item = PublicNewsItem {
+            source: "Rust Blog".to_string(),
+            title: "The many journeys of learning Rust".to_string(),
+            url: "https://blog.rust-lang.org/2026/06/25/vision-doc-journeys-to-learning-rust/"
+                .to_string(),
+            summary: Some("Rust 项目团队发布学习路径愿景文档，面向工程基础设施维护。".to_string()),
+            author: Some("Rust Team".to_string()),
+            published_at: Some("2026-06-25T00:00:00Z".to_string()),
+            score: Some(180),
+            comments: None,
+            ai_score: None,
+            category: Some("official_blog".to_string()),
+        };
+
+        assert!(!is_web3_item(&item));
+    }
+
+    #[test]
+    fn rust_blog_engineering_posts_are_not_ai_without_hard_title_or_url_signal() {
+        let item = PublicNewsItem {
+            source: "Rust Blog".to_string(),
+            title: "The many journeys of learning Rust".to_string(),
+            url: "https://blog.rust-lang.org/2026/06/25/vision-doc-journeys-to-learning-rust/"
+                .to_string(),
+            summary: Some(
+                "Rust Vision Doc 提到 LLM 辅助学习，但文章主体仍是 Rust 学习路径。".to_string(),
+            ),
+            author: Some("Rust Team".to_string()),
+            published_at: Some("2026-06-25T00:00:00Z".to_string()),
+            score: Some(180),
+            comments: None,
+            ai_score: None,
+            category: Some("official_blog".to_string()),
+        };
+
+        assert!(!is_ai_item(&item));
+        assert!(is_tech_item(&item));
     }
 }

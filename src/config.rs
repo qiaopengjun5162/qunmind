@@ -603,6 +603,8 @@ fn default_official_blogs_urls() -> Vec<String> {
         "https://openai.com/news/rss.xml".to_string(),
         "https://blog.google/innovation-and-ai/technology/ai/rss/".to_string(),
         "https://blog.cloudflare.com/rss/".to_string(),
+        "https://blog.rust-lang.org/feed.xml".to_string(),
+        "https://github.blog/feed/".to_string(),
     ]
 }
 
@@ -637,7 +639,6 @@ fn default_manual_source_name() -> String {
 
 fn default_web3_media_urls() -> Vec<String> {
     vec![
-        "https://cryptoslate.com/feed/".to_string(),
         "https://decrypt.co/feed".to_string(),
         "https://cointelegraph.com/rss".to_string(),
         "https://www.panewslab.com/rss.xml?lang=zh&type=NEWS".to_string(),
@@ -953,6 +954,8 @@ mod tests {
                 "https://openai.com/news/rss.xml".to_string(),
                 "https://blog.google/innovation-and-ai/technology/ai/rss/".to_string(),
                 "https://blog.cloudflare.com/rss/".to_string(),
+                "https://blog.rust-lang.org/feed.xml".to_string(),
+                "https://github.blog/feed/".to_string(),
             ]
         );
         assert_eq!(config.public_sources.official_blogs_max_items, 12);
@@ -973,7 +976,6 @@ mod tests {
         assert_eq!(
             config.public_sources.web3_media_urls,
             vec![
-                "https://cryptoslate.com/feed/".to_string(),
                 "https://decrypt.co/feed".to_string(),
                 "https://cointelegraph.com/rss".to_string(),
                 "https://www.panewslab.com/rss.xml?lang=zh&type=NEWS".to_string(),

@@ -71,7 +71,7 @@
 
 X / Twitter 这类一手信息入口也优先走 `PublicNewsSource` 边界。当前落地形态是 `[public_sources] x_rss_*`，消费 RSSHub、Nitter 兼容源或自建 X List RSS / Atom 上游；不要把 X 登录态、反爬、代理池或绕风控逻辑直接塞进 `QunMind` 主进程。需要更强实时性时，优先建设独立采集上游，再把稳定输出接成 RSS/Atom 或后续 connector。
 
-官网 / 官方博客这类“更高层面”的一手来源也应优先走 `PublicNewsSource` 边界。当前推荐形态是 `[public_sources] official_blogs_*`：统一消费 OpenAI、Google Blog、Cloudflare Blog 一类稳定可访问的 RSS / Atom 上游，把正式发布、研究博客、技术公告沉淀成长期来源；不要每次都退回成靠 `manual_items` 临时补几条官方链接。
+官网 / 官方博客这类“更高层面”的一手来源也应优先走 `PublicNewsSource` 边界。当前推荐形态是 `[public_sources] official_blogs_*`：统一消费 OpenAI、Google Blog、Cloudflare Blog、Rust Blog、GitHub Blog 一类稳定可访问的 RSS / Atom 上游，把正式发布、研究博客、技术公告沉淀成长期来源；不要每次都退回成靠 `manual_items` 临时补几条官方链接。
 
 Reddit 这类社区讨论来源也优先走 `PublicNewsSource` 边界。当前落地形态是 `[public_sources] reddit_rss_*`，只消费公开 subreddit RSS / Atom，用于补充 AI / Web3 / 开源社区的实用问题、工具反馈和工程讨论；不要把 Reddit 登录态、cookie、抓取绕过、私信或 API key 采集塞进 `QunMind` 主进程。
 
@@ -87,6 +87,8 @@ Reddit 这类社区讨论来源也优先走 `PublicNewsSource` 边界。当前�
 公众号日报固定结尾的唯一标题是 `继续交流`，正文必须是固定多段标准模板，至少包含公众号「寻月隐君」、后台回复「加群」、信息整理 / 非投资建议提醒、回到「原文」链接核对，以及点赞 / 推荐 / 在看引导。这个标准结尾必须由 `assemble_markdown(...)` 放在全文最后；如果存在 `daily_quote`，也要先渲染 `今日一句`，再渲染 `继续交流`。不要再在 QunMind 生成层与 `moonpub` 模板之间维护两套结尾，也不要把结尾标题随意改回“关注与交流”等临时文案。
 
 `QunMind -> moonpub` 的手工/定时日报临时 Markdown 文件名不能只按日期命名。`moonpub push --render` 在同 slug 的 `.draft.json` 已存在时会直接复用旧渲染产物，因此 `src/publisher.rs` 这里必须继续使用带时间戳的唯一 slug，避免同一天多次试发时“发布时间更新了，但正文还是旧稿”。
+
+如果已经有人工审核过的最终 markdown，且用户明确要求尽快按这一版推送，允许直接调用 `moonpub --articles <dir> push <reviewed_markdown> --render` 来避免重新生成导致内容波动；但这属于绕过 `QunMind` publisher 的保真发布路径，不会写入 `publish-history` / `report-status` 回执。后续对外说明时必须区分“公众号草稿与手机预览已成功”和“QunMind 发布历史未记录这次直接 moonpub 操作”。
 
 截至 `2026-06-27`，`微信公众号日报` 的最小可用链路已经完成至少四次真实验证：`daily-report --publish` 可成功推送到公众号草稿箱，`publish-history` 可查到最新回执，回执 warning 会继续保留为结构化字段。其中 `2026-06-27` 的 ZK 手工精选版已确认 `published = true`、`publish_receipt_saved = true`、`automation_state = "ok"`、`warnings = []`。后续再回答“现在能不能用”时，不要再把它描述成“还没打通”，而要准确说成“最小可用链路已打通，但仍有白名单 IP 漂移、自动化 warning 和内容质量问题需要继续收敛”。
 
