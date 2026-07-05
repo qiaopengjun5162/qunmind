@@ -108,18 +108,19 @@ fn render_intro(intro: &str) -> String {
 
 fn render_focus(text: &str, url: &str) -> String {
     let focus_text = humanize_focus_text(text);
+    let focus_sentence = ensure_sentence_end(&focus_text);
+    let why = focus_why_line(&focus_text);
+    let how = focus_how_to_use_line(&focus_text);
     if url.trim().is_empty() {
         format!(
-            ":::divider\nlabel: 主线\n:::\n\n## 今日焦点\n\n:::callout\nlabel: 先读这条\n\n{}\n:::\n\n**为什么重要**\n\n它是本期信息流里最适合先核对的一条，可以帮助读者快速建立今天的阅读上下文。\n\n**后续关注**\n\n继续关注是否出现官方文档、产品更新或社区复盘。\n\n",
-            ensure_sentence_end(&focus_text)
+            ":::divider\nlabel: 主线\n:::\n\n## 今日焦点\n\n:::callout\nlabel: 先读这条\n\n{}\n:::\n\n**发生了什么**\n\n{}\n\n**为什么有用**\n\n{}\n\n**你可以怎么用**\n\n{}\n\n**核对入口**\n\n暂未拿到可靠原文链接，请优先核对正文和参考来源里的完整链接。\n\n",
+            focus_sentence, focus_sentence, why, how
         )
     } else {
         let url = url.trim();
         format!(
-            ":::divider\nlabel: 主线\n:::\n\n## 今日焦点\n\n:::callout\nlabel: 先读这条\n\n{} — [点击阅读]({})\n:::\n\n**为什么重要**\n\n它是本期信息流里最适合先核对的一条，可以帮助读者快速建立今天的阅读上下文。\n\n**后续关注**\n\n继续关注是否出现官方文档、产品更新或社区复盘。\n\n原文：{}\n\n",
-            ensure_sentence_end(&focus_text),
-            url,
-            url
+            ":::divider\nlabel: 主线\n:::\n\n## 今日焦点\n\n:::callout\nlabel: 先读这条\n\n{} — [点击阅读]({})\n:::\n\n**发生了什么**\n\n{}\n\n**为什么有用**\n\n{}\n\n**你可以怎么用**\n\n{}\n\n**核对入口**\n\n原文：{}\n\n",
+            focus_sentence, url, focus_sentence, why, how, url
         )
     }
 }
@@ -601,6 +602,98 @@ fn humanize_focus_text(text: &str) -> String {
     trimmed
 }
 
+fn focus_why_line(text: &str) -> String {
+    let lower = text.to_lowercase();
+    if contains_any_text(
+        &lower,
+        &["方法论", "研究", "写作", "信源", "投资逻辑", "framework"],
+    ) {
+        return "它不只是单条新闻，更像一份可复用的信息筛选框架；读者可以用它反查自己的信息源、研究路径和输出结构。".to_string();
+    }
+    if contains_any_text(
+        &lower,
+        &[
+            "web3",
+            "以太坊",
+            "交易所",
+            "稳定币",
+            "链上",
+            "协议",
+            "监管",
+            "代币",
+            "defi",
+            "ethereum",
+        ],
+    ) {
+        return "它能帮助读者判断今天 Web3 信息流的主线，是协议设计、机构动作、监管变化还是链上基础设施在发生变化。".to_string();
+    }
+    if contains_any_text(
+        &lower,
+        &[
+            "ai",
+            "llm",
+            "agent",
+            "模型",
+            "推理",
+            "openai",
+            "anthropic",
+            "claude",
+        ],
+    ) {
+        return "它能帮助读者定位 AI 工具或模型能力的具体变化，而不是只停留在概念热度。"
+            .to_string();
+    }
+    "它是本期信息流里最适合先核对的一条，可作为后续阅读其他条目的上下文锚点。".to_string()
+}
+
+fn focus_how_to_use_line(text: &str) -> String {
+    let lower = text.to_lowercase();
+    if contains_any_text(
+        &lower,
+        &["方法论", "研究", "写作", "信源", "投资逻辑", "framework"],
+    ) {
+        return "可以直接把原文里的信源、问题清单和写作结构拆出来，变成自己的每日选题检查表。"
+            .to_string();
+    }
+    if contains_any_text(
+        &lower,
+        &[
+            "web3",
+            "以太坊",
+            "交易所",
+            "稳定币",
+            "链上",
+            "协议",
+            "监管",
+            "代币",
+            "defi",
+            "ethereum",
+        ],
+    ) {
+        return "建议先核对原文中的参与方、机制变化和约束条件，再决定是否继续读相关协议文档、公告或链上数据。".to_string();
+    }
+    if contains_any_text(
+        &lower,
+        &[
+            "ai",
+            "llm",
+            "agent",
+            "模型",
+            "推理",
+            "openai",
+            "anthropic",
+            "claude",
+        ],
+    ) {
+        return "建议重点看它影响的是模型能力、开发工作流、部署成本还是安全边界，再决定是否纳入自己的工具链。".to_string();
+    }
+    "建议先读焦点原文，再回到下面三个板块按 AI、Web3、技术开源分别补齐背景。".to_string()
+}
+
+fn contains_any_text(haystack: &str, keywords: &[&str]) -> bool {
+    keywords.iter().any(|keyword| haystack.contains(keyword))
+}
+
 fn ensure_sentence_end(value: &str) -> String {
     let trimmed = value.trim();
     if trimmed.is_empty()
@@ -911,8 +1004,10 @@ mod tests {
         assert!(body.contains(":::divider\nlabel: 主线\n:::"));
         assert!(body.contains(":::callout\nlabel: 先读这条"));
         assert!(body.contains("[点击阅读](https://example.com/openai-codex)"));
-        assert!(body.contains("**为什么重要**"));
-        assert!(body.contains("**后续关注**"));
+        assert!(body.contains("**发生了什么**"));
+        assert!(body.contains("**为什么有用**"));
+        assert!(body.contains("**你可以怎么用**"));
+        assert!(body.contains("**核对入口**"));
         assert!(body.contains("原文：https://example.com/openai-codex"));
     }
 

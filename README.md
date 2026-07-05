@@ -37,7 +37,7 @@ The project currently supports:
 - The default `web3_media_urls` list now includes a PANews RSS feed, and `panewslab.com` links are treated as curated traceable sources so Chinese Web3 articles can survive topic filtering with full original URLs intact.
 - The default `web3_media_urls` list also includes the WuBlockchain Atom feed, and `wublock123.com` links are treated as curated traceable sources so Chinese Web3 exchange/news flashes can flow into the report pipeline with full original URLs.
 - WeChat public-account report drafts use a fixed personal-account cover for the `AI · Web3 最新日报` column, branded as `寻月隐君`; the cover now uses a light background with dark title text for better mobile-preview contrast, while `moonpub` still owns final rendering and upload.
-- WeChat daily reports render as a review-friendly article layout: intro, "today's three things", a three-part focus callout, numbered AI / Web3 / tech / deep-read sections, compact body cards with "worth watching", source evidence, and raw original URLs, plus a small-font `compact-links` source index that keeps one full original URL per row.
+- WeChat daily reports render as a review-friendly article layout: intro, "today's three things", a four-part practical focus callout, numbered AI / Web3 / tech / deep-read sections, compact body cards with "worth watching", source evidence, and raw original URLs, plus a small-font `compact-links` source index that keeps one full original URL per row.
 
 ## Status
 
@@ -105,7 +105,7 @@ Current working timeline has shifted:
 - June 25, 2026: third real public-account draft push succeeded with the latest content-quality-tuned v5 preview
 - June 26, 2026: a fixed personal-account cover was added for `AI · Web3 最新日报`
 - June 27, 2026: the public-account report layout was tightened with quick overview, numbered sections, lighter item spacing, and clearer source-link blocks
-- June 28, 2026: the layout was further polished into "today's three things", a three-part focus block, "worth watching" item notes, and Chinese fallback summaries to avoid clipped English fragments
+- June 28, 2026: the layout was further polished into "today's three things", a practical focus block, "worth watching" item notes, and Chinese fallback summaries to avoid clipped English fragments
 - June 25-26, 2026: internal gray rollout and repeated rehearsals are realistic
 - it is still not recommended to describe the path as fully unattended stable production yet
 
@@ -310,6 +310,7 @@ Recent report-quality hardening also now lives inside `src/daily_report/` instea
 - every rendered focus, section item, deep read, referenced source, and complete-source entry exposes a visible `原文：https://...` URL instead of relying only on Markdown link text
 - when reliable article text or summaries are unavailable, the report should show the title, source, and full original URL instead of presenting unverifiable claims as system analysis
 - the reference block is split into URLs used by the rendered body and a longer "complete source links" list for the remaining material pool
+- manual reruns now read the current output file plus recent sibling `wechat-report-*.md` / `daily-report-*.md` files and use all visible `https://...` source URLs as freshness hints, so a new output filename does not accidentally repeat yesterday's focus and deep-read links
 
 The current operational interpretation is:
 - the minimum viable target is complete: generate report -> push draft -> persist receipt -> inspect publish history

@@ -517,12 +517,34 @@ fn previous_report_urls(previous_markdown: Option<&str>) -> HashSet<String> {
         if let Some(url) = trimmed.strip_prefix("原文：https://") {
             let url = url.trim();
             if !url.is_empty() {
-                urls.insert(url.to_string());
+                urls.insert(format!("https://{url}"));
             }
+            continue;
+        }
+
+        for url in extract_https_urls(trimmed) {
+            urls.insert(url);
         }
     }
 
     urls
+}
+
+fn extract_https_urls(line: &str) -> Vec<String> {
+    line.split_whitespace()
+        .filter_map(|token| {
+            let start = token.find("https://")?;
+            let url = token[start..]
+                .trim_end_matches(|ch: char| {
+                    matches!(
+                        ch,
+                        ')' | ']' | '}' | '>' | '，' | '。' | '；' | '、' | ',' | ';'
+                    )
+                })
+                .trim();
+            (!url.is_empty()).then(|| url.to_string())
+        })
+        .collect()
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1557,6 +1579,23 @@ mod tests {
             serde_json::json!(["automation: login timeout: QR code not scanned within 120s"])
         );
         assert_eq!(json["automation_state"], "login_required");
+    }
+
+    #[test]
+    fn previous_report_urls_extracts_compact_links_urls() {
+        let urls = previous_report_urls(Some(
+            r#"
+> 原文：https://example.com/body
+:::compact-links
+- 01 | item | source | https://example.com/source
+- 02 | item | source | https://example.com/with-trailing)
+:::
+"#,
+        ));
+
+        assert!(urls.contains("https://example.com/body"));
+        assert!(urls.contains("https://example.com/source"));
+        assert!(urls.contains("https://example.com/with-trailing"));
     }
 
     #[test]

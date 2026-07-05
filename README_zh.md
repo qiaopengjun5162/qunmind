@@ -314,6 +314,8 @@ cargo run -- --config config.toml report-network-status --report-name '微信公
 - 现在这类成功后的自动化提示也会作为结构化 `warnings` 出现在发布回执 JSON 里，不必再手工翻 `raw_output`
 - 现在回执和 `report-status` 还会把这类 warning 进一步标记成 `automation_state = "login_required"`，语义不是“完全没走自动化”，而是“草稿已推成功，但浏览器自动化没真正进入后续预览/配置步骤”
 
+近期日报重跑也会把当前输出文件和同目录最近几份 `wechat-report-*.md` / `daily-report-*.md` 作为新鲜度上下文，提取其中所有可见 `https://...` 来源链接用于焦点、正文和深读降权，避免换了输出文件名后又重复昨天的焦点与深读材料。
+
 日报内容质量这轮也已经补了一层 Rust 侧兜底，而不是只靠多试几次模型输出：
 - AI JSON 非法或字段太空时，会自动补齐非空板块，避免退化成接近空白的草稿
 - 会把明显误分的条目重新平衡回正确板块，例如 `openai/codex` 不再因为包含 `dex` 被误放进 Web3
