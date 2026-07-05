@@ -538,6 +538,10 @@ fn display_source_label(item: &PublicNewsItem) -> &str {
 }
 
 fn display_source_label_from_parts<'a>(source: &'a str, url: &'a str) -> &'a str {
+    canonical_source_label_from_parts(source, url)
+}
+
+pub(super) fn canonical_source_label_from_parts<'a>(source: &'a str, url: &'a str) -> &'a str {
     if url.contains("openai.com/") {
         "OpenAI"
     } else if url.contains("blog.google/") {
@@ -854,9 +858,27 @@ fn render_outro_section() -> String {
 fn is_reliable_read_summary(summary: &str) -> bool {
     let summary = summary.trim();
     is_useful_chinese_summary(summary)
-        && !summary.contains("这篇材料围绕")
-        && !summary.contains("这篇文章讲了")
-        && !summary.contains("核心信息")
+        && !is_low_confidence_fallback_summary(summary)
+}
+
+pub(super) fn is_low_confidence_fallback_summary(summary: &str) -> bool {
+    let summary = summary.trim();
+    [
+        "这篇材料围绕",
+        "这篇文章讲了",
+        "核心信息",
+        "这篇官方材料围绕",
+        "这篇材料讨论",
+        "这篇论文材料聚焦",
+        "这条开源材料指向",
+        "这篇材料涉及",
+        "这条材料更适合直接打开原文",
+        "这条信息摘要不够完整",
+        "建议直接阅读原文核对",
+        "适合直接回到一手原文核对",
+    ]
+    .iter()
+    .any(|needle| summary.contains(needle))
 }
 
 fn is_useful_chinese_summary(summary: &str) -> bool {
@@ -1159,6 +1181,16 @@ mod tests {
 
         assert!(md.contains("这篇官方材料围绕 Announcing the Monetization"));
         assert!(md.contains("适合直接回到一手原文核对发布细节、约束条件和实际影响"));
+    }
+
+    #[test]
+    fn fallback_summary_detection_marks_generated_reason_as_low_confidence() {
+        assert!(is_low_confidence_fallback_summary(
+            "这篇官方材料围绕 Announcing the Monetization 展开，适合直接回到一手原文核对发布细节、约束条件和实际影响。"
+        ));
+        assert!(!is_low_confidence_fallback_summary(
+            "Google DeepMind 团队提出了一种新的强化学习框架，并给出了实验结果。"
+        ));
     }
 
     #[test]

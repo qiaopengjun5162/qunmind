@@ -13,8 +13,7 @@ use crate::source::{PublicNewsItem, PublicNewsSource};
 
 use parser::parse_report_json;
 use prompt::build_json_prompt_with_context;
-use render::assemble_markdown;
-use render::sanitize;
+use render::{assemble_markdown, canonical_source_label_from_parts, is_low_confidence_fallback_summary, sanitize};
 
 const MAX_REPORT_ITEMS: usize = 32;
 const MIN_SECTION_ITEMS: usize = 3;
@@ -945,12 +944,7 @@ fn read_summary_quality_score(summary: &str) -> usize {
     if trimmed.is_empty() {
         return 0;
     }
-    if trimmed.contains("直接阅读原文")
-        || trimmed.contains("核对关键事实")
-        || trimmed.contains("核对发布细节")
-        || trimmed.contains("核对研究假设")
-        || trimmed.contains("核对方法设定")
-    {
+    if is_low_confidence_fallback_summary(trimmed) {
         return 0;
     }
     if trimmed.chars().count() < 12 {
@@ -2526,19 +2520,7 @@ fn best_read_summary(item: &PublicNewsItem) -> String {
 }
 
 fn display_source_name(item: &PublicNewsItem) -> &str {
-    if item.url.contains("openai.com/") {
-        "OpenAI"
-    } else if item.url.contains("blog.google/") {
-        "Google Blog"
-    } else if item.url.contains("blog.cloudflare.com/") {
-        "Cloudflare Blog"
-    } else if item.url.contains("blog.rust-lang.org/") {
-        "Rust Blog"
-    } else if item.url.contains("github.blog/") {
-        "GitHub Blog"
-    } else {
-        item.source.as_str()
-    }
+    canonical_source_label_from_parts(item.source.as_str(), item.url.as_str())
 }
 
 fn is_generic_market_wrap_item(item: &PublicNewsItem) -> bool {
