@@ -301,7 +301,7 @@ fn render_reads_section(reads: &[ReportRead], section_index: usize) -> String {
         if is_reliable_read_summary(summary) {
             s.push_str(&format!("> 为什么读：{}\n", sanitize(summary)));
         } else if !read.url.trim().is_empty() {
-            s.push_str("> 为什么读：未生成可靠摘要，请直接阅读原文核对。\n");
+            s.push_str(&format!("> 为什么读：{}\n", fallback_read_reason(read)));
         }
         if !read.url.trim().is_empty() {
             s.push_str(&format!("> 原文：{}\n\n", read.url.trim()));
@@ -510,7 +510,7 @@ fn format_section_item(item: &ReportSection, section_label: &str) -> Option<Stri
         format!("> {}\n> 原文：{}", sanitize(&source_part), url)
     };
     let comment = if item.comment.trim().is_empty() {
-        "未生成可靠摘要，请直接阅读原文核对。".to_string()
+        fallback_section_reason(&item.title, url)
     } else if has_ascii_ellipsis_fragment(item.comment.trim()) {
         fallback_section_comment(item)
     } else {
@@ -705,6 +705,99 @@ fn ensure_sentence_end(value: &str) -> String {
         return trimmed.to_string();
     }
     format!("{trimmed}。")
+}
+
+fn fallback_read_reason(read: &ReportRead) -> String {
+    fallback_reason_from_title_and_url(&read.title, &read.url)
+}
+
+fn fallback_section_reason(title: &str, url: &str) -> String {
+    fallback_reason_from_title_and_url(title, url)
+}
+
+fn fallback_reason_from_title_and_url(title: &str, url: &str) -> String {
+    let title = sanitize(title.trim());
+    let lower_url = url.trim().to_lowercase();
+
+    if title.is_empty() {
+        return "这条材料更适合直接打开原文，核对关键事实、上下文和适用边界。"
+            .to_string();
+    }
+
+    if lower_url.contains("openai.com/")
+        || lower_url.contains("blog.google/")
+        || lower_url.contains("blog.cloudflare.com/")
+        || lower_url.contains("blog.rust-lang.org/")
+        || lower_url.contains("github.blog/")
+    {
+        return format!(
+            "这篇官方材料围绕 {} 展开，适合直接回到一手原文核对发布细节、约束条件和实际影响。",
+            compact_read_title(&title, 28)
+        );
+    }
+
+    if lower_url.contains("ethresear.ch/") {
+        return format!(
+            "这篇材料讨论 {}，更适合直接阅读原文，核对研究假设、机制设计和潜在影响。",
+            compact_read_title(&title, 28)
+        );
+    }
+
+    if lower_url.contains("arxiv.org/") || lower_url.contains("eprint.iacr.org/") {
+        return format!(
+            "这篇论文材料聚焦 {}，建议直接核对原文里的方法设定、实验结果和适用边界。",
+            compact_read_title(&title, 28)
+        );
+    }
+
+    if lower_url.contains("github.com/") {
+        return format!(
+            "这条开源材料指向 {}，值得直接打开原文，确认项目现状、关键实现和使用门槛。",
+            compact_read_title(&title, 28)
+        );
+    }
+
+    if title.contains("以太坊")
+        || title.contains("Web3")
+        || title.contains("比特币")
+        || lower_url.contains("ethereum")
+        || lower_url.contains("web3")
+    {
+        return format!(
+            "这篇材料涉及 {}，适合直接回到原文，核对事件背景、关键参与方和后续变化。",
+            compact_read_title(&title, 28)
+        );
+    }
+
+    if title.contains("AI")
+        || title.contains("模型")
+        || title.contains("Agent")
+        || lower_url.contains("openai")
+        || lower_url.contains("anthropic")
+    {
+        return format!(
+            "这篇材料涉及 {}，建议直接阅读原文，确认能力变化、适用场景和实际限制。",
+            compact_read_title(&title, 28)
+        );
+    }
+
+    format!(
+        "这篇材料围绕 {} 展开，适合直接打开原文，补齐背景信息、关键细节和判断依据。",
+        compact_read_title(&title, 28)
+    )
+}
+
+fn compact_read_title(value: &str, max_chars: usize) -> String {
+    let trimmed = value.trim();
+    let chars = trimmed.chars().collect::<Vec<_>>();
+    if chars.len() <= max_chars {
+        return trimmed.to_string();
+    }
+
+    chars[..max_chars.saturating_sub(1)]
+        .iter()
+        .collect::<String>()
+        + "…"
 }
 
 fn render_summary(report: &ReportJson) -> Option<String> {
@@ -1023,7 +1116,8 @@ mod tests {
         };
         let md = assemble_markdown(&report, &[], "");
         assert!(md.contains("### 深读 01｜[深度文章]"));
-        assert!(md.contains("> 为什么读：未生成可靠摘要，请直接阅读原文核对。"));
+        assert!(md.contains("> 为什么读：这篇材料围绕 深度文章 展开"));
+        assert!(!md.contains("未生成可靠摘要，请直接阅读原文核对。"));
         assert!(md.contains("原文：https://example.com/a"));
     }
 
@@ -1040,9 +1134,27 @@ mod tests {
 
         let md = assemble_markdown(&report, &[], "");
 
-        assert!(md.contains("> 为什么读：未生成可靠摘要，请直接阅读原文核对。"));
+        assert!(md.contains("> 为什么读：这篇材料围绕 深度文章 展开"));
         assert!(!md.contains("Aave confirmed Saturday"));
+        assert!(!md.contains("未生成可靠摘要，请直接阅读原文核对。"));
         assert!(md.contains("原文：https://example.com/a"));
+    }
+
+    #[test]
+    fn reads_use_official_fallback_reason_when_summary_is_missing() {
+        let report = ReportJson {
+            reads: vec![ReportRead {
+                title: "Announcing the Monetization Gateway".to_string(),
+                url: "https://blog.cloudflare.com/monetization-gateway/".to_string(),
+                summary: String::new(),
+            }],
+            ..Default::default()
+        };
+
+        let md = assemble_markdown(&report, &[], "");
+
+        assert!(md.contains("这篇官方材料围绕 Announcing the Monetization"));
+        assert!(md.contains("适合直接回到一手原文核对发布细节、约束条件和实际影响"));
     }
 
     #[test]
