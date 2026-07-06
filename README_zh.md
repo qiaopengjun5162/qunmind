@@ -20,7 +20,7 @@
 - 回复时纳入最近已保存群消息作为基础对话上下文。
 - 入站消息链接抽取和去重存储。
 - Rust 侧项目投研工具目录，用于后续扩展市场数据、链上分析、代码安全、社区、资金动向和研究观点来源。
-- Rust 侧 AI / Agent 学习资源目录，用于梳理 LLM 基础、API 调用、coding agent、agent 框架和 Hermes 执行层参考。
+- Rust 侧 AI / Agent 学习资源目录，用于梳理 LLM 基础、API 调用、coding agent、agent 框架、Hermes 执行层，以及 Lean / Software Foundations 一类 Formal Methods 学习入口。
 - Cron 定时日报。
 - 基于最近已保存群消息和链接情报生成日报。
 - 多群日报目标配置，可按群覆盖 cron、prompt、回看窗口、消息数量和链接数量。
@@ -377,7 +377,7 @@ cargo run -- --config config.toml report-network-status --report-name '微信公
 
 ## AI / Agent 学习地图
 
-`src/research/learning.rs` 维护推荐的 LLM、API、coding agent、agent 框架、Hermes 执行层和 AI x Web3 学习资源。它已经把 AI x Web3 School 的 Learning Agent 启动 Prompt 和 Handbook 作为结构化参考纳入 Rust 代码，方便后续设计 prompt、模型供应商对接、tool calling、skills、记忆和长期执行能力，同时不把微信消息主链路变成资料清单。
+`src/research/learning.rs` 维护推荐的 LLM、API、coding agent、agent 框架、Hermes 执行层、Formal Methods 和 AI x Web3 学习资源。它已经把 AI x Web3 School 的 Learning Agent 启动 Prompt / Handbook，以及 Lean 4 中文文档、Lean4 互动关卡和 Software Foundations 这类形式化验证入口作为结构化参考纳入 Rust 代码，方便后续设计 prompt、模型供应商对接、tool calling、skills、记忆和长期执行能力，同时不把微信消息主链路变成资料清单。
 
 现在也把 JoyAI-VL-Interaction 这类多模态 Agent 参考放进了学习目录，但当前只作为“未来视频/视觉 PoC 路线图”使用，不直接并入 `QunMind` 主运行时。详见 [docs/multimodal-roadmap.md](docs/multimodal-roadmap.md)。
 

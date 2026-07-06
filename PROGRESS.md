@@ -38,6 +38,7 @@
 
 ### Done
 
+- **Formal Methods 学习入口已沉淀进结构化目录** — `src/research/learning.rs` 现在新增了 `FormalMethods` 分类，并把 Lean 4 中文文档、Lean4 互动通关关卡和 Software Foundations 的 `Logical Foundations` 结构化收进学习资源目录。这样后续再扩展 theorem proving、验证、proof assistant 或类型系统学习清单时，不需要继续散落在聊天记录里。
 - **全球官方来源与第三板块升级已落地** — 这轮先没有急着重生成旧稿，而是先把素材与版式策略补对。`official_blogs_urls` 默认新增了 `https://www.ecb.europa.eu/rss/press.html`，并把 `ecb.europa.eu` 视作 curated traceable official source；同时，日报第三板块从“技术与开源”升级为“技术、产业与政策”，不再只承接狭义工程发布，也开始容纳工程基础设施、全球官方信号和高质量政策变化。这样后续重生成的日报才能真正体现更全球、更专业的视角，而不是旧内容换个说法。
 - **新增全球官方来源保留与分类测试** — `src/source/mod.rs` 新增了 `ECB` curated URL 保留测试，`src/source/official_blogs.rs` 补齐了 `ECB` canonical source 命名测试，`src/daily_report/mod.rs` 也新增了“全球官方宏观信号可进入第三板块”的断言，避免后续来源扩展或版块重命名时悄悄退回旧状态。
 - **2026-07-05 公众号日报 v11 已推草稿并发送手机预览** — 已审核稿 `/tmp/wechat-report-2026-07-05-source-expanded-v11.md` 已直接通过 `moonpub --articles /Users/qiaopengjun/Code/Rust/moonpub-data push /tmp/wechat-report-2026-07-05-source-expanded-v11.md --render` 推送到公众号草稿箱，并完成手机预览发送。标题为 `AI · Web3 最新日报｜2026-07-05`，`media_id = EmukC2rjB9X3nj6feGSErwz80kJdb49Hij6-qMyX0NTYNItMKQw5-Wy9D5PII3nx`；后台自动化输出显示 Session 已恢复、赞赏已开启、留言已开启、创作来源保持 `个人观点，仅供参考`、模板插入 skipped、预览发送成功。注意这次为避免重新生成导致内容波动，直接推送已审核 markdown，因此不会写入 QunMind `publish-history`；公众号草稿和手机预览已成功，不影响后台人工发布。
