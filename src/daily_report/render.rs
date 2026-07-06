@@ -10,6 +10,7 @@ const COMPACT_REF_TITLE_CHARS: usize = 30;
 const COMPACT_REF_SOURCE_CHARS: usize = 28;
 const COMPACT_REF_NOTE_CHARS: usize = 26;
 const OVERVIEW_FOCUS_PREVIEW_CHARS: usize = 34;
+const OVERVIEW_PRIORITY_PREVIEW_CHARS: usize = 22;
 const REPORT_OUTRO_TITLE: &str = "继续交流";
 const REPORT_OUTRO_BODY: &str = "这里是公众号「寻月隐君」的 AI · Web3 最新日报。每天筛选公开信息、官方资料和一手链接，帮你快速看到值得继续追踪的技术与行业动态。\n\n想加入读者交流群，可以在公众号后台回复「加群」获取最新方式。二维码或入口如有更新，也以后台回复为准。\n\n本文只做信息整理，不构成投资建议；重要判断请回到文中的「原文」链接继续核对。\n\n如果这份日报对你有帮助，欢迎点赞、推荐给朋友，或者点个「在看」。";
 
@@ -139,6 +140,11 @@ fn render_overview(report: &ReportJson) -> String {
         ));
     }
 
+    let priorities = top_priority_lines(report);
+    if !priorities.is_empty() {
+        lines.push(format!("**再看这几条**：{}。", priorities.join("；")));
+    }
+
     let mut counts = Vec::new();
     if !report.ai_items.is_empty() {
         counts.push(format!("AI {} 条", report.ai_items.len()));
@@ -154,7 +160,7 @@ fn render_overview(report: &ReportJson) -> String {
     }
     if !counts.is_empty() {
         lines.push(format!(
-            "**再按板块浏览**：{}，正文只保留更像当天增量、且能追到原文的条目。",
+            "**正文怎么读**：{}，每个板块只保留少量高信号条目；没进正文的内容统一放到文末资料索引。",
             counts.join(" / ")
         ));
     }
@@ -164,13 +170,39 @@ fn render_overview(report: &ReportJson) -> String {
     }
 
     lines.push(
-        "**最后看链接区**：文末会区分“正文引用来源”和“完整素材链接”，方便逐条追溯。".to_string(),
+        "**最后看链接区**：文末的“正文引用来源”是核对入口，“补充阅读池”用来留档今天没写进正文但仍值得继续挖的材料。".to_string(),
     );
 
     format!(
         ":::divider\nlabel: 今日速览\n:::\n\n## 今日三件事\n\n:::summary\n{}\n:::\n\n",
         lines.join("\n\n")
     )
+}
+
+fn top_priority_lines(report: &ReportJson) -> Vec<String> {
+    let mut lines = Vec::new();
+
+    if let Some(item) = report.ai_items.first() {
+        lines.push(format!("AI 先看 {}", priority_preview_text(item)));
+    }
+    if let Some(item) = report.web3_items.first() {
+        lines.push(format!("Web3 先看 {}", priority_preview_text(item)));
+    }
+    if let Some(item) = report.tech_items.first() {
+        lines.push(format!("产业/政策先看 {}", priority_preview_text(item)));
+    }
+
+    lines
+}
+
+fn priority_preview_text(item: &ReportSection) -> String {
+    let candidate = if !item.comment.trim().is_empty() {
+        trim_sentence_end(&sanitize(item.comment.trim())).to_string()
+    } else {
+        sanitize(item.title.trim())
+    };
+
+    truncate_str(candidate.trim(), OVERVIEW_PRIORITY_PREVIEW_CHARS)
 }
 
 fn render_ai_section(items: &[ReportSection], signals: &[String], section_index: usize) -> String {
@@ -216,7 +248,7 @@ fn render_ai_section(items: &[ReportSection], signals: &[String], section_index:
     }
 
     if !signals.is_empty() {
-        s.push_str("### 今日信号\n\n");
+        s.push_str("### 你可以顺手关注\n\n");
         for (i, sig) in signals.iter().enumerate() {
             let sig = sig.trim();
             if sig.is_empty() {
@@ -234,7 +266,7 @@ fn render_web3_section(items: &[ReportSection], section_index: usize) -> String 
     }
 
     let mut s = format!(
-        "## {:02}. Web3\n\n优先看机构采用、协议变化、监管进展与链上结构性信号，不重复堆砌泛行情快讯。\n\n",
+        "## {:02}. Web3\n\n这里优先保留真正值得跟进的机构动作、协议变化与监管进展，不把泛行情快讯塞进正文。\n\n",
         section_index
     );
     for item in items {
@@ -260,7 +292,7 @@ fn render_tech_section(
     }
 
     let mut s = format!(
-        "## {:02}. 技术与开源\n\n优先看发布、论文、安全事件与工程实践，尽量避免把非技术类热门话题混进来。\n\n",
+        "## {:02}. 技术、产业与政策\n\n这里主要回答两个问题：今天有哪些值得继续跟踪的基础设施变化，以及哪些全球官方信号会影响接下来的行业判断。\n\n",
         section_index
     );
     for rendered in rendered_items {
@@ -278,7 +310,7 @@ fn render_tech_section(
 
 fn render_reads_section(reads: &[ReportRead], section_index: usize) -> String {
     let mut s = format!(
-        "## {:02}. 推荐深读\n\n只保留适合进一步打开原文的材料，尽量不把普通快讯放进深读区。\n\n",
+        "## {:02}. 推荐深读\n\n如果你今天只打算额外打开 2 到 3 篇原文，就优先从这里开始。这里只放更像文章、论文或官方说明的材料。\n\n",
         section_index
     );
     for (index, read) in reads.iter().enumerate() {
@@ -301,7 +333,7 @@ fn render_reads_section(reads: &[ReportRead], section_index: usize) -> String {
         if is_reliable_read_summary(summary) {
             s.push_str(&format!("> 为什么读：{}\n", sanitize(summary)));
         } else if !read.url.trim().is_empty() {
-            s.push_str("> 为什么读：未生成可靠摘要，请直接阅读原文核对。\n");
+            s.push_str(&format!("> 为什么读：{}\n", fallback_read_reason(read)));
         }
         if !read.url.trim().is_empty() {
             s.push_str(&format!("> 原文：{}\n\n", read.url.trim()));
@@ -321,7 +353,7 @@ fn build_refs_block(report: &ReportJson, items: &[PublicNewsItem], section_index
         .collect::<std::collections::HashSet<_>>();
     let mut seen_normalized_urls = std::collections::HashSet::new();
     let mut block = format!(
-        "## {:02}. 参考来源\n\n这一节是资料索引，不再按正文卡片展开。你可以先读上面的正文，再回到这里逐条核对原文。\n\n",
+        "## {:02}. 资料索引\n\n这一节不是正文延长版，而是核对与补充阅读入口。先读上面的精选，再按需要回到这里查原文。\n\n",
         section_index
     );
     let mut referenced_count = 0;
@@ -343,7 +375,7 @@ fn build_refs_block(report: &ReportJson, items: &[PublicNewsItem], section_index
         block.push_str("### 正文引用来源（0）\n\n暂无正文直接引用链接。\n");
     } else {
         block.push_str(&format!(
-            "### 正文引用来源（{}）\n\n正文观点的核对入口，压缩成资料索引，优先打开原文确认。\n\n:::compact-links\n{}:::\n\n",
+            "### 正文引用来源（{}）\n\n如果你想核对正文里的观点、数据或判断，先看这里。\n\n:::compact-links\n{}:::\n\n",
             referenced_count, referenced_entries
         ));
     }
@@ -356,7 +388,7 @@ fn build_refs_block(report: &ReportJson, items: &[PublicNewsItem], section_index
         .collect::<Vec<_>>();
     if !unreferenced.is_empty() {
         block.push_str(&format!(
-            "\n### 完整素材链接（{}）\n\n未写入正文的素材入口，只保留来源和完整原文链接。\n\n:::compact-links\n",
+            "\n### 补充阅读池（{}）\n\n这些是今天没写进正文、但仍值得留档或继续挖的素材入口。\n\n:::compact-links\n",
             unreferenced.len()
         ));
         for (i, item) in unreferenced.iter().enumerate() {
@@ -510,7 +542,7 @@ fn format_section_item(item: &ReportSection, section_label: &str) -> Option<Stri
         format!("> {}\n> 原文：{}", sanitize(&source_part), url)
     };
     let comment = if item.comment.trim().is_empty() {
-        "未生成可靠摘要，请直接阅读原文核对。".to_string()
+        fallback_section_reason(&item.title, url)
     } else if has_ascii_ellipsis_fragment(item.comment.trim()) {
         fallback_section_comment(item)
     } else {
@@ -538,12 +570,22 @@ fn display_source_label(item: &PublicNewsItem) -> &str {
 }
 
 fn display_source_label_from_parts<'a>(source: &'a str, url: &'a str) -> &'a str {
+    canonical_source_label_from_parts(source, url)
+}
+
+pub(super) fn canonical_source_label_from_parts<'a>(source: &'a str, url: &'a str) -> &'a str {
     if url.contains("openai.com/") {
         "OpenAI"
     } else if url.contains("blog.google/") {
         "Google Blog"
     } else if url.contains("blog.cloudflare.com/") {
         "Cloudflare Blog"
+    } else if url.contains("blog.rust-lang.org/") {
+        "Rust Blog"
+    } else if url.contains("github.blog/") {
+        "GitHub Blog"
+    } else if url.contains("ecb.europa.eu/") {
+        "ECB"
     } else {
         source
     }
@@ -567,7 +609,7 @@ pub(super) fn sanitize(s: &str) -> String {
 }
 
 fn humanize_focus_text(text: &str) -> String {
-    let trimmed = sanitize(text.trim());
+    let trimmed = sanitize(strip_focus_artifacts(text.trim()).trim());
     if trimmed.is_empty() {
         return trimmed;
     }
@@ -600,6 +642,15 @@ fn humanize_focus_text(text: &str) -> String {
     }
 
     trimmed
+}
+
+fn strip_focus_artifacts(value: &str) -> String {
+    value
+        .split("请注意：如果需要全部条目聚合成单一摘要")
+        .next()
+        .unwrap_or(value)
+        .trim()
+        .to_string()
 }
 
 fn focus_why_line(text: &str) -> String {
@@ -707,8 +758,100 @@ fn ensure_sentence_end(value: &str) -> String {
     format!("{trimmed}。")
 }
 
+fn fallback_read_reason(read: &ReportRead) -> String {
+    fallback_reason_from_title_and_url(&read.title, &read.url)
+}
+
+fn fallback_section_reason(title: &str, url: &str) -> String {
+    fallback_reason_from_title_and_url(title, url)
+}
+
+fn fallback_reason_from_title_and_url(title: &str, url: &str) -> String {
+    let title = sanitize(title.trim());
+    let lower_url = url.trim().to_lowercase();
+
+    if title.is_empty() {
+        return "这条材料更适合直接打开原文，核对关键事实、上下文和适用边界。".to_string();
+    }
+
+    if lower_url.contains("openai.com/")
+        || lower_url.contains("blog.google/")
+        || lower_url.contains("blog.cloudflare.com/")
+        || lower_url.contains("blog.rust-lang.org/")
+        || lower_url.contains("github.blog/")
+    {
+        return format!(
+            "这篇官方材料围绕 {} 展开，适合直接回到一手原文核对发布细节、约束条件和实际影响。",
+            compact_read_title(&title, 28)
+        );
+    }
+
+    if lower_url.contains("ethresear.ch/") {
+        return format!(
+            "这篇材料讨论 {}，更适合直接阅读原文，核对研究假设、机制设计和潜在影响。",
+            compact_read_title(&title, 28)
+        );
+    }
+
+    if lower_url.contains("arxiv.org/") || lower_url.contains("eprint.iacr.org/") {
+        return format!(
+            "这篇论文材料聚焦 {}，建议直接核对原文里的方法设定、实验结果和适用边界。",
+            compact_read_title(&title, 28)
+        );
+    }
+
+    if lower_url.contains("github.com/") {
+        return format!(
+            "这条开源材料指向 {}，值得直接打开原文，确认项目现状、关键实现和使用门槛。",
+            compact_read_title(&title, 28)
+        );
+    }
+
+    if title.contains("以太坊")
+        || title.contains("Web3")
+        || title.contains("比特币")
+        || lower_url.contains("ethereum")
+        || lower_url.contains("web3")
+    {
+        return format!(
+            "这篇材料涉及 {}，适合直接回到原文，核对事件背景、关键参与方和后续变化。",
+            compact_read_title(&title, 28)
+        );
+    }
+
+    if title.contains("AI")
+        || title.contains("模型")
+        || title.contains("Agent")
+        || lower_url.contains("openai")
+        || lower_url.contains("anthropic")
+    {
+        return format!(
+            "这篇材料涉及 {}，建议直接阅读原文，确认能力变化、适用场景和实际限制。",
+            compact_read_title(&title, 28)
+        );
+    }
+
+    format!(
+        "这篇材料围绕 {} 展开，适合直接打开原文，补齐背景信息、关键细节和判断依据。",
+        compact_read_title(&title, 28)
+    )
+}
+
+fn compact_read_title(value: &str, max_chars: usize) -> String {
+    let trimmed = value.trim();
+    let chars = trimmed.chars().collect::<Vec<_>>();
+    if chars.len() <= max_chars {
+        return trimmed.to_string();
+    }
+
+    chars[..max_chars.saturating_sub(1)]
+        .iter()
+        .collect::<String>()
+        + "…"
+}
+
 fn render_summary(report: &ReportJson) -> Option<String> {
-    let summary = sanitize(report.summary.trim());
+    let summary = sanitize(strip_focus_artifacts(report.summary.trim()).trim());
     if is_useful_chinese_summary(&summary) {
         return Some(summary);
     }
@@ -735,7 +878,7 @@ fn render_summary(report: &ReportJson) -> Option<String> {
     }
 
     Some(format!(
-        "本期建议优先阅读{}。如果某条摘要不够完整，请以对应原文链接为准。",
+        "本期建议优先阅读{}。如果某条说明偏简洁，请直接结合对应原文链接继续核对。",
         titles.join("、")
     ))
 }
@@ -756,10 +899,31 @@ fn render_outro_section() -> String {
 
 fn is_reliable_read_summary(summary: &str) -> bool {
     let summary = summary.trim();
-    is_useful_chinese_summary(summary)
-        && !summary.contains("这篇材料围绕")
-        && !summary.contains("这篇文章讲了")
-        && !summary.contains("核心信息")
+    is_useful_chinese_summary(summary) && !is_low_confidence_fallback_summary(summary)
+}
+
+pub(super) fn is_low_confidence_fallback_summary(summary: &str) -> bool {
+    let summary = summary.trim();
+    [
+        "这篇材料围绕",
+        "这篇文章讲了",
+        "核心信息",
+        "这篇官方材料围绕",
+        "这篇材料讨论",
+        "这篇论文材料聚焦",
+        "这条开源材料指向",
+        "这篇材料涉及",
+        "这条材料更适合直接打开原文",
+        "这条信息摘要不够完整",
+        "建议直接阅读原文核对",
+        "建议打开原文核对",
+        "读者应重点核对",
+        "读者应优先核对",
+        "读者应打开原文核对",
+        "适合直接回到一手原文核对",
+    ]
+    .iter()
+    .any(|needle| summary.contains(needle))
 }
 
 fn is_useful_chinese_summary(summary: &str) -> bool {
@@ -807,14 +971,7 @@ fn has_ascii_ellipsis_fragment(value: &str) -> bool {
 }
 
 fn fallback_section_comment(item: &ReportSection) -> String {
-    if item.source.trim().is_empty() {
-        "这条信息摘要不够完整，建议直接阅读原文核对。".to_string()
-    } else {
-        format!(
-            "这条信息近期来自{}，摘要不够完整，建议直接阅读原文核对。",
-            sanitize(item.source.trim())
-        )
-    }
+    fallback_reason_from_title_and_url(&item.title, &item.url)
 }
 
 fn short_title(item: &PublicNewsItem, score: i64) -> String {
@@ -936,9 +1093,9 @@ mod tests {
         assert!(md.contains("## 今日焦点"));
         assert!(md.contains("## 01. AI 前沿"));
         assert!(md.contains("## 02. Web3"));
-        assert!(md.contains("## 03. 技术与开源"));
+        assert!(md.contains("## 03. 技术、产业与政策"));
         assert!(md.contains("## 今日收束"));
-        assert!(md.contains("## 04. 参考来源"));
+        assert!(md.contains("## 04. 资料索引"));
     }
 
     #[test]
@@ -989,7 +1146,11 @@ mod tests {
         assert!(md.contains("Web3 1 条"));
         assert!(md.contains("技术 1 条"));
         assert!(md.contains("深读 1 篇"));
-        assert!(md.contains("正文只保留更像当天增量、且能追到原文的条目"));
+        assert!(md.contains("**再看这几条**"));
+        assert!(md.contains("AI 先看"));
+        assert!(md.contains("Web3 先看"));
+        assert!(md.contains("产业/政策先看"));
+        assert!(md.contains("每个板块只保留少量高信号条目"));
         assert!(md.contains("这条英文来源信息需要结合原文核对关键细节。"));
         assert!(md.contains("原文与解读见下方“今日焦点”"));
     }
@@ -1023,7 +1184,8 @@ mod tests {
         };
         let md = assemble_markdown(&report, &[], "");
         assert!(md.contains("### 深读 01｜[深度文章]"));
-        assert!(md.contains("> 为什么读：未生成可靠摘要，请直接阅读原文核对。"));
+        assert!(md.contains("> 为什么读：这篇材料围绕 深度文章 展开"));
+        assert!(!md.contains("未生成可靠摘要，请直接阅读原文核对。"));
         assert!(md.contains("原文：https://example.com/a"));
     }
 
@@ -1040,9 +1202,40 @@ mod tests {
 
         let md = assemble_markdown(&report, &[], "");
 
-        assert!(md.contains("> 为什么读：未生成可靠摘要，请直接阅读原文核对。"));
+        assert!(md.contains("> 为什么读：这篇材料围绕 深度文章 展开"));
         assert!(!md.contains("Aave confirmed Saturday"));
+        assert!(!md.contains("未生成可靠摘要，请直接阅读原文核对。"));
         assert!(md.contains("原文：https://example.com/a"));
+    }
+
+    #[test]
+    fn reads_use_official_fallback_reason_when_summary_is_missing() {
+        let report = ReportJson {
+            reads: vec![ReportRead {
+                title: "Announcing the Monetization Gateway".to_string(),
+                url: "https://blog.cloudflare.com/monetization-gateway/".to_string(),
+                summary: String::new(),
+            }],
+            ..Default::default()
+        };
+
+        let md = assemble_markdown(&report, &[], "");
+
+        assert!(md.contains("这篇官方材料围绕 Announcing the Monetization"));
+        assert!(md.contains("适合直接回到一手原文核对发布细节、约束条件和实际影响"));
+    }
+
+    #[test]
+    fn fallback_summary_detection_marks_generated_reason_as_low_confidence() {
+        assert!(is_low_confidence_fallback_summary(
+            "这篇官方材料围绕 Announcing the Monetization 展开，适合直接回到一手原文核对发布细节、约束条件和实际影响。"
+        ));
+        assert!(is_low_confidence_fallback_summary(
+            "以太坊研究社区正在讨论后量子场景下以太坊是否仍需要签名机制，建议打开原文核对方案假设、实现约束和对协议设计的潜在影响。"
+        ));
+        assert!(!is_low_confidence_fallback_summary(
+            "Google DeepMind 团队提出了一种新的强化学习框架，并给出了实验结果。"
+        ));
     }
 
     #[test]
@@ -1103,8 +1296,9 @@ mod tests {
 
         let rendered = format_section_item(&item, "AI").expect("section item");
 
-        assert!(rendered.contains("摘要不够完整，建议直接阅读原文核对"));
+        assert!(rendered.contains("这篇材料涉及 AI learns the dark art"));
         assert!(!rendered.contains("AI learns the dark art of R..."));
+        assert!(!rendered.contains("摘要不够完整"));
         assert!(rendered.contains("原文：https://example.com/ai-rfic"));
     }
 
@@ -1191,7 +1385,7 @@ mod tests {
 
         let refs = build_refs_block(&report, &[item], 5);
 
-        assert!(refs.starts_with("## 05. 参考来源\n\n"));
+        assert!(refs.starts_with("## 05. 资料索引\n\n"));
         assert!(!refs.starts_with("---"));
         assert!(refs.contains("### 正文引用来源（1）"));
     }
@@ -1270,7 +1464,7 @@ mod tests {
         assert!(!md.contains("今日速览"));
         assert!(!md.contains("## 01. AI 前沿"));
         assert!(!md.contains("## 02. Web3"));
-        assert!(!md.contains("## 03. 技术与开源"));
+        assert!(!md.contains("## 03. 技术、产业与政策"));
     }
 
     #[test]
@@ -1289,7 +1483,7 @@ mod tests {
 
         let md = assemble_markdown(&report, &[], "");
 
-        assert!(!md.contains("## 03. 技术与开源"));
+        assert!(!md.contains("## 03. 技术、产业与政策"));
     }
 
     #[test]
@@ -1313,10 +1507,7 @@ mod tests {
             ..Default::default()
         };
         let refs = build_refs_block(&report, &items, 5);
-        let used_refs = refs
-            .split("### 完整素材链接")
-            .next()
-            .unwrap_or(refs.as_str());
+        let used_refs = refs.split("### 补充阅读池").next().unwrap_or(refs.as_str());
         assert!(refs.contains("- 01 | item-0"));
         assert!(refs.contains("- 15 | item-14"));
         assert!(!used_refs.contains("- 16 | item-15"));
@@ -1350,19 +1541,19 @@ mod tests {
 
         let refs = build_refs_block(&report, &items, 5);
 
-        assert!(refs.contains("## 05. 参考来源"));
+        assert!(refs.contains("## 05. 资料索引"));
         assert!(refs.contains(":::compact-links"));
         assert!(refs.contains("- 01 | used"));
         assert!(refs.contains("· 10 points"));
         assert!(refs.contains("正文已引用，建议核对原文。"));
         assert!(refs.contains("https://example.com/used"));
         assert!(!refs.contains("> 原文：https://example.com/used"));
-        assert!(refs.contains("### 完整素材链接（2）"));
+        assert!(refs.contains("### 补充阅读池（2）"));
         assert!(refs.contains("- 01 | unreferenced"));
         assert!(refs.contains("https://example.com/unreferenced"));
         assert!(refs.contains("- 02 | another"));
         assert!(refs.contains("https://example.com/another"));
-        let source_links = refs.split("### 完整素材链接").nth(1).unwrap_or_default();
+        let source_links = refs.split("### 补充阅读池").nth(1).unwrap_or_default();
         assert!(!source_links.contains("说明："));
         assert!(!source_links.contains("正文已引用"));
     }
@@ -1449,9 +1640,9 @@ mod tests {
 
         assert!(md.contains("## 01. Web3"));
         assert!(md.contains("## 02. 推荐深读"));
-        assert!(md.contains("## 03. 参考来源"));
+        assert!(md.contains("## 03. 资料索引"));
         assert!(!md.contains("## 02. Web3"));
-        assert!(!md.contains("## 04. 参考来源"));
+        assert!(!md.contains("## 04. 资料索引"));
     }
 
     #[test]

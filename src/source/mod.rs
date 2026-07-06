@@ -135,6 +135,9 @@ fn is_curated_source_url(url: &str) -> bool {
         || url.contains("openai.com/")
         || url.contains("blog.google/")
         || url.contains("blog.cloudflare.com/")
+        || url.contains("blog.rust-lang.org/")
+        || url.contains("github.blog/")
+        || url.contains("ecb.europa.eu/")
         || url.contains("reddit.com/r/")
 }
 
@@ -165,6 +168,9 @@ fn source_preference_score(item: &PublicNewsItem) -> i64 {
     if item.url.contains("openai.com/")
         || item.url.contains("blog.google/")
         || item.url.contains("blog.cloudflare.com/")
+        || item.url.contains("blog.rust-lang.org/")
+        || item.url.contains("github.blog/")
+        || item.url.contains("ecb.europa.eu/")
     {
         score += 2;
     }
@@ -439,6 +445,36 @@ mod tests {
 
         assert_eq!(items.len(), 1);
         assert_eq!(items[0].source, "Reddit r/ethdev");
+    }
+
+    #[tokio::test]
+    async fn composite_keeps_curated_ecb_links_even_without_keyword_match() {
+        let source = Arc::new(StaticSource {
+            items: vec![PublicNewsItem {
+                source: "ECB".to_string(),
+                title: "Christine Lagarde: Interview with Les Echos".to_string(),
+                url: "https://www.ecb.europa.eu/press/inter/date/2026/html/ecb.in260702~c56db179c3.en.html".to_string(),
+                summary: Some(
+                    "European Central Bank discusses current monetary and economic conditions."
+                        .to_string(),
+                ),
+                author: Some("ECB".to_string()),
+                published_at: Some("2026-07-02T00:00:00Z".to_string()),
+                score: Some(180),
+                comments: None,
+                ai_score: None,
+                category: Some("official_blog".to_string()),
+            }],
+        });
+        let composite = CompositePublicNewsSource::new(vec![source], vec!["rust".to_string()], 10);
+
+        let items = match composite.fetch_top_items().await {
+            Ok(items) => items,
+            Err(err) => panic!("items: {err}"),
+        };
+
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].source, "ECB");
     }
 
     struct FailingSource;

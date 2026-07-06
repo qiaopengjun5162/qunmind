@@ -8,6 +8,7 @@ pub enum LearningResourceCategory {
     HermesExecution,
     WechatAgentSkills,
     MultimodalAgents,
+    FormalMethods,
     LearningWorkflow,
     AiWeb3Bridge,
 }
@@ -171,6 +172,33 @@ pub const LEARNING_RESOURCES: &[LearningResource] = &[
         url: Some("https://github.com/jd-opensource/JoyAI-VL-Interaction"),
     },
     LearningResource {
+        title: "Lean 4 中文文档",
+        category: LearningResourceCategory::FormalMethods,
+        provider: "Lean 中文社区",
+        focus: "用中文建立 Lean 4 与定理证明器的基础使用直觉",
+        format: LearningResourceFormat::Docs,
+        priority: 139,
+        url: Some("https://www.leanprover.cn/#lean-zh_1"),
+    },
+    LearningResource {
+        title: "Lean4 通关互动小游戏",
+        category: LearningResourceCategory::FormalMethods,
+        provider: "Lean Game",
+        focus: "通过交互式练习熟悉 Lean 4 的基本证明步骤与反馈循环",
+        format: LearningResourceFormat::Course,
+        priority: 139,
+        url: Some("https://adam.math.hhu.de/#/"),
+    },
+    LearningResource {
+        title: "Logical Foundations",
+        category: LearningResourceCategory::FormalMethods,
+        provider: "Software Foundations",
+        focus: "系统学习命题逻辑、证明与 Coq / 形式化验证基础",
+        format: LearningResourceFormat::Handbook,
+        priority: 139,
+        url: Some("https://softwarefoundations.cis.upenn.edu/lf-current/index.html"),
+    },
+    LearningResource {
         title: "AI × Web3 School Learning Agent 启动 Prompt",
         category: LearningResourceCategory::LearningWorkflow,
         provider: "AI x Web3 School",
@@ -291,6 +319,9 @@ mod tests {
             "Zread.ai 解读 OpenClaw / Hermes",
             "wx-cli 的 AI Agent Skill 来了！让 AI 直接帮你管微信私域",
             "JoyAI-VL-Interaction",
+            "Lean 4 中文文档",
+            "Lean4 通关互动小游戏",
+            "Logical Foundations",
             "AI × Web3 School Learning Agent 启动 Prompt",
             "AI × Web3 School Handbook",
         ] {
@@ -309,6 +340,7 @@ mod tests {
             LearningResourceCategory::HermesExecution,
             LearningResourceCategory::WechatAgentSkills,
             LearningResourceCategory::MultimodalAgents,
+            LearningResourceCategory::FormalMethods,
             LearningResourceCategory::LearningWorkflow,
             LearningResourceCategory::AiWeb3Bridge,
         ] {
@@ -366,6 +398,8 @@ mod tests {
         let zread = resource("Zread AI OpenClaw Hermes");
         let wx_cli_skill = resource("wx-cli 的 AI Agent Skill 来了！让 AI 直接帮你管微信私域");
         let joyai = resource("joy ai vl interaction");
+        let lean = resource("Lean 4 中文文档");
+        let logical_foundations = resource("Logical Foundations");
         let handbook = resource("AI Web3 School Handbook");
 
         assert_eq!(claude.provider, "Anthropic");
@@ -376,6 +410,11 @@ mod tests {
             LearningResourceCategory::WechatAgentSkills
         );
         assert_eq!(joyai.category, LearningResourceCategory::MultimodalAgents);
+        assert_eq!(lean.category, LearningResourceCategory::FormalMethods);
+        assert_eq!(
+            logical_foundations.url,
+            Some("https://softwarefoundations.cis.upenn.edu/lf-current/index.html")
+        );
         assert_eq!(handbook.category, LearningResourceCategory::AiWeb3Bridge);
         assert_eq!(handbook.url, Some("https://aiweb3.school/zh/handbook/"));
     }

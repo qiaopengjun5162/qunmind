@@ -20,7 +20,7 @@
 - 回复时纳入最近已保存群消息作为基础对话上下文。
 - 入站消息链接抽取和去重存储。
 - Rust 侧项目投研工具目录，用于后续扩展市场数据、链上分析、代码安全、社区、资金动向和研究观点来源。
-- Rust 侧 AI / Agent 学习资源目录，用于梳理 LLM 基础、API 调用、coding agent、agent 框架和 Hermes 执行层参考。
+- Rust 侧 AI / Agent 学习资源目录，用于梳理 LLM 基础、API 调用、coding agent、agent 框架、Hermes 执行层，以及 Lean / Software Foundations 一类 Formal Methods 学习入口。
 - Cron 定时日报。
 - 基于最近已保存群消息和链接情报生成日报。
 - 多群日报目标配置，可按群覆盖 cron、prompt、回看窗口、消息数量和链接数量。
@@ -28,12 +28,15 @@
 - 支持 `[[public_sources.manual_items]]` 手工精选入口，用来补入你明确想推荐大家阅读的一手官方文章、X 原帖或其他优质链接。
 - 默认 `web3_media_urls` 现已包含 `PANews RSS`，`panewslab.com` 这类中文 Web3 原文也会作为可追溯精选来源保留下来。
 - 默认 `web3_media_urls` 现已同时包含 `吴说区块链 Atom feed`，`wublock123.com` 这类中文 Web3 / 交易所快讯也会作为可追溯精选来源保留下来。
+- 默认 `official_blogs_urls` 现已同时包含 `ECB` 官方 RSS，可把全球官方政策与宏观信号稳定接入日报素材池，而不只依赖产品博客或加密媒体。
 - 微信公众号日报发布前会注入固定个人号封面：栏目是 `AI · Web3 最新日报`，署名是 `寻月隐君`，当前封面使用浅色底和深色主标题，避免手机预览里白字低对比；最终仍由 `moonpub --render` 负责渲染和上传。
 - 微信公众号日报标题当前固定为 `AI · Web3 最新日报｜YYYY-MM-DD`，当天主线放在 `digest`、导语和焦点模块里，方便在草稿箱中快速辨认最新一条。
-- 微信公众号日报正文现在按“导语 -> 今日三件事 -> 今日焦点 -> AI / Web3 / 技术 / 深读编号分区 -> 参考来源 / 完整素材链接”组织，首屏速览用 `summary` 块、焦点用 `callout` 块突出主线，正文条目用“标题 + 值得关注 / 来源依据 / 原文”的引用卡片呈现，深读区用“为什么读 / 原文”，文末来源区统一用 `compact-links` 小字号资料索引，单条尽量压成“序号｜短标题｜来源/短说明｜原文完整 URL”，避免链接区篇幅压过正文。
+- 微信公众号日报正文现在按“导语 -> 今日三件事 -> 今日焦点 -> AI / Web3 / 技术、产业与政策 / 深读编号分区 -> 资料索引 / 补充阅读池”组织，首屏速览用 `summary` 块、焦点用 `callout` 块突出主线，正文第三板块不再只收狭义工程新闻，也会承接工程发布、产业基础设施、全球官方信号和高质量政策变化；正文条目用“标题 + 值得关注 / 来源依据 / 原文”的引用卡片呈现，深读区用“为什么读 / 原文”，文末来源区统一用 `compact-links` 小字号资料索引，单条尽量压成“序号｜短标题｜来源/短说明｜原文完整 URL”，避免链接区篇幅压过正文。
+- 日报生成现在还额外做两层质量兜底：一层是模型 JSON 坏输出修复（例如尾部多余逗号、解释性尾巴），另一层是 Rust 侧 comment / summary 清洗，主动替换“相关主题相关材料”“近期受到关注”这类空泛句式。这样即使模型发挥不稳定，正文也尽量保持可读和可追溯。
 - 微信公众号日报现在会在 `QunMind` 生成层固定补上“继续交流”标准模板结尾：正文尾部直接写入公众号「寻月隐君」、后台回复「加群」、信息整理 / 非投资建议提醒、回到原文核对，以及点赞 / 推荐 / 在看引导；它始终是全文最后一个正文模块，不再依赖微信后台模板插入，`report-markdown` 本地稿和真实推到 `moonpub` 的正文保持同一份尾部内容。
 - 现在 `daily-report --output` 与 MCP `report_markdown` 在 `output = "wechat"` 时，也会先补齐和真实发布相同的 `cover:` / `wechat_author:` / `theme: notebook` frontmatter，再把稿件写到本地；旧稿里如果残留 `theme: newsletter`，进入微信稿边界时也会被覆盖，避免手机预览继续出现偏黄色主题。
 - 同一天内多次手工试发公众号日报时，QunMind 现在会为每次发布生成唯一临时稿件名，避免 `moonpub` 复用旧 `draft.json` 后出现“时间更新了，但正文还是上一版”的错觉。
+- 如果当天已经绕过 `QunMind`、直接用 `moonpub --articles ... push <reviewed_markdown> --render` 手工修稿，也不要在同一个 Markdown 文件名上反复覆盖后重推。`moonpub` 会按文件 stem 复用旧 bundle；更稳的做法是每次修订都复制成新的唯一文件名，例如 `...-intro-fixed.md`、`...-v2.md`，再重新 push。若手机上仍看到旧内容，先怀疑 slug 复用或微信预览缓存，而不是先怀疑正文没改成功。
 
 ## 当前状态
 
@@ -256,7 +259,7 @@ wechat_article_helper_output_dir = "/tmp/qunmind-wechat-article-helper"
 
 X / Twitter 这类一手信息也走同样的轻量边界：通过 `[public_sources] x_rss_*` 配置 RSSHub、Nitter 兼容源或自建 X List RSS / Atom 上游，QunMind 会把它们归一成 `X RSS` 公共素材。主进程不内嵌 X 登录、抓取、代理或反风控逻辑。
 
-如果你想让日报不只是“快讯聚合”，而是更多吸收官网 / 官方博客 / 正式技术公告，现在也可以直接启用 `[public_sources] official_blogs_*`。这条来源边界默认面向 OpenAI、Google Blog、Cloudflare Blog 这类稳定可抓取的 RSS / Atom 上游，适合补充模型发布、研究博客、基础设施公告与官方技术文章，让日报更容易产出“高层面”的内容，而不是只剩市场快讯。
+如果你想让日报不只是“快讯聚合”，而是更多吸收官网 / 官方博客 / 正式技术公告，现在也可以直接启用 `[public_sources] official_blogs_*`。这条来源边界默认面向 OpenAI、Google Blog、Cloudflare Blog、Rust Blog、GitHub Blog 这类稳定可抓取的 RSS / Atom 上游，适合补充模型发布、研究博客、基础设施公告与官方技术文章，让日报更容易产出“高层面”的内容，而不是只剩市场快讯。
 
 如果想补充社区讨论和实用问题信号，可以启用 `[public_sources] reddit_rss_*`。它只消费 `r/rust`、`r/MachineLearning`、`r/ethdev`、`r/cryptography` 这类公开 subreddit RSS / Atom，不在主进程里集成 Reddit 登录、cookie、反爬或 API key 采集。
 
@@ -375,7 +378,7 @@ cargo run -- --config config.toml report-network-status --report-name '微信公
 
 ## AI / Agent 学习地图
 
-`src/research/learning.rs` 维护推荐的 LLM、API、coding agent、agent 框架、Hermes 执行层和 AI x Web3 学习资源。它已经把 AI x Web3 School 的 Learning Agent 启动 Prompt 和 Handbook 作为结构化参考纳入 Rust 代码，方便后续设计 prompt、模型供应商对接、tool calling、skills、记忆和长期执行能力，同时不把微信消息主链路变成资料清单。
+`src/research/learning.rs` 维护推荐的 LLM、API、coding agent、agent 框架、Hermes 执行层、Formal Methods 和 AI x Web3 学习资源。它已经把 AI x Web3 School 的 Learning Agent 启动 Prompt / Handbook，以及 Lean 4 中文文档、Lean4 互动关卡和 Software Foundations 这类形式化验证入口作为结构化参考纳入 Rust 代码，方便后续设计 prompt、模型供应商对接、tool calling、skills、记忆和长期执行能力，同时不把微信消息主链路变成资料清单。
 
 现在也把 JoyAI-VL-Interaction 这类多模态 Agent 参考放进了学习目录，但当前只作为“未来视频/视觉 PoC 路线图”使用，不直接并入 `QunMind` 主运行时。详见 [docs/multimodal-roadmap.md](docs/multimodal-roadmap.md)。
 
