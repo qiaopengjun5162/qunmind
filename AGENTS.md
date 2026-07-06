@@ -87,6 +87,7 @@ Reddit 这类社区讨论来源也优先走 `PublicNewsSource` 边界。当前�
 公众号日报固定结尾的唯一标题是 `继续交流`，正文必须是固定多段标准模板，至少包含公众号「寻月隐君」、后台回复「加群」、信息整理 / 非投资建议提醒、回到「原文」链接核对，以及点赞 / 推荐 / 在看引导。这个标准结尾必须由 `assemble_markdown(...)` 放在全文最后；如果存在 `daily_quote`，也要先渲染 `今日一句`，再渲染 `继续交流`。不要再在 QunMind 生成层与 `moonpub` 模板之间维护两套结尾，也不要把结尾标题随意改回“关注与交流”等临时文案。
 
 `QunMind -> moonpub` 的手工/定时日报临时 Markdown 文件名不能只按日期命名。`moonpub push --render` 在同 slug 的 `.draft.json` 已存在时会直接复用旧渲染产物，因此 `src/publisher.rs` 这里必须继续使用带时间戳的唯一 slug，避免同一天多次试发时“发布时间更新了，但正文还是旧稿”。
+如果是绕过 `QunMind`、直接手工执行 `moonpub --articles <dir> push <some-markdown>.md --render` 来修订当天公众号草稿，同样不能反复复用同一个 Markdown 文件名。`moonpub` 侧也会按文件 stem 复用同 slug 的 `.html` / `.draft.json` / `.media_id` bundle，导致“本地稿已改、手机预览还是旧句子”的假象。标准处理是：每次明显修稿后都复制成一个新的唯一文件名再 push，并在对用户说明时明确这是为了绕开旧渲染产物缓存，而不是内容没有更新。
 
 如果已经有人工审核过的最终 markdown，且用户明确要求尽快按这一版推送，允许直接调用 `moonpub --articles <dir> push <reviewed_markdown> --render` 来避免重新生成导致内容波动；但这属于绕过 `QunMind` publisher 的保真发布路径，不会写入 `publish-history` / `report-status` 回执。后续对外说明时必须区分“公众号草稿与手机预览已成功”和“QunMind 发布历史未记录这次直接 moonpub 操作”。
 
