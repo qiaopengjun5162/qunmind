@@ -265,6 +265,7 @@
 
 ### Verified
 
+- **2026-07-07 GitHub CLI 路径问题已固化成规则** — 这次 self PR 失败的根因不是权限、网络或 `gh` 未安装，而是 Codex / sandbox shell 的 `PATH` 没带 `/opt/homebrew/bin`，导致直接执行 `gh pr create` 报 `gh not found`。实际排查结果是：`which gh` 仍找不到，但 `ls /opt/homebrew/bin/gh` 能确认 GitHub CLI 已存在，因此后续固定处理顺序是“先查 `/opt/homebrew/bin/gh`，存在就直接用绝对路径执行”，不要再从头怀疑本机没装 `gh` 或反复折腾 shell 初始化。该规则已同步到 `AGENTS.md`。
 - `cargo test lint_accepts_stable_wechat_layout --lib`
 - `cargo test with_lint_result_appends_lint_payload_and_block_flag --lib`
 - `cargo test with_lint_result_preserves_mcp_payload_shape --lib`

@@ -231,6 +231,7 @@ MCP 侧的 `report_markdown` / `report_publish` 也应继续复用 `src/reportin
 - Commit message 使用 Conventional Commits，英文消息。
 - 默认使用 PR-first 工作流：从 `main` 创建 `codex/<short-topic>` 分支，提交并 push 分支，再用 `gh pr create --base main --head <branch>` 自己给自己提 PR；除非用户明确要求，后续不要直接 push 到 `main`。
 - 当前仓库里已有历史平铺分支名 `codex-wx-cli-replay-docs`，会阻塞新的 `codex/<short-topic>` ref 目录创建；在清理该历史分支前，新分支统一使用 `codex-<short-topic>`，避免 `cannot lock ref 'refs/heads/codex/...'`。
+- 这台 macOS 机器上 `gh` 实际安装在 `/opt/homebrew/bin/gh`，但 Codex / sandbox shell 的 `PATH` 不一定会自动带上 `/opt/homebrew/bin`。如果出现 `gh not found`，不要再从头排查 GitHub CLI 是否安装；默认先直接试 `/opt/homebrew/bin/gh ...`，确认可用后再决定是否需要补 shell 环境。
 - Release 使用 tag-first 自动化：推送 `v*` tag 后，`.github/workflows/release.yml` 会用 GitHub Actions 自动创建对应 GitHub Release；正式发版前仍先确认 `main` CI 通过。
 - Release workflow 也会把镜像发布到 `ghcr.io/qiaopengjun5162/qunmind:<tag>` 和 `ghcr.io/qiaopengjun5162/qunmind:latest`；修改 Dockerfile、Compose 或部署文档时至少跑 `docker compose config`，有 Docker daemon 时继续跑 `docker build --tag qunmind:local .`。
 - 如果后续加入 Rust/WASM 前端，使用 `wasm-pack` 构建；`wasm-bindgen` 暴露函数时避免 `Option<&str>` 这类不支持的参数形态。
