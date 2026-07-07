@@ -38,6 +38,10 @@
 
 ### Done
 
+- **日报慢点已定位到公共来源串行抓取，并完成第一轮提速** — 这次用户的核心抱怨已经不是排版，而是“每日日报生成太慢，离一句话/一条命令即可差得太远”。排查后确认，瓶颈首先在 `src/source/mod.rs` 的 `CompositePublicNewsSource::fetch_top_items`：之前会把所有启用的 `public_sources` 一个一个串行等待，谁慢就整份日报一起等。现在这一层已经改成“来源之间并发抓取、完成后仍按配置顺序合并”，既保留原有来源优先级和去重语义，也把总耗时从“近似所有来源耗时求和”收敛到“主要看最慢几个来源”。
+- **HN 与 GitHub Trending 内部串行也一起拆掉了** — 这次没有只停在聚合层。`src/source/hacker_news.rs` 现在会并发抓候选 story item，再按 HN 排名顺序取前 `max_items`；`src/source/github_trending.rs` 现在会并发抓各语言 trending 页面，再按语言配置顺序拼接结果。这样常见慢点不再是“聚合层并发了，但单个 source 自己还在慢慢串行抓”。
+- **日报慢问题的排查顺序已经补成项目规则** — 经验已经同步到 `AGENTS.md`：后续如果日报再次变慢，优先检查新增 source 自身 timeout、source 内部多请求是否仍串行、以及上游站点稳定性；不要再先从 `render.rs`、lint、封面或发布链路开始怀疑。这样下次不会又从头重复同一轮排查。
+
 - **2026-07-06 手工修订稿“明明改了导语、手机还是旧内容”问题已定位并形成规则** — 这次真实问题不是 Markdown 没改成功，而是同一天反复直接执行 `moonpub --articles ... push /tmp/wechat-report-2026-07-06-public-sources.md --render`，`moonpub` 继续按同一个文件 stem 复用了旧 slug 的渲染 bundle，导致手机预览里仍反复出现旧导语“今天这份稿子先基于公开可追溯来源整理，不走本地群消息”。排查顺序是：先用 `rg` 和 `sed` 确认 `/tmp` 源稿已经替换成新导语；再核对 `moonpub-data` 没有额外正文来源；最后根据既有 slug 规则判断是 `moonpub --render` 复用了旧 `.draft.json` / `.html`。最终修复方式是把稿件复制成新的唯一文件名 `/tmp/wechat-report-2026-07-06-public-sources-intro-fixed.md` 后重新 push，新的草稿 `media_id = EmukC2rjB9X3nj6feGSEr1t2t96Eq6z6-GbzZzOj952m3PWbIc-b7ROBXdMEg7FG` 成功生效，手机端也确认看到新导语。后续规则已经同步到 `AGENTS.md` 与 `README_zh.md`：只要是直接用 `moonpub` 手工修订同一天草稿，也必须换唯一文件名，不能只改文件内容不改 slug。
 - **Formal Methods 学习入口已沉淀进结构化目录** — `src/research/learning.rs` 现在新增了 `FormalMethods` 分类，并把 Lean 4 中文文档、Lean4 互动通关关卡和 Software Foundations 的 `Logical Foundations` 结构化收进学习资源目录。这样后续再扩展 theorem proving、验证、proof assistant 或类型系统学习清单时，不需要继续散落在聊天记录里。
 - **全球官方来源与第三板块升级已落地** — 这轮先没有急着重生成旧稿，而是先把素材与版式策略补对。`official_blogs_urls` 默认新增了 `https://www.ecb.europa.eu/rss/press.html`，并把 `ecb.europa.eu` 视作 curated traceable official source；同时，日报第三板块从“技术与开源”升级为“技术、产业与政策”，不再只承接狭义工程发布，也开始容纳工程基础设施、全球官方信号和高质量政策变化。这样后续重生成的日报才能真正体现更全球、更专业的视角，而不是旧内容换个说法。
@@ -58,6 +62,11 @@
 
 ### Verification
 
+- `cargo test composite_fetches_sources_concurrently_without_reordering_preference --lib`
+- `cargo test source::hacker_news::tests:: --lib`
+- `cargo test source::github_trending::tests:: --lib`
+- `cargo fmt --all --check`
+- `cargo clippy --all-targets --all-features --tests --benches -- -D warnings`
 - `cargo test daily_report::parser::tests:: --lib`
 - `cargo test daily_report::render::tests:: --lib`
 - `cargo test daily_report::tests:: --lib`

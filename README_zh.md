@@ -39,6 +39,7 @@
 - 同一天内多次手工试发公众号日报时，QunMind 现在会为每次发布生成唯一临时稿件名，避免 `moonpub` 复用旧 `draft.json` 后出现“时间更新了，但正文还是上一版”的错觉。
 - 如果当天已经绕过 `QunMind`、直接用 `moonpub --articles ... push <reviewed_markdown> --render` 手工修稿，也不要在同一个 Markdown 文件名上反复覆盖后重推。`moonpub` 会按文件 stem 复用旧 bundle；更稳的做法是每次修订都复制成新的唯一文件名，例如 `...-intro-fixed.md`、`...-v2.md`，再重新 push。若手机上仍看到旧内容，先怀疑 slug 复用或微信预览缓存，而不是先怀疑正文没改成功。
 - 现在 CLI 与 MCP 在手工日报出口上也复用了同一份“最近稿件上下文”：同目录最近几份 `wechat-report-*.md` / `daily-report-*.md` 既会继续作为去重新鲜度信号，也会参与 slug 风险告警。这样“今天换个入口重跑一下”不再容易出现 CLI 和 MCP 对同一份稿件给出两套不同判断。
+- 公共来源日报链路现在已经做了第一轮性能收口：`src/source/mod.rs` 会并发抓取所有启用的 `public_sources`，但最终仍按配置顺序合并结果；`Hacker News` 的候选 item 抓取和 `GitHub Trending` 的多语言页面抓取也都改成并发。它的目标不是让日报“无限快”，而是避免总耗时继续被“所有来源串行相加”拖垮，让日常生成更接近“一条命令即可”的体验。
 
 ## 当前状态
 
@@ -188,6 +189,13 @@ topic_keywords = ["rust", "web3", "ai", "llm", "agent", "zkp", "solana", "ethere
 ```
 
 这些来源用于补充最新编程技术、Rust、Web3、crypto、AI 和 ZKP 等前沿技术信息。CoinMarketCap 用于补充加密市场 top stories，CoinGecko 用于补充 24 小时热门搜索，DeFi Llama 用于补充协议 TVL 信号，Dune 可在配置 API key 后拉取指定 query 的结果行。生成结果会明确要求模型标明“不是群内讨论总结”，避免把公共信息误当成群聊结论。
+
+如果你感觉“今天的日报怎么又慢了”，当前优先排查顺序已经比较明确：
+
+1. 看是不是新增了公共来源，且它自己的 timeout 设得过大。
+2. 看单个 source 内部是不是还在串行抓多页、多 feed 或多 item。
+3. 看上游站点本身是否在抖动、403、429 或 EOF。
+4. 不要优先怀疑排版、lint、封面或发布链路，因为它们通常不是“生成很慢”的主因。
 
 ## 多群日报
 

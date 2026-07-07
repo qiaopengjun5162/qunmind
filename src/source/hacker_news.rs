@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use futures::stream::{FuturesUnordered, StreamExt};
 use reqwest::Client;
 use serde::Deserialize;
 use tokio::sync::OnceCell;
@@ -121,11 +122,24 @@ impl PublicNewsSource for HackerNewsSource {
                 .await?
         };
 
-        let mut items = Vec::new();
-        for id in ids.into_iter().take(self.max_items * 3) {
-            if let Some(item) = self.fetch_item(id).await? {
-                items.push(item);
+        let candidate_ids = ids.into_iter().take(self.max_items * 3).collect::<Vec<_>>();
+        let mut fetched_by_rank = vec![None; candidate_ids.len()];
+        let mut pending = FuturesUnordered::new();
+
+        for (rank, id) in candidate_ids.into_iter().enumerate() {
+            pending.push(async move { (rank, self.fetch_item(id).await) });
+        }
+
+        while let Some((rank, fetched)) = pending.next().await {
+            match fetched? {
+                Some(item) => fetched_by_rank[rank] = Some(item),
+                None => continue,
             }
+        }
+
+        let mut items = Vec::new();
+        for item in fetched_by_rank.into_iter().flatten() {
+            items.push(item);
             if items.len() >= self.max_items {
                 break;
             }

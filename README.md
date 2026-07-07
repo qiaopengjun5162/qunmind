@@ -41,6 +41,7 @@ The project currently supports:
 - WeChat daily reports render as a review-friendly article layout: intro, "today's three things", a four-part practical focus callout, numbered AI / Web3 / technology-industry-policy / deep-read sections, compact body cards with "worth watching", source evidence, and raw original URLs, plus a small-font `compact-links` source index that keeps one full original URL per row. Focus callouts, body titles, and deep-read titles intentionally avoid extra Markdown link wrappers so the visible `原文：https://...` line stays the single traceable click/copy entry.
 - The same manual report exits now also run a shared Rust-side markdown lint before publish-related steps. The lint checks the fixed `AI · Web3 最新日报｜YYYY-MM-DD` title, `theme: notebook`, the unique final `## 继续交流` block, raw `原文：https://...` traceability, `来源依据：` lines, `compact-links` formatting, and same-day slug-reuse risk; JSON results now include `lint` plus `publish_blocked_by_lint`.
 - The report generator now also hardens low-quality AI output in Rust: malformed JSON gets repaired when possible, generic fallback phrases are replaced with title-specific traceability hints, and Reddit discussion links no longer take over deep-read or technology body slots by default.
+- Public-source fallback now has a first performance pass: enabled public sources are fetched concurrently in `src/source/mod.rs`, while still being merged in configured order; Hacker News candidate items and GitHub Trending language pages are also fetched concurrently so daily-report latency is less likely to degrade into a simple sum of every slow upstream source.
 
 ## Status
 
@@ -190,6 +191,13 @@ topic_keywords = ["rust", "web3", "ai", "llm", "agent", "zkp", "solana", "ethere
 ```
 
 These sources are filtered toward programming technology, Rust, Web3, crypto, AI, and ZKP. CoinMarketCap is used for crypto market top stories, CoinGecko is used for 24h trending searches, DeFi Llama is used for protocol TVL signals, and Dune can pull configured query result rows when an API key is provided. The prompt asks the model to mark this as public-source context, not a summary of group discussion.
+
+If a public-source-based report suddenly feels slow again, the current preferred debug order is:
+
+1. check whether a newly enabled source simply has an oversized timeout
+2. check whether that source still does internal multi-page or multi-item work serially
+3. check whether the upstream site is currently unstable, rate-limited, EOF-prone, or blocked
+4. do not start by blaming render/lint/publish steps, because they are usually not the dominant source of generation latency
 
 ## Per-Group Reports
 

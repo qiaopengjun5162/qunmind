@@ -65,6 +65,10 @@
 
 当前本机网络环境下，`Hacker News` 与 `GitHub Trending` 直连经常超过 10 秒，甚至 `GitHub Trending` 会在 25 秒内都拿不到首字节。`src/source/hacker_news.rs` 与 `src/source/github_trending.rs` 现在已经内置“本轮先探测一次直连；若失败，则本轮后续请求直接复用 `http://127.0.0.1:7890` 本地代理 client”的回退策略。后续如果再优化公共源稳定性，优先沿这个“单轮探测 + 整轮复用代理 client”边界演进，不要退回成“每个 item 都先直连超时一次再回退”的低效模式。
 
+`src/source/mod.rs` 的 `CompositePublicNewsSource::fetch_top_items` 现在已经改成“来源之间并发抓取、落地时仍按配置顺序合并”的模式，不再串行等待全部公共源。后续如果日报又变慢，先检查是不是新增来源自身 timeout 过大、单个 source 内部还有串行多请求，或上游站点本身抖动；不要先怀疑 `daily_report/render`、lint 或发布链路。
+
+`src/source/hacker_news.rs` 与 `src/source/github_trending.rs` 也已经把“同一来源内部的多条 item / 多语言页面抓取”提到并发路径，目标是把日报总耗时更接近“受最慢几个来源影响”，而不是“所有来源耗时简单相加”。后续新 source 如果内部还要抓多页、多 id 或多 feed，优先沿这个模式实现，而不是先写串行版本再慢慢排查。
+
 公众号文章这类外部内容入口优先走 `PublicNewsSource` 边界。当前更推荐的第一步是消费 RSS / Atom 上游输出（例如 `wechat-download-api` 提供的 RSS），而不是把登录、代理和反风控逻辑直接嵌进 `QunMind` 主进程。按公众号名字拉文章时，优先使用 `[[public_sources.wechat_accounts]]` 把 `name` / `aliases` 绑定到 `feed_url`，再走 `qunmind wechat-articles --account-name <name>` 或 MCP `wechat_articles` 输出结构化 JSON；如果未绑定上游，应该明确报错要求先配置来源，不要假装可以只凭名字稳定获取全量历史文章。
 
 如果需求是“给一个 `mp.weixin.qq.com/s/...` 链接，尽量提取正文 markdown、图片和元数据”，优先把它设计成 **可选外部 helper**，而不是主进程内建抓取器。当前更适合参考 `jackwener/wechat-article-to-markdown` 这类单篇链接转 markdown 工具：`QunMind` 只负责显式调用、读取结构化结果和失败隔离，不负责内嵌 `Camoufox`、浏览器反检测、验证码或登录态维护。
