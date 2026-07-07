@@ -6,9 +6,9 @@ use crate::source::PublicNewsItem;
 const AI_SUBSECTIONS: [&str; 3] = ["多Agent编排", "单Agent应用", "工作方式变革"];
 const MAX_REFERENCE_ITEMS: usize = 15;
 const MAX_SOURCE_LINK_ITEMS: usize = 50;
-const COMPACT_REF_TITLE_CHARS: usize = 30;
+const COMPACT_REF_TITLE_CHARS: usize = 24;
 const COMPACT_REF_SOURCE_CHARS: usize = 28;
-const COMPACT_REF_NOTE_CHARS: usize = 26;
+const COMPACT_REF_NOTE_CHARS: usize = 12;
 const OVERVIEW_FOCUS_PREVIEW_CHARS: usize = 34;
 const OVERVIEW_PRIORITY_PREVIEW_CHARS: usize = 22;
 const REPORT_OUTRO_TITLE: &str = "继续交流";
@@ -120,8 +120,8 @@ fn render_focus(text: &str, url: &str) -> String {
     } else {
         let url = url.trim();
         format!(
-            ":::divider\nlabel: 主线\n:::\n\n## 今日焦点\n\n:::callout\nlabel: 先读这条\n\n{} — [点击阅读]({})\n:::\n\n**发生了什么**\n\n{}\n\n**为什么有用**\n\n{}\n\n**你可以怎么用**\n\n{}\n\n**核对入口**\n\n原文：{}\n\n",
-            focus_sentence, url, focus_sentence, why, how, url
+            ":::divider\nlabel: 主线\n:::\n\n## 今日焦点\n\n:::callout\nlabel: 先读这条\n\n{}\n:::\n\n**发生了什么**\n\n{}\n\n**为什么有用**\n\n{}\n\n**你可以怎么用**\n\n{}\n\n**核对入口**\n\n原文：{}\n\n",
+            focus_sentence, focus_sentence, why, how, url
         )
     }
 }
@@ -314,20 +314,11 @@ fn render_reads_section(reads: &[ReportRead], section_index: usize) -> String {
         section_index
     );
     for (index, read) in reads.iter().enumerate() {
-        if read.url.is_empty() {
-            s.push_str(&format!(
-                "### 深读 {:02}｜{}\n\n",
-                index + 1,
-                sanitize(&read.title)
-            ));
-        } else {
-            s.push_str(&format!(
-                "### 深读 {:02}｜[{}]({})\n\n",
-                index + 1,
-                sanitize(&read.title),
-                read.url
-            ));
-        }
+        s.push_str(&format!(
+            "### 深读 {:02}｜{}\n\n",
+            index + 1,
+            sanitize(&read.title)
+        ));
         let summary = read.summary.trim();
         // 过滤掉套话和空摘要，只保留有实质内容的描述。
         if is_reliable_read_summary(summary) {
@@ -427,8 +418,7 @@ fn format_reference_entry(
     ));
     match style {
         ReferenceEntryStyle::Cited => {
-            let note =
-                reference_note(item).unwrap_or_else(|| "正文已引用，建议核对原文。".to_string());
+            let note = reference_note(item).unwrap_or_else(|| "正文已引用。".to_string());
             let note = table_cell(&truncate_reference_cell(&note, COMPACT_REF_NOTE_CHARS));
             format!(
                 "- {:02} | {} | {}｜{} | {}\n",
@@ -556,10 +546,9 @@ fn format_section_item(item: &ReportSection, section_label: &str) -> Option<Stri
     };
 
     Some(format!(
-        "### {}｜[{}]({})\n\n> 值得关注：{}\n{}\n\n",
+        "### {}｜{}\n\n> 值得关注：{}\n{}\n\n",
         label,
         sanitize(&item.title),
-        url,
         comment,
         meta
     ))
@@ -1164,7 +1153,7 @@ mod tests {
 
         assert!(body.contains(":::divider\nlabel: 主线\n:::"));
         assert!(body.contains(":::callout\nlabel: 先读这条"));
-        assert!(body.contains("[点击阅读](https://example.com/openai-codex)"));
+        assert!(!body.contains("点击阅读"));
         assert!(body.contains("**发生了什么**"));
         assert!(body.contains("**为什么有用**"));
         assert!(body.contains("**你可以怎么用**"));
@@ -1183,7 +1172,7 @@ mod tests {
             ..Default::default()
         };
         let md = assemble_markdown(&report, &[], "");
-        assert!(md.contains("### 深读 01｜[深度文章]"));
+        assert!(md.contains("### 深读 01｜深度文章"));
         assert!(md.contains("> 为什么读：这篇材料围绕 深度文章 展开"));
         assert!(!md.contains("未生成可靠摘要，请直接阅读原文核对。"));
         assert!(md.contains("原文：https://example.com/a"));
@@ -1267,7 +1256,7 @@ mod tests {
 
         let rendered = format_section_item(&item, "Web3").expect("section item");
 
-        assert!(rendered.contains("### Web3｜[Chainlink Project Pangea]"));
+        assert!(rendered.contains("### Web3｜Chainlink Project Pangea"));
         assert!(rendered.contains("> 值得关注："));
         assert!(rendered.contains("Chainlink联合50多家银行启动Project Pangea。"));
         assert!(rendered.contains("> 来源依据：The Defiant · 120 points"));
@@ -1545,7 +1534,7 @@ mod tests {
         assert!(refs.contains(":::compact-links"));
         assert!(refs.contains("- 01 | used"));
         assert!(refs.contains("· 10 points"));
-        assert!(refs.contains("正文已引用，建议核对原文。"));
+        assert!(refs.contains("正文已引用。"));
         assert!(refs.contains("https://example.com/used"));
         assert!(!refs.contains("> 原文：https://example.com/used"));
         assert!(refs.contains("### 补充阅读池（2）"));
