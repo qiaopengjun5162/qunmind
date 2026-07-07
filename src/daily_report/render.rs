@@ -243,12 +243,12 @@ fn render_ai_section(items: &[ReportSection], signals: &[String], section_index:
         .filter_map(|item| format_section_item(item, "AI"))
         .collect();
     if !other_ai.is_empty() {
-        s.push_str("### 其他 AI 动态\n\n");
+        s.push_str("**其他 AI 动态**\n\n");
         s.push_str(&other_ai);
     }
 
     if !signals.is_empty() {
-        s.push_str("### 你可以顺手关注\n\n");
+        s.push_str("**你可以顺手关注**\n\n");
         for (i, sig) in signals.iter().enumerate() {
             let sig = sig.trim();
             if sig.is_empty() {
@@ -299,7 +299,7 @@ fn render_tech_section(
         s.push_str(&rendered);
     }
     if timeline.len() >= 2 {
-        s.push_str("### 时间线\n\n");
+        s.push_str("**时间线**\n\n");
         for entry in timeline {
             s.push_str(&format!("- {}\n", sanitize(entry)));
         }
@@ -1435,6 +1435,39 @@ mod tests {
         let pos_multi = s.find("多Agent编排").unwrap();
         let pos_single = s.find("单Agent应用").unwrap();
         assert!(pos_multi < pos_single);
+    }
+
+    #[test]
+    fn ai_signals_and_timeline_do_not_render_as_h3_headers() {
+        let ai = render_ai_section(
+            &[ReportSection {
+                subsection: "工作方式变革".to_string(),
+                title: "AI item".to_string(),
+                url: "https://example.com/ai".to_string(),
+                comment: "说明".to_string(),
+                source: "OpenAI".to_string(),
+                points: 10,
+            }],
+            &["关注验证框架".to_string()],
+            1,
+        );
+        assert!(ai.contains("**你可以顺手关注**"));
+        assert!(!ai.contains("### 你可以顺手关注"));
+
+        let tech = render_tech_section(
+            &[ReportSection {
+                subsection: String::new(),
+                title: "Tech item".to_string(),
+                url: "https://example.com/tech".to_string(),
+                comment: "说明".to_string(),
+                source: "GitHub".to_string(),
+                points: 10,
+            }],
+            &["事件一".to_string(), "事件二".to_string()],
+            3,
+        );
+        assert!(tech.contains("**时间线**"));
+        assert!(!tech.contains("### 时间线"));
     }
 
     #[test]

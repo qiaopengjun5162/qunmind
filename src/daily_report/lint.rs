@@ -394,7 +394,12 @@ fn lint_reads(markdown: &str, result: &mut DailyReportLintResult) {
 }
 
 fn lint_compact_links(markdown: &str, result: &mut DailyReportLintResult) {
-    let Some(index_pos) = markdown.find("资料索引") else {
+    let Some(index_pos) = markdown
+        .find("\n## 资料索引")
+        .or_else(|| markdown.find("\n## 05. 资料索引"))
+        .or_else(|| markdown.find("## 资料索引"))
+        .or_else(|| markdown.find("## 05. 资料索引"))
+    else {
         return;
     };
     let index = &markdown[index_pos..];
@@ -850,6 +855,21 @@ Cloudflare 把每个 Worker 的缓存边界做得更细了。
             lint.issues
                 .iter()
                 .any(|issue| issue.code == "recent_source_overlap_high")
+        );
+    }
+
+    #[test]
+    fn lint_compact_links_ignores_earlier_plaintext_mentions_of_index_name() {
+        let markdown = good_markdown().replace(
+            "今天这份日报，我重点筛选了公开可核验的官方资料、一手链接和行业动态。",
+            "今天这份日报会在文末资料索引里保留完整原文链接，方便继续核对。",
+        );
+        let lint = lint_daily_report_markdown(&markdown, "wechat");
+        assert!(
+            !lint
+                .issues
+                .iter()
+                .any(|issue| issue.code == "compact_links_missing_raw_url")
         );
     }
 }
