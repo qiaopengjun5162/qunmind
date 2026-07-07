@@ -35,8 +35,10 @@
 - 日报生成现在还额外做两层质量兜底：一层是模型 JSON 坏输出修复（例如尾部多余逗号、解释性尾巴），另一层是 Rust 侧 comment / summary 清洗，主动替换“相关主题相关材料”“近期受到关注”这类空泛句式。这样即使模型发挥不稳定，正文也尽量保持可读和可追溯。
 - 微信公众号日报现在会在 `QunMind` 生成层固定补上“继续交流”标准模板结尾：正文尾部直接写入公众号「寻月隐君」、后台回复「加群」、信息整理 / 非投资建议提醒、回到原文核对，以及点赞 / 推荐 / 在看引导；它始终是全文最后一个正文模块，不再依赖微信后台模板插入，`report-markdown` 本地稿和真实推到 `moonpub` 的正文保持同一份尾部内容。
 - 现在 `daily-report --output` 与 MCP `report_markdown` 在 `output = "wechat"` 时，也会先补齐和真实发布相同的 `cover:` / `wechat_author:` / `theme: notebook` frontmatter，再把稿件写到本地；旧稿里如果残留 `theme: newsletter`，进入微信稿边界时也会被覆盖，避免手机预览继续出现偏黄色主题。
+- 现在 `daily-report --output`、MCP `report_markdown`、MCP `report_publish` 还会统一复用一层 Rust 侧日报 lint：它会检查固定标题 `AI · Web3 最新日报｜YYYY-MM-DD`、`theme: notebook`、唯一且位于全文最后的 `## 继续交流`、正文 `来源依据：` / 完整 `原文：https://...`、`compact-links` 结构，以及同日 slug 复用风险。warning 不阻断本地输出，但会进入 JSON 的 `lint` 字段；error 会把真实发布拦成 `publish_blocked_by_lint = true`，避免明显不合规的稿件继续推到 `moonpub`。
 - 同一天内多次手工试发公众号日报时，QunMind 现在会为每次发布生成唯一临时稿件名，避免 `moonpub` 复用旧 `draft.json` 后出现“时间更新了，但正文还是上一版”的错觉。
 - 如果当天已经绕过 `QunMind`、直接用 `moonpub --articles ... push <reviewed_markdown> --render` 手工修稿，也不要在同一个 Markdown 文件名上反复覆盖后重推。`moonpub` 会按文件 stem 复用旧 bundle；更稳的做法是每次修订都复制成新的唯一文件名，例如 `...-intro-fixed.md`、`...-v2.md`，再重新 push。若手机上仍看到旧内容，先怀疑 slug 复用或微信预览缓存，而不是先怀疑正文没改成功。
+- 现在 CLI 与 MCP 在手工日报出口上也复用了同一份“最近稿件上下文”：同目录最近几份 `wechat-report-*.md` / `daily-report-*.md` 既会继续作为去重新鲜度信号，也会参与 slug 风险告警。这样“今天换个入口重跑一下”不再容易出现 CLI 和 MCP 对同一份稿件给出两套不同判断。
 
 ## 当前状态
 

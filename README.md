@@ -39,6 +39,7 @@ The project currently supports:
 - The default `official_blogs_urls` list now also includes the ECB press RSS feed, so the report can absorb stable global first-hand policy and macro signals instead of relying only on product blogs and crypto media.
 - WeChat public-account report drafts use a fixed personal-account cover for the `AI · Web3 最新日报` column, branded as `寻月隐君`; the cover now uses a light background with dark title text for better mobile-preview contrast, while `moonpub` still owns final rendering and upload.
 - WeChat daily reports render as a review-friendly article layout: intro, "today's three things", a four-part practical focus callout, numbered AI / Web3 / technology-industry-policy / deep-read sections, compact body cards with "worth watching", source evidence, and raw original URLs, plus a small-font `compact-links` source index that keeps one full original URL per row.
+- The same manual report exits now also run a shared Rust-side markdown lint before publish-related steps. The lint checks the fixed `AI · Web3 最新日报｜YYYY-MM-DD` title, `theme: notebook`, the unique final `## 继续交流` block, raw `原文：https://...` traceability, `来源依据：` lines, `compact-links` formatting, and same-day slug-reuse risk; JSON results now include `lint` plus `publish_blocked_by_lint`.
 - The report generator now also hardens low-quality AI output in Rust: malformed JSON gets repaired when possible, generic fallback phrases are replaced with title-specific traceability hints, and Reddit discussion links no longer take over deep-read or technology body slots by default.
 
 ## Status
@@ -295,6 +296,8 @@ For MCP/agent callers, the same payload now also includes `recommended_tool_call
 The same recovery flow is now available through MCP as first-class tools, not just shell wrappers. MCP clients can call `report_status`, `report_login`, `report_configure`, and `report_recover_automation` with the same target-selection semantics used by the CLI: one configured target can be auto-reused, while multiple targets still require an explicit `report_name`. Browser-automation MCP tools also accept `temporary_profile = true` when an isolated one-off browser profile is required.
 
 MCP can now also drive the manual report rehearsal path itself. `report_markdown` generates the local markdown file with the same group-message-first and public-source-fallback semantics used by `qunmind daily-report`, while `report_publish` only crosses the real external publisher boundary when the caller passes `confirm_publish = true`.
+
+`report_markdown`, `report_publish`, and `qunmind daily-report` now all share the same report-output context and lint boundary. That means recent sibling `wechat-report-*.md` / `daily-report-*.md` files are reused both as freshness hints and as same-day slug-reuse warnings, instead of CLI and MCP each drifting into their own report-output semantics.
 
 Manual publish results now also carry their own follow-up hints. After a successful `daily-report --publish` or MCP `report_publish`, the JSON response no longer stops at "published = true": it also includes `follow_up_status`, plus the same `recommended_commands` and `recommended_tool_calls` pattern used by `report-status`, so operators and agents can immediately tell whether the next step is just `publish_history` or a recovery flow such as `report_recover_automation`.
 

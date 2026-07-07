@@ -6,6 +6,9 @@ use qunmind::channel::wecom::WeComChannel;
 use qunmind::channel::wx_cli::WxCliChannel;
 use qunmind::cli::{Args, CliCommand};
 use qunmind::config::{ChannelKind, Config};
+use qunmind::daily_report::lint::{
+    lint_context_for_output, lint_daily_report_markdown_with_context,
+};
 use qunmind::error::QunMindError;
 use qunmind::network_diagnostic::{NetworkDiagnosticOptions, report_network_status_json};
 use qunmind::publisher::{
@@ -17,7 +20,7 @@ use qunmind::reporting::{
     effective_report_status_target, generate_manual_daily_report_markdown,
     manual_daily_report_publish_target, manual_publish_response_json,
     persist_manual_publish_receipt, publish_receipt_automation_state, publish_receipt_json,
-    report_status_json, resolve_manual_daily_report_target,
+    report_status_json, resolve_manual_daily_report_target, with_lint_result,
 };
 use qunmind::scheduler::daily_report::DailyReportScheduler;
 use qunmind::source::wechat_rss::{fetch_named_wechat_account_articles, find_wechat_account};
@@ -25,7 +28,7 @@ use qunmind::wechat_article_helper::{
     run_wechat_article_url_helper, wechat_article_url_response_json,
 };
 use qunmind::wx_cli_commands::run_wx_cli_command;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::Arc;
 use tracing::{error, info};
 use tracing_subscriber::EnvFilter;
@@ -111,59 +114,6 @@ fn build_channel(config: &Config) -> anyhow::Result<Arc<dyn Channel>> {
     })
 }
 
-fn previous_markdown_context_for_output(output: &Path) -> Option<String> {
-    let mut chunks = Vec::new();
-
-    if let Ok(markdown) = std::fs::read_to_string(output)
-        && !markdown.trim().is_empty()
-    {
-        chunks.push(markdown);
-    }
-
-    let parent = output.parent().unwrap_or_else(|| Path::new("."));
-    let mut candidates = recent_report_markdown_candidates(parent, output);
-    candidates.sort_by_key(|path| {
-        std::fs::metadata(path)
-            .and_then(|metadata| metadata.modified())
-            .ok()
-    });
-    candidates.reverse();
-
-    for path in candidates.into_iter().take(5) {
-        if let Ok(markdown) = std::fs::read_to_string(&path)
-            && !markdown.trim().is_empty()
-        {
-            chunks.push(markdown);
-        }
-    }
-
-    if chunks.is_empty() {
-        None
-    } else {
-        Some(chunks.join("\n\n"))
-    }
-}
-
-fn recent_report_markdown_candidates(dir: &Path, output: &Path) -> Vec<PathBuf> {
-    let Ok(entries) = std::fs::read_dir(dir) else {
-        return Vec::new();
-    };
-
-    entries
-        .flatten()
-        .map(|entry| entry.path())
-        .filter(|path| path != output)
-        .filter(|path| path.extension().and_then(|ext| ext.to_str()) == Some("md"))
-        .filter(|path| {
-            path.file_name()
-                .and_then(|name| name.to_str())
-                .is_some_and(|name| {
-                    name.starts_with("wechat-report-") || name.starts_with("daily-report-")
-                })
-        })
-        .collect()
-}
-
 async fn run_diagnostic_command(
     command: CliCommand,
     config: &Config,
@@ -185,23 +135,33 @@ async fn run_diagnostic_command(
             let report_target = resolve_manual_daily_report_target(config, &report_name)?;
             let message_store = build_message_store(config).await?;
             let public_news_source = build_public_news_source(config)?;
-            let previous_markdown = previous_markdown_context_for_output(&output);
+            let lint_context = lint_context_for_output(&output);
+            let previous_markdown = lint_context.previous_markdown.as_deref();
             let markdown = generate_manual_daily_report_markdown(
                 config,
                 &report_target,
                 Arc::clone(&ai_client),
                 Arc::clone(&message_store),
                 public_news_source,
-                previous_markdown.as_deref(),
+                previous_markdown,
             )
             .await?;
             let output_markdown =
                 prepare_report_output_markdown(&markdown, &report_target.output, &output)?;
+            let lint = lint_daily_report_markdown_with_context(
+                &output_markdown,
+                &report_target.output,
+                Some(&lint_context),
+            );
             std::fs::write(&output, &output_markdown)
                 .with_context(|| format!("写入日报文件失败: {}", output.display()))?;
             let publish_receipt = if publish {
-                let target = manual_daily_report_publish_target(&report_target)?;
-                Some(publish_markdown(&markdown, &target)?)
+                if lint.has_errors {
+                    None
+                } else {
+                    let target = manual_daily_report_publish_target(&report_target)?;
+                    Some(publish_markdown(&markdown, &target)?)
+                }
             } else {
                 None
             };
@@ -215,35 +175,49 @@ async fn run_diagnostic_command(
             println!(
                 "{}",
                 serde_json::to_string_pretty(&match (publish_receipt, publish_persistence) {
-                    (Some(receipt), Some(persistence)) => manual_publish_response_json(
-                        &report_target.name,
-                        &output,
-                        &persistence,
-                        &receipt,
+                    (Some(receipt), Some(persistence)) => {
+                        with_lint_result(
+                            manual_publish_response_json(
+                                &report_target.name,
+                                &output,
+                                &persistence,
+                                &receipt,
+                            ),
+                            &lint,
+                            false,
+                        )
+                    }
+                    (None, _) => with_lint_result(
+                        serde_json::json!({
+                            "ok": true,
+                            "report_name": report_target.name,
+                            "output_path": output.display().to_string(),
+                            "published": false,
+                        }),
+                        &lint,
+                        publish && lint.has_errors
                     ),
-                    (None, _) => serde_json::json!({
-                        "ok": true,
-                        "report_name": report_target.name,
-                        "output_path": output.display().to_string(),
-                        "published": false,
-                    }),
-                    (Some(receipt), None) => serde_json::json!({
-                        "ok": true,
-                        "report_name": report_target.name,
-                        "output_path": output.display().to_string(),
-                        "published": true,
-                        "publish_receipt_saved": false,
-                        "publish_receipt_save_error": "manual publish persistence result missing",
-                        "publish_receipt": {
-                            "target": receipt.target,
-                            "destination": receipt.destination,
-                            "published_at": receipt.published_at,
-                            "summary": receipt.summary,
-                            "raw_output": receipt.raw_output,
-                            "warnings": receipt.warnings,
-                            "automation_state": publish_receipt_automation_state(&receipt.warnings),
-                        },
-                    }),
+                    (Some(receipt), None) => with_lint_result(
+                        serde_json::json!({
+                            "ok": true,
+                            "report_name": report_target.name,
+                            "output_path": output.display().to_string(),
+                            "published": true,
+                            "publish_receipt_saved": false,
+                            "publish_receipt_save_error": "manual publish persistence result missing",
+                            "publish_receipt": {
+                                "target": receipt.target,
+                                "destination": receipt.destination,
+                                "published_at": receipt.published_at,
+                                "summary": receipt.summary,
+                                "raw_output": receipt.raw_output,
+                                "warnings": receipt.warnings,
+                                "automation_state": publish_receipt_automation_state(&receipt.warnings),
+                            },
+                        }),
+                        &lint,
+                        false
+                    ),
                 })?
             );
             Ok(())
@@ -997,7 +971,9 @@ mod tests {
         std::fs::write(&previous_path, "> 原文：https://example.com/yesterday\n")
             .expect("write previous report");
 
-        let context = previous_markdown_context_for_output(&output_path).expect("context");
+        let context =
+            qunmind::daily_report::lint::previous_markdown_context_for_output(&output_path)
+                .expect("context");
 
         assert!(context.contains("https://example.com/yesterday"));
         std::fs::remove_dir_all(&dir).expect("remove temp dir");

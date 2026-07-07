@@ -3,6 +3,7 @@ use crate::ai::hermes::HermesClient;
 use crate::ai::openai::OpenAiClient;
 use crate::config::{AiProvider, Config};
 use crate::daily_report::DailyReportGenerator;
+use crate::daily_report::lint::DailyReportLintResult;
 use crate::error::QunMindError;
 use crate::publisher::{PublishReceipt, PublishTarget};
 use crate::source;
@@ -448,6 +449,16 @@ pub fn manual_publish_response_json(
             report_name,
         ),
     })
+}
+
+pub fn with_lint_result(
+    mut json: serde_json::Value,
+    lint: &DailyReportLintResult,
+    publish_blocked_by_lint: bool,
+) -> serde_json::Value {
+    json["lint"] = serde_json::to_value(lint).expect("serialize lint result");
+    json["publish_blocked_by_lint"] = serde_json::Value::Bool(publish_blocked_by_lint);
+    json
 }
 
 pub async fn generate_manual_daily_report_markdown(
@@ -1700,6 +1711,28 @@ mod tests {
             json["publish_receipt"]["automation_state"],
             "login_required"
         );
+    }
+
+    #[test]
+    fn with_lint_result_appends_lint_payload_and_block_flag() {
+        let base = serde_json::json!({
+            "ok": true,
+            "published": false
+        });
+        let lint = crate::daily_report::lint::DailyReportLintResult {
+            issues: vec![crate::daily_report::lint::DailyReportLintIssue {
+                severity: crate::daily_report::lint::DailyReportLintSeverity::Warn,
+                code: "slug_reuse_risk".to_string(),
+                message: "same stem".to_string(),
+            }],
+            has_errors: false,
+        };
+
+        let json = with_lint_result(base, &lint, true);
+
+        assert_eq!(json["publish_blocked_by_lint"], true);
+        assert_eq!(json["lint"]["has_errors"], false);
+        assert_eq!(json["lint"]["issues"][0]["code"], "slug_reuse_risk");
     }
 
     impl Drop for EnvVarGuard {

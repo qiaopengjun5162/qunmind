@@ -2,6 +2,7 @@ use std::path::PathBuf;
 
 use crate::channel::wx_cli::{WxCliChannel, write_wx_cli_capture_file};
 use crate::config::Config;
+use crate::daily_report::lint::{lint_context_for_output, lint_daily_report_markdown_with_context};
 use crate::diagnostic;
 use crate::publisher::{
     configure_wechat_backend, login_wechat_backend, prepare_report_output_markdown,
@@ -12,7 +13,7 @@ use crate::reporting::{
     effective_report_status_target, generate_manual_daily_report_markdown,
     manual_daily_report_publish_target, manual_publish_response_json,
     persist_manual_publish_receipt, publish_receipt_json, report_status_json,
-    resolve_manual_daily_report_target,
+    resolve_manual_daily_report_target, with_lint_result,
 };
 use crate::source::wechat_rss::{fetch_named_wechat_account_articles, find_wechat_account};
 use crate::storage::MessageStore;
@@ -600,26 +601,36 @@ async fn tool_report_markdown(config: &Config, args: &serde_json::Value) -> anyh
     let report_target = resolve_manual_daily_report_target(config, report_name)?;
     let message_store = build_message_store(config).await?;
     let public_news_source = build_public_news_source(config)?;
+    let lint_context = lint_context_for_output(&output_path);
     let markdown = generate_manual_daily_report_markdown(
         config,
         &report_target,
         ai_client,
         message_store,
         public_news_source,
-        None,
+        lint_context.previous_markdown.as_deref(),
     )
     .await?;
     let output_markdown =
         prepare_report_output_markdown(&markdown, &report_target.output, &output_path)?;
+    let lint = lint_daily_report_markdown_with_context(
+        &output_markdown,
+        &report_target.output,
+        Some(&lint_context),
+    );
     std::fs::write(&output_path, &output_markdown)
         .map_err(|err| anyhow::anyhow!("写入日报文件失败: {}", err))?;
 
-    Ok(serde_json::to_string_pretty(&serde_json::json!({
-        "ok": true,
-        "report_name": report_target.name,
-        "output_path": output_path.display().to_string(),
-        "published": false,
-    }))?)
+    Ok(serde_json::to_string_pretty(&with_lint_result(
+        serde_json::json!({
+            "ok": true,
+            "report_name": report_target.name,
+            "output_path": output_path.display().to_string(),
+            "published": false,
+        }),
+        &lint,
+        false,
+    ))?)
 }
 
 async fn tool_report_publish(config: &Config, args: &serde_json::Value) -> anyhow::Result<String> {
@@ -642,19 +653,37 @@ async fn tool_report_publish(config: &Config, args: &serde_json::Value) -> anyho
     let report_target = resolve_manual_daily_report_target(config, report_name)?;
     let message_store = build_message_store(config).await?;
     let public_news_source = build_public_news_source(config)?;
+    let lint_context = lint_context_for_output(&output_path);
     let markdown = generate_manual_daily_report_markdown(
         config,
         &report_target,
         ai_client,
         message_store.clone(),
         public_news_source,
-        None,
+        lint_context.previous_markdown.as_deref(),
     )
     .await?;
     let output_markdown =
         prepare_report_output_markdown(&markdown, &report_target.output, &output_path)?;
+    let lint = lint_daily_report_markdown_with_context(
+        &output_markdown,
+        &report_target.output,
+        Some(&lint_context),
+    );
     std::fs::write(&output_path, &output_markdown)
         .map_err(|err| anyhow::anyhow!("写入日报文件失败: {}", err))?;
+    if lint.has_errors {
+        return Ok(serde_json::to_string_pretty(&with_lint_result(
+            serde_json::json!({
+                "ok": true,
+                "report_name": report_target.name,
+                "output_path": output_path.display().to_string(),
+                "published": false,
+            }),
+            &lint,
+            true,
+        ))?);
+    }
 
     let target = manual_daily_report_publish_target(&report_target)?;
     let publish_receipt = publish_markdown(&markdown, &target)?;
@@ -662,14 +691,18 @@ async fn tool_report_publish(config: &Config, args: &serde_json::Value) -> anyho
         persist_manual_publish_receipt(Ok(message_store), &report_target.name, &publish_receipt)
             .await;
 
-    Ok(serde_json::to_string_pretty(
-        &manual_publish_response_json(
+    let response = with_lint_result(
+        manual_publish_response_json(
             &report_target.name,
             &output_path,
             &publish_persistence,
             &publish_receipt,
         ),
-    )?)
+        &lint,
+        false,
+    );
+
+    Ok(serde_json::to_string_pretty(&response)?)
 }
 
 async fn tool_wechat_articles(config: &Config, args: &serde_json::Value) -> anyhow::Result<String> {
@@ -1390,6 +1423,32 @@ mod tests {
         .unwrap_err();
 
         assert!(err.to_string().contains("report_name"));
+    }
+
+    #[test]
+    fn with_lint_result_preserves_mcp_payload_shape() {
+        let payload = serde_json::json!({
+            "ok": true,
+            "report_name": "微信公众号日报",
+            "published": false
+        });
+        let lint = crate::daily_report::lint::DailyReportLintResult {
+            issues: vec![crate::daily_report::lint::DailyReportLintIssue {
+                severity: crate::daily_report::lint::DailyReportLintSeverity::Warn,
+                code: "recent_source_overlap_high".to_string(),
+                message: "overlap".to_string(),
+            }],
+            has_errors: false,
+        };
+
+        let json = crate::reporting::with_lint_result(payload, &lint, false);
+
+        assert_eq!(json["published"], false);
+        assert_eq!(json["publish_blocked_by_lint"], false);
+        assert_eq!(
+            json["lint"]["issues"][0]["code"],
+            "recent_source_overlap_high"
+        );
     }
 
     #[tokio::test]

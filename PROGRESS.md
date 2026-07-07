@@ -265,6 +265,12 @@
 
 ### Verified
 
+- `cargo test lint_accepts_stable_wechat_layout --lib`
+- `cargo test with_lint_result_appends_lint_payload_and_block_flag --lib`
+- `cargo test with_lint_result_preserves_mcp_payload_shape --lib`
+- `cargo test previous_markdown_context_includes_recent_report_files --bin qunmind`
+- `cargo clippy --all-targets --all-features --tests --benches -- -D warnings`
+
 - `cargo test daily_report::render::tests:: --lib`：26 passed，覆盖正文卡片、深读区、参考来源卡片、固定结尾和焦点中文化。
 - `cargo test daily_report::tests::generate_ --lib`：38 passed，覆盖 URL 近似纠错、英文来源中文兜底、Web3 / AI / 技术分类、FHE / Fhenix 隐私基础设施不落入技术区、深读去重与补位。
 - `cargo run -- --config config.toml daily-report --report-name "微信公众号日报" --output /tmp/wechat-report-2026-07-03-v12-content-layout.md`：本地样稿生成成功，`published = false`；样稿显示正文条目已采用 `值得关注 / 来源依据 / 原文` 卡片，深读区已显示 `为什么读 / 原文`，固定“继续交流”结尾仍在。HN 直连失败后使用本地代理回退，`https://cryptoslate.com/feed/` 仍返回 403 并被跳过。
