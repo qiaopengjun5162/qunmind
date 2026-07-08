@@ -42,6 +42,7 @@ The project currently supports:
 - The same manual report exits now also run a shared Rust-side markdown lint before publish-related steps. The lint checks the fixed `AI · Web3 最新日报｜YYYY-MM-DD` title, `theme: notebook`, the unique final `## 继续交流` block, raw `原文：https://...` traceability, `来源依据：` lines, `compact-links` formatting, and same-day slug-reuse risk; JSON results now include `lint` plus `publish_blocked_by_lint`.
 - The report generator now also hardens low-quality AI output in Rust: malformed JSON gets repaired when possible, generic fallback phrases are replaced with title-specific traceability hints, and Reddit discussion links no longer take over deep-read or technology body slots by default.
 - Public-source fallback now has a first performance pass: enabled public sources are fetched concurrently in `src/source/mod.rs`, while still being merged in configured order; Hacker News candidate items and GitHub Trending language pages are also fetched concurrently so daily-report latency is less likely to degrade into a simple sum of every slow upstream source.
+- If WeChat returns the same stable `errcode=40164 invalid ip` exit IP multiple times after transparent proxy / TUN tools have been disabled, stop suspecting markdown, lint, `moonpub`, or proxy drift first. In that state the problem should be treated as a WeChat OpenAPI allowlist issue: the IP was not applied, was added in the wrong place, or the backend has not accepted the change yet.
 
 ## Status
 

@@ -109,3 +109,16 @@ than a fast-but-floating anycast exit. If `api.weixin.qq.com` routes through a
 Cloudflare preferred route and WeChat keeps reporting different `104.28.*.*`
 addresses, adding one IP at a time will be fragile. Prefer selecting a fixed
 ordinary node, then verify the WeChat-reported IP before pushing the draft again.
+
+If the operator disables transparent proxy / TUN style tools and WeChat starts
+reporting the same direct exit IP on repeated attempts, the diagnosis changes.
+At that point the main question is no longer "is the publisher path still using
+the wrong route?" but "has that exact IP really been added to the WeChat
+OpenAPI allowlist, and has the backend accepted the change yet?"
+
+On `2026-07-08`, the path moved from floating `104.28.*.*` exits to a stable
+direct IP `117.22.121.195` after closing Warp, Clash Verge, and EasyConnect.
+Repeated `errcode=40164 invalid ip` responses with that same IP confirmed that
+the remaining blocker was the WeChat-side allowlist state, not markdown
+generation, lint, `moonpub`, or proxy drift. Treat this as the default playbook
+for future repeats of the same pattern.
