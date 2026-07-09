@@ -41,6 +41,7 @@
 - 如果微信公众号发布连续两次以上都报同一个稳定出口 IP 的 `errcode=40164 invalid ip`，而且透明代理 / TUN 已确认关闭，就不要再回头怀疑正文、lint、`moonpub` 或代理是否生效。此时基本可以直接判定为“公众号后台 OpenAPI 白名单未生效、加错位置或未保存成功”，应优先回后台核对 API 白名单配置。
 - 现在 CLI 与 MCP 在手工日报出口上也复用了同一份“最近稿件上下文”：同目录最近几份 `wechat-report-*.md` / `daily-report-*.md` 既会继续作为去重新鲜度信号，也会参与 slug 风险告警。这样“今天换个入口重跑一下”不再容易出现 CLI 和 MCP 对同一份稿件给出两套不同判断。
 - 公共来源日报链路现在已经做了第一轮性能收口：`src/source/mod.rs` 会并发抓取所有启用的 `public_sources`，但最终仍按配置顺序合并结果；`Hacker News` 的候选 item 抓取和 `GitHub Trending` 的多语言页面抓取也都改成并发。它的目标不是让日报“无限快”，而是避免总耗时继续被“所有来源串行相加”拖垮，让日常生成更接近“一条命令即可”的体验。
+- 这轮又补了两处真实慢点：`official_blogs` 现在也按 feed 并发抓取，并对 OpenAI RSS 一类偶发坏编码改用 `bytes -> utf8_lossy` 容错；`reddit_rss` 一旦本轮命中 `429 Too Many Requests`，后续 subreddit 会直接止损跳过，不再把日报时间浪费在同类限流错误上。
 
 ## 当前状态
 

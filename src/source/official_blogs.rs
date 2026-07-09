@@ -2,6 +2,7 @@ use std::sync::OnceLock;
 use std::time::Duration;
 
 use async_trait::async_trait;
+use futures::stream::{FuturesUnordered, StreamExt};
 use regex::Regex;
 use reqwest::Client;
 
@@ -30,14 +31,17 @@ impl OfficialBlogsSource {
     }
 
     async fn fetch_feed(&self, url: &str) -> Result<Vec<PublicNewsItem>> {
-        let xml = self
-            .client
-            .get(url)
-            .send()
-            .await?
-            .error_for_status()?
-            .text()
-            .await?;
+        let xml = String::from_utf8_lossy(
+            &self
+                .client
+                .get(url)
+                .send()
+                .await?
+                .error_for_status()?
+                .bytes()
+                .await?,
+        )
+        .into_owned();
 
         Ok(parse_feed_items(&xml, url, self.max_items))
     }
@@ -46,12 +50,18 @@ impl OfficialBlogsSource {
 #[async_trait]
 impl PublicNewsSource for OfficialBlogsSource {
     async fn fetch_top_items(&self) -> Result<Vec<PublicNewsItem>> {
-        let mut batches = Vec::new();
-        for url in &self.urls {
-            match self.fetch_feed(url).await {
+        let mut batches = vec![Vec::new(); self.urls.len()];
+        let mut pending = FuturesUnordered::new();
+
+        for (index, url) in self.urls.iter().cloned().enumerate() {
+            pending.push(async move { (index, url.clone(), self.fetch_feed(&url).await) });
+        }
+
+        while let Some((index, url, fetched)) = pending.next().await {
+            match fetched {
                 Ok(feed_items) => {
                     if !feed_items.is_empty() {
-                        batches.push(feed_items);
+                        batches[index] = feed_items;
                     }
                 }
                 Err(err) => {

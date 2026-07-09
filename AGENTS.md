@@ -69,6 +69,10 @@
 
 `src/source/hacker_news.rs` 与 `src/source/github_trending.rs` 也已经把“同一来源内部的多条 item / 多语言页面抓取”提到并发路径，目标是把日报总耗时更接近“受最慢几个来源影响”，而不是“所有来源耗时简单相加”。后续新 source 如果内部还要抓多页、多 id 或多 feed，优先沿这个模式实现，而不是先写串行版本再慢慢排查。
 
+`src/source/official_blogs.rs` 现在也已经改成“源内多 feed 并发抓取 + 保持原配置顺序交错落地”的模式，不再串行等待 OpenAI / Google / Cloudflare / Rust / GitHub / ECB 等 feed。对于 OpenAI RSS 一类偶发坏编码或响应体解码失败的情况，优先保留 `bytes() -> String::from_utf8_lossy(...)` 这条更稳的解析边界，而不是重新退回脆弱的 `.text()` 默认解码。
+
+`src/source/reddit_rss.rs` 当前仍是补充型社区来源，但如果本轮抓取已经命中 `429 Too Many Requests`，应在该轮后续 subreddit 上直接止损跳过，避免把整份日报时间继续浪费在同一类限流错误上。优化日报速度时，不要为了“尽量抓全 Reddit”而重新引回长 sleep、串行重试或更多无效等待。
+
 公众号文章这类外部内容入口优先走 `PublicNewsSource` 边界。当前更推荐的第一步是消费 RSS / Atom 上游输出（例如 `wechat-download-api` 提供的 RSS），而不是把登录、代理和反风控逻辑直接嵌进 `QunMind` 主进程。按公众号名字拉文章时，优先使用 `[[public_sources.wechat_accounts]]` 把 `name` / `aliases` 绑定到 `feed_url`，再走 `qunmind wechat-articles --account-name <name>` 或 MCP `wechat_articles` 输出结构化 JSON；如果未绑定上游，应该明确报错要求先配置来源，不要假装可以只凭名字稳定获取全量历史文章。
 
 如果需求是“给一个 `mp.weixin.qq.com/s/...` 链接，尽量提取正文 markdown、图片和元数据”，优先把它设计成 **可选外部 helper**，而不是主进程内建抓取器。当前更适合参考 `jackwener/wechat-article-to-markdown` 这类单篇链接转 markdown 工具：`QunMind` 只负责显式调用、读取结构化结果和失败隔离，不负责内嵌 `Camoufox`、浏览器反检测、验证码或登录态维护。
