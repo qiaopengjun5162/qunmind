@@ -242,7 +242,7 @@ The command returns structured JSON with the resolved account name, feed URL, ar
 
 The current `wechat_rss` reader also normalizes a few common feed variants so mixed upstream services stay usable: Atom `<author><name>`, RSS `dc:creator`, and `pubDate` / `updated` / `published` / `dc:date` timestamps are mapped into the same `author` and UTC `published_at` fields before they enter the daily-report prompt.
 
-For a single public-account article URL, the preferred future shape is different from the feed-backed path above. If the goal is "take one `mp.weixin.qq.com/s/...` link and turn it into markdown plus downloaded images", treat that as an explicit helper workflow, not as a built-in main-process fetcher. The current best reference is [`jackwener/wechat-article-to-markdown`](https://github.com/jackwener/wechat-article-to-markdown): QunMind should eventually call a tool like that through an opt-in CLI / MCP entry, consume structured output, and keep failures isolated from the normal RSS-backed report pipeline.
+For a single public-account article URL, the preferred future shape is different from the feed-backed path above. If the goal is "take one `mp.weixin.qq.com/s/...` link and turn it into markdown plus downloaded images", treat that as an explicit helper workflow, not as a built-in main-process fetcher. The current preferred lightweight reference is [`Noisepoint/mp-weixin-to-md`](https://github.com/Noisepoint/mp-weixin-to-md), because it stays focused on "single URL -> markdown" without pulling an entire account-sync surface into the main process. [`jackwener/wechat-article-to-markdown`](https://github.com/jackwener/wechat-article-to-markdown) remains a useful heavier fallback reference when code blocks, image download, or tougher page extraction matter more than keeping the helper narrow.
 
 That opt-in entry now exists in skeleton form:
 
@@ -255,13 +255,15 @@ It currently requires an explicit external helper configuration first:
 
 ```toml
 [public_sources]
-wechat_article_helper_bin = "wechat-article-to-markdown"
+wechat_article_helper_bin = "/path/to/wechat-article-helper"
 wechat_article_helper_output_dir = "/tmp/qunmind-wechat-article-helper"
 ```
 
-Without that helper, QunMind fails early with a clear config error instead of attempting unstable built-in scraping.
+Without that helper, QunMind fails early with a clear config error instead of attempting unstable built-in scraping. The intent is to keep the adapter generic enough that we can swap helper implementations later instead of binding the project forever to one scraping tool's CLI details.
 
 When the helper succeeds and leaves a markdown file behind, QunMind now also best-effort parses the generated article header and first useful body paragraph back into structured JSON fields such as `title`, `account_name`, `published_at`, `source_url`, and `summary`, alongside `article_dir`, `markdown_path`, and `images_dir`. The intent is to make a single WeChat article link immediately reusable as a traceable daily-report source item, while still keeping the actual browser automation and anti-bot surface outside the main process.
+
+For longer-horizon knowledge work, the direction is different again: QunMind may eventually add a separate research-memory layer for stored article markdown, official blogs, manual curated links, and prior report context, but that should remain an auxiliary retrieval boundary rather than turning the core bot into a full "second brain" product. Projects like [`khoj-ai/khoj`](https://github.com/khoj-ai/khoj) are useful references for that later phase because they demonstrate the right separation between ingestion, retrieval, and agent usage.
 
 For X / Twitter-style first-hand signals, QunMind uses the same lightweight boundary through `[public_sources] x_rss_*`: provide RSSHub, Nitter-compatible, or self-hosted X-list RSS / Atom feeds, and QunMind will normalize them as `X RSS` public news items. The main process does not embed X login, scraping, proxy, or anti-bot logic.
 

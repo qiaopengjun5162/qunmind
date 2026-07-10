@@ -77,7 +77,9 @@
 
 公众号文章这类外部内容入口优先走 `PublicNewsSource` 边界。当前更推荐的第一步是消费 RSS / Atom 上游输出（例如 `wechat-download-api` 提供的 RSS），而不是把登录、代理和反风控逻辑直接嵌进 `QunMind` 主进程。按公众号名字拉文章时，优先使用 `[[public_sources.wechat_accounts]]` 把 `name` / `aliases` 绑定到 `feed_url`，再走 `qunmind wechat-articles --account-name <name>` 或 MCP `wechat_articles` 输出结构化 JSON；如果未绑定上游，应该明确报错要求先配置来源，不要假装可以只凭名字稳定获取全量历史文章。
 
-如果需求是“给一个 `mp.weixin.qq.com/s/...` 链接，尽量提取正文 markdown、图片和元数据”，优先把它设计成 **可选外部 helper**，而不是主进程内建抓取器。当前更适合参考 `jackwener/wechat-article-to-markdown` 这类单篇链接转 markdown 工具：`QunMind` 只负责显式调用、读取结构化结果和失败隔离，不负责内嵌 `Camoufox`、浏览器反检测、验证码或登录态维护。
+如果需求是“给一个 `mp.weixin.qq.com/s/...` 链接，尽量提取正文 markdown、图片和元数据”，优先把它设计成 **可选外部 helper**，而不是主进程内建抓取器。当前单篇链接 helper 参考要分层看：`Noisepoint/mp-weixin-to-md` 更适合作为默认优先参考，因为它更轻、更聚焦“单篇 URL -> Markdown”；`jackwener/wechat-article-to-markdown` 仍可作为需要更强页面抓取和代码块保留时的备选实现。`QunMind` 只负责显式调用、读取结构化结果和失败隔离，不负责内嵌 `Camoufox`、浏览器反检测、验证码或登录态维护。
+
+如果后续要建设“历史文章 + 手工精选 + 官方博客 + 公众号正文”的长期知识层，优先把它定义成独立的 **research memory** / 检索增强边界，而不是把 `Khoj` 一类 second-brain 系统整包并进主进程。可以借鉴 `khoj-ai/khoj` 的“资料入库 + 语义检索 + Agent 使用”分层思路，但 `QunMind` 主线仍是微信消息中枢；知识库只应作为日报和投研助手的辅助层，而不是新的主产品形态或硬依赖。
 
 X / Twitter 这类一手信息入口也优先走 `PublicNewsSource` 边界。当前落地形态是 `[public_sources] x_rss_*`，消费 RSSHub、Nitter 兼容源或自建 X List RSS / Atom 上游；不要把 X 登录态、反爬、代理池或绕风控逻辑直接塞进 `QunMind` 主进程。需要更强实时性时，优先建设独立采集上游，再把稳定输出接成 RSS/Atom 或后续 connector。
 

@@ -254,7 +254,7 @@ cargo run -- wechat-articles --account-name '寻月隐君' --limit 20
 
 当前这层 `wechat_rss` 也补了几种常见 feed 字段兼容：Atom 的 `<author><name>`、RSS 的 `dc:creator`，以及 `pubDate` / `updated` / `published` / `dc:date` 时间字段都会尽量归一成统一的 `author` 和 UTC `published_at`，减少不同上游服务接入后摘要 prompt 字段风格漂移。
 
-如果需求变成“给一个单独的 `mp.weixin.qq.com/s/...` 链接，尽量把正文转成 markdown 并下载图片”，推荐的接入形态和 RSS 长期订阅不同。当前更适合参考 [`jackwener/wechat-article-to-markdown`](https://github.com/jackwener/wechat-article-to-markdown) 这类外部工具，把它作为显式调用的 helper：未来由 QunMind 提供单独的 CLI / MCP 入口去调用外部命令、读取 markdown / 图片目录 / 元数据并返回结构化结果，而不是把浏览器抓取、反检测和登录态复杂度直接内嵌进主进程。
+如果需求变成“给一个单独的 `mp.weixin.qq.com/s/...` 链接，尽量把正文转成 markdown 并下载图片”，推荐的接入形态和 RSS 长期订阅不同。当前更适合优先参考 [`Noisepoint/mp-weixin-to-md`](https://github.com/Noisepoint/mp-weixin-to-md) 这类更轻、更聚焦“单篇 URL -> Markdown”的外部工具；[`jackwener/wechat-article-to-markdown`](https://github.com/jackwener/wechat-article-to-markdown) 仍然适合作为更重的备选参考，尤其在更强调代码块、图片下载或更强页面提取时。无论最终选哪一个，QunMind 都应把它作为显式调用的 helper：由单独的 CLI / MCP 入口去调用外部命令、读取 markdown / 图片目录 / 元数据并返回结构化结果，而不是把浏览器抓取、反检测和登录态复杂度直接内嵌进主进程。
 
 这条显式入口现在已经有了骨架：
 
@@ -267,13 +267,15 @@ cargo run -- wechat-article-url \
 
 ```toml
 [public_sources]
-wechat_article_helper_bin = "wechat-article-to-markdown"
+wechat_article_helper_bin = "/path/to/wechat-article-helper"
 wechat_article_helper_output_dir = "/tmp/qunmind-wechat-article-helper"
 ```
 
-如果 helper 没配置，QunMind 会在执行前直接报配置错误，而不是假装自己能在主进程里稳定抓正文。
+如果 helper 没配置，QunMind 会在执行前直接报配置错误，而不是假装自己能在主进程里稳定抓正文。这里刻意把配置写成通用路径，而不是把项目永久绑定到某一个抓取工具的 CLI 名称。
 
 如果外部 helper 成功产出 markdown，QunMind 现在还会最佳努力解析其中的头部信息和正文第一段，直接在结构化 JSON 里补出 `title`、`account_name`、`published_at`、`source_url`、`summary`，并继续返回 `article_dir`、`markdown_path`、`images_dir`。这样单篇公众号链接不只是“下载到一个目录里”，还可以更自然地被后续日报素材链路复用，同时继续把浏览器抓取和反风控复杂度隔离在主进程外。
+
+如果后面要继续往“长期资料库 / 历史文章检索 / 研究记忆层”发展，方向又和单篇 helper 不同。那一层更适合借鉴 [`khoj-ai/khoj`](https://github.com/khoj-ai/khoj) 这类项目的“资料入库 + 检索增强 + Agent 使用”分层，但不适合把整套 second brain 系统直接并进 `QunMind` 主进程；对本项目来说，更合理的做法是把它当成未来辅助检索边界，而不是新的主产品形态。
 
 X / Twitter 这类一手信息也走同样的轻量边界：通过 `[public_sources] x_rss_*` 配置 RSSHub、Nitter 兼容源或自建 X List RSS / Atom 上游，QunMind 会把它们归一成 `X RSS` 公共素材。主进程不内嵌 X 登录、抓取、代理或反风控逻辑。
 

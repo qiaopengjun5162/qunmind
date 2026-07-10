@@ -122,10 +122,10 @@
 
 我们下一步建议直接做：
 
-1. 先补公众号文章单链接提取器：给一个 `mp.weixin.qq.com/s/...` URL 时，最佳努力抽取标题、公众号名、作者、发布时间、封面和正文摘要，作为 `PublicNewsSource` 素材进入日报；长期订阅仍继续走 `wechat_rss_*` 上游，不把微信登录、代理池或反风控放进主进程。
+1. 把单篇公众号链接 helper 适配继续泛化：不要把 `wechat-article-url` 永久绑定到某一个工具的 CLI 细节，优先收敛成“给 URL、拿 markdown / 图片 / 元数据”的稳定契约，后续可在 `mp-weixin-to-md` 和更重 helper 之间切换。
 2. 把 `src/mcp/tools.rs` 的剩余命令层适配继续往纯 helper 收。
-3. 扩充 `tests/fixtures/wx_cli/` 里的匿名化样本。
-4. 把 fixture 覆盖继续接到 handle-once / test-plan / poll。
+3. 为“研究记忆层”补最小路线图：先定义资料入库、检索增强和日报召回边界，再决定是否需要单独存储层。
+4. 扩充 `tests/fixtures/wx_cli/` 里的匿名化样本，并把 fixture 覆盖继续接到 handle-once / test-plan / poll。
 
 如果目标切到“明天能不能把公众号日报草稿推出来”，当前最短操作路径已经收口成：
 
@@ -207,6 +207,8 @@
 - **公众号单链接 helper 方案定稿** — 已确认 `jackwener/wechat-article-to-markdown` 更适合被当作“外部可选 helper”，而不是并入 `QunMind` 主进程。现在项目内方案已经明确：长期订阅继续走 `wechat_rss_*` / `wechat_accounts`，单篇 `mp.weixin.qq.com/s/...` 链接则未来通过显式 CLI / MCP 入口调用外部工具，返回 markdown / 图片目录 / 元数据并保持失败隔离。
 - **公众号单链接入口骨架已落地** — 现在已经补上 `qunmind wechat-article-url --url <mp_url>` 和 MCP `wechat_article_url` 入口，以及 `public_sources.wechat_article_helper_bin` / `wechat_article_helper_output_dir` 配置项。当前它仍然依赖外部 helper，可在未配置时提前报清晰错误；这一步的意义是先把接口语义和失败边界钉住，而不是把不稳定抓取直接揉进主流程。
 - **公众号单链接返回结果开始带可复用元数据** — `src/wechat_article_helper.rs` 现在会在 helper 成功生成 markdown 后，继续解析标题、公众号名、发布时间、原文链接和正文首段摘要，并把这些字段直接并入 CLI / MCP 的结构化 JSON。这样后续如果要把单篇公众号文章转成日报素材，不需要再从 markdown 文本里二次硬拆一次。
+- **单篇公众号 helper 候选优先级已收口** — 这轮把候选实现的定位写清楚了：`Noisepoint/mp-weixin-to-md` 更适合作为默认优先参考，因为它更轻、更聚焦“单篇 URL -> Markdown”；`jackwener/wechat-article-to-markdown` 继续保留为更重的备选实现，适合更强调代码块、图片下载或 tougher 页面提取的场景。项目文档也同步改成“helper 契约优先、具体实现可替换”，避免后续把 CLI 行为锁死在某一个上游工具上。
+- **研究记忆层方向已单独抽象出来** — 借鉴 `khoj-ai/khoj` 的启发，项目现在明确把“公众号正文、官方博客、手工精选、历史日报上下文”的长期沉淀视为未来的 `research memory` / 检索增强边界，而不是把 second-brain 系统整包并入主进程。这样后续如果要做历史资料召回、日报背景补全或投研检索，入口会更清楚，也不容易把 `QunMind` 主线从微信消息中枢带偏。
 - **公众号日报固定结尾改回生成层内建** — 这轮确认之前稳定链路不依赖微信后台模板，问题是后来把临时 `moonpub` 配置注入和模板插入重新塞回了发布链路。现在已回退 `src/publisher.rs` 里的临时模板介入逻辑，改为由 `src/daily_report/render.rs` 直接把“关注与交流 / 回复加群”写进 markdown 尾部，并补上“分区编号连续”和“固定结尾存在”的回归测试。这样本地预览稿、手工发布和定时发布终于重新共用同一份正文，`moonpub` 只负责渲染与推草稿。
 
 ## 2026-06-24
