@@ -19,6 +19,7 @@
 | 改动目标 | 先看这里 | 再看这些实现 | 最低验证 |
 | --- | --- | --- | --- |
 | 改日报正文结构、排版、固定结尾 | `README_zh.md`、`AGENTS.md` | `src/daily_report/render.rs`、`src/daily_report/mod.rs`、`src/daily_report/lint.rs` | `cargo test` 相关日报测试、`cargo clippy --all-targets --all-features --tests -- -D warnings` |
+| 改日报封面方向、视觉蓝图或视觉边界 | `docs/wechat-daily-visual-blueprint.md`、`docs/visual-operations.md`、`AGENTS.md` | `docs/assets/wechat/`、`src/publisher.rs`、必要时 `src/daily_report/render.rs` | 至少同步文档；若改到运行时封面/正文渲染，再补对应测试与 `cargo clippy --all-targets --all-features --tests -- -D warnings` |
 | 改手工日报入口语义 | `README_zh.md`、`AGENTS.md`、本文件 | `src/cli.rs`、`src/main.rs`、`src/reporting.rs`、`src/mcp/tools.rs` | `cargo test` 手工日报测试、`cargo clippy --all-targets --all-features --tests -- -D warnings` |
 | 改“群消息优先 / public_sources 回退”语义 | `AGENTS.md`、本文件 | `src/reporting.rs`、`src/scheduler/daily_report.rs`、`src/main.rs`、`src/mcp/tools.rs` | 对应 `manual_daily_report_*` 测试、`cargo clippy --all-targets --all-features --tests -- -D warnings` |
 | 改日报来源可见性或 `report_source` 输出 | `README_zh.md`、`AGENTS.md`、本文件 | `src/reporting.rs`、`src/main.rs`、`src/mcp/tools.rs` | `cargo test with_report_source_info_appends_source_payload --lib`、MCP 相关测试 |

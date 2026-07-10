@@ -27,6 +27,8 @@
   多模态路线图
 - [visual-operations.md](./visual-operations.md)
   视觉资产生成记录
+- [wechat-daily-visual-blueprint.md](./wechat-daily-visual-blueprint.md)
+  微信公众号日报视觉蓝图与边界
 
 ## 文档边界
 

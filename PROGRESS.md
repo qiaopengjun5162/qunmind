@@ -34,6 +34,13 @@
 - **wx-cli 命令编排层第二轮收口进行中**
 - **公众号日报最小可用目标已经真实打通**
 
+## 2026-07-10
+
+### Done
+
+- **日报视觉方向开始从“聊天共识”收口成稳定蓝图** — 这轮没有把新的视觉生成器硬接进 `QunMind`，而是先把更有长期价值的方法论沉淀下来。新增的 [`docs/wechat-daily-visual-blueprint.md`](docs/wechat-daily-visual-blueprint.md) 明确了公众号日报视觉应该优先固定什么、哪些部分可以变化、以及为什么图像生成只能属于主链路外的辅助层。这样后续再讨论封面、配图或视觉升级时，不需要每次重新争论“要不要大改样式”，而是先回到固定栏目身份、固定叙事顺序和固定视觉 DNA 这条边界。
+- **`ian-handdrawn-ppt` 的价值被吸收到方法层，而不是实现层** — 这次吸收的不是“手绘风格”本身，而是它的 intake / narrative planning / archetype / visual DNA 工作流。经验已经同步写进 `AGENTS.md`、`README.md`、`README_zh.md` 和 `docs/README.md`：外部视觉项目适合启发封面 brief、页面角色和人工挑选流程，但不应反向侵入 `QunMind` 的日报生成与发布主流程。
+
 ## 2026-07-05
 
 ### Done
