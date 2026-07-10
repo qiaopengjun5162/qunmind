@@ -35,6 +35,18 @@
 4. 需要日报时，优先使用群消息和链接情报；为空时再回退 `public_sources`。
 5. 生成 markdown 后统一经过日报 lint，再决定是本地输出、群内发送，还是推送到公众号草稿箱。
 
+```mermaid
+flowchart LR
+    A["WeCom / wx-cli"] --> B["保存消息与抽取链接"]
+    B --> C["读取短期上下文"]
+    C --> D["群级规则过滤<br/>@ / enable / persona"]
+    D --> E["AI 回复"]
+    B --> F["日报素材选择<br/>群消息优先 / public_sources 回退"]
+    F --> G["生成日报 Markdown"]
+    G --> H["日报 lint"]
+    H --> I["群内发送 / 本地输出 / 公众号草稿箱"]
+```
+
 ## 核心能力
 
 - **微信群 AI 主链路**：消息接入、保存、上下文、群级 persona、回复发送。

@@ -8,49 +8,139 @@
 ![GitHub license](https://img.shields.io/github/license/qiaopengjun5162/qunmind)
 ![Rust Version](https://img.shields.io/badge/rust-%3E%3D1.85-blue)
 
-Rust backend for WeChat group AI bots.
+Rust-powered WeChat group AI hub and traceable daily-report engine.
 
 If you are about to change this repository and are not sure where to start, read
 [docs/README.md](./docs/README.md) and
-[docs/change-routing-index.md](./docs/change-routing-index.md) first. They turn common
-change requests such as daily-report, publishing, MCP, wx-cli, and public-source work
-into a stable "start here -> inspect these files -> run these validations" index.
+[docs/change-routing-index.md](./docs/change-routing-index.md) first. They answer
+"which workflow am I changing, which files should I inspect first, and what should I validate"
+before you start wandering through code and chat history.
 
-`QunMind` is designed around a small set of stable boundaries:
+## Why QunMind
 
-- `Channel`: receives and sends messages through WeCom or wx-cli-style adapters.
-- `AiClient`: talks to OpenAI-compatible APIs or Hermes-like agent platforms.
-- `DailyReportScheduler`: sends scheduled group reports through the active channel.
+Many "WeChat AI bot" projects only solve one slice of the real workflow:
 
-The project currently supports:
+- they can receive and reply, but do not persist messages, links, or short-term context
+- they can summarize headlines, but not with traceable sources or real public-account publishing
+- they can call a model, but not close the loop of `generate -> lint -> publish -> receipt -> history`
 
-- WeCom internal group bot via WebSocket.
-- Local wx-cli style channel for normal WeChat / external group MVP experiments.
-- OpenAI-compatible chat completions.
-- Hermes / Xiaolongxia style HTTP agent adapter.
-- Configurable group mention filtering.
-- Per-group enablement, mention name, context window, and persona prompt overrides.
-- PostgreSQL message persistence.
-- Basic conversation context from recently stored messages when replying.
-- Incoming message link extraction and deduplicated storage.
-- Rust-side crypto research tool catalog for future market data, onchain analytics, code security, community, funding-flow, and research-opinion sources.
-- Rust-side AI / agent learning resource catalog for LLM basics, API calling, coding agents, agent frameworks, Hermes execution-layer references, and Formal Methods study entry points such as Lean and Software Foundations.
-- Cron-based daily reports.
-- Daily reports generated from recently stored group messages and link intelligence.
-- Per-group daily report targets with optional cron, prompt, lookback, message, and link overrides.
-- Optional Hacker News, CoinMarketCap, CoinGecko, DeFi Llama, Dune, GitHub Trending, Slerf Blog, and Reddit RSS fallback reports when a report group has no messages.
-- Manual curated source items for one-off official articles, X posts, or other links you explicitly want readers to continue reading.
-- The default `web3_media_urls` list now includes a PANews RSS feed, and `panewslab.com` links are treated as curated traceable sources so Chinese Web3 articles can survive topic filtering with full original URLs intact.
-- The default `web3_media_urls` list also includes the WuBlockchain Atom feed, and `wublock123.com` links are treated as curated traceable sources so Chinese Web3 exchange/news flashes can flow into the report pipeline with full original URLs.
-- The default `official_blogs_urls` list now also includes the ECB press RSS feed, so the report can absorb stable global first-hand policy and macro signals instead of relying only on product blogs and crypto media.
-- WeChat public-account report drafts use a fixed personal-account cover for the `AI · Web3 最新日报` column, branded as `寻月隐君`; the cover now uses a light background with dark title text for better mobile-preview contrast, while `moonpub` still owns final rendering and upload.
-- WeChat daily reports render as a review-friendly article layout: intro, "today's three things", a four-part practical focus callout, numbered AI / Web3 / technology-industry-policy / deep-read sections, compact body cards with "worth watching", source evidence, and raw original URLs, plus a small-font `compact-links` source index that keeps one full original URL per row. Focus callouts, body titles, and deep-read titles intentionally avoid extra Markdown link wrappers so the visible `原文：https://...` line stays the single traceable click/copy entry.
-- Visual direction for this WeChat daily-report line is now also captured in [docs/wechat-daily-visual-blueprint.md](docs/wechat-daily-visual-blueprint.md). The main rule is to stabilize the column identity, narrative order, and visual DNA first, while keeping image generation outside the main `QunMind` runtime. External projects such as `ian-handdrawn-ppt` are useful as methodology references for intake, narrative planning, and page archetypes, not as code to embed into the report pipeline.
-- The same manual report exits now also run a shared Rust-side markdown lint before publish-related steps. The lint checks the fixed `AI · Web3 最新日报｜YYYY-MM-DD` title, `theme: notebook`, the unique final `## 继续交流` block, raw `原文：https://...` traceability, `来源依据：` lines, `compact-links` formatting, and same-day slug-reuse risk; JSON results now include `lint` plus `publish_blocked_by_lint`.
-- The report generator now also hardens low-quality AI output in Rust: malformed JSON gets repaired when possible, generic fallback phrases are replaced with title-specific traceability hints, and Reddit discussion links no longer take over deep-read or technology body slots by default.
-- Public-source fallback now has a first performance pass: enabled public sources are fetched concurrently in `src/source/mod.rs`, while still being merged in configured order; Hacker News candidate items and GitHub Trending language pages are also fetched concurrently so daily-report latency is less likely to degrade into a simple sum of every slow upstream source.
-- That public-source speed pass now also includes two concrete stability guards from real runs: `official_blogs` feeds are fetched concurrently and decoded from raw bytes more defensively for feeds like OpenAI RSS, while `reddit_rss` now short-circuits the rest of the subreddit list for the current run after a `429 Too Many Requests` response instead of wasting more report time on the same rate-limit wall.
-- If WeChat returns the same stable `errcode=40164 invalid ip` exit IP multiple times after transparent proxy / TUN tools have been disabled, stop suspecting markdown, lint, `moonpub`, or proxy drift first. In that state the problem should be treated as a WeChat OpenAPI allowlist issue: the IP was not applied, was added in the wrong place, or the backend has not accepted the change yet.
+`QunMind` is trying to make that end-to-end path real:
+
+- messages are stored, links are extracted, and short-term chat context is available
+- reports can come from real group messages first, then fall back to public sources only when needed
+- a WeChat daily report is not "export markdown and stop", but can continue into `moonpub` and the draft box
+- failures should surface as structured status and recovery actions, not just as one opaque error string
+
+## How It Works
+
+`QunMind` is organized around three stable boundaries:
+
+- `Channel`: receives and sends messages through WeCom or wx-cli-style adapters
+- `AiClient`: talks to OpenAI-compatible APIs or Hermes-like agent platforms
+- `DailyReportScheduler`: generates and sends scheduled reports for configured targets
+
+The core workflow is:
+
+1. receive messages from `WeCom` or `wx-cli`
+2. persist messages and extract links
+3. read recent same-conversation context
+4. decide whether to reply based on group rules, mention rules, and persona
+5. when a report is needed, prefer group messages and link intelligence, then fall back to `public_sources`
+6. run markdown through report lint before sending, saving, or publishing
+
+```mermaid
+flowchart LR
+    A["WeCom / wx-cli"] --> B["Persist messages and extract links"]
+    B --> C["Read short-term context"]
+    C --> D["Group rules filter<br/>mention / enable / persona"]
+    D --> E["AI reply"]
+    B --> F["Report material selection<br/>group messages first / public_sources fallback"]
+    F --> G["Generate report markdown"]
+    G --> H["Report lint"]
+    H --> I["Channel send / local output / WeChat draft box"]
+```
+
+## Core Capabilities
+
+- **WeChat-group AI loop**: message intake, persistence, short-term context, persona overrides, and replies
+- **Traceable daily reports**: body items, focus picks, deep reads, and index links all keep visible raw original URLs
+- **Public-account publishing path**: local WeChat-ready markdown, fixed cover handling, `moonpub --render`, publish receipts
+- **Diagnostics and replay**: `wx-cli doctor`, `test-plan`, `handle-once`, `report-status`, `publish-history`, and related structured status exits
+
+## Support Matrix
+
+### Channels and Models
+
+| Category | Current Support | Status |
+| --- | --- | --- |
+| WeCom internal groups | WebSocket bot | Available |
+| Normal WeChat / external groups | local wx-cli channel | MVP, still being hardened with real samples |
+| Model APIs | OpenAI-compatible APIs | Available |
+| Agent execution layer | Hermes / Xiaolongxia-style HTTP adapter | Available |
+
+### Report Sources
+
+| Category | Current Support | Notes |
+| --- | --- | --- |
+| Group messages | recently stored messages + extracted links | primary source for formal reports |
+| Public-source fallback | Hacker News, CoinMarketCap, CoinGecko, DeFi Llama, Dune, GitHub Trending, Slerf Blog, Reddit RSS | used when the target group is empty |
+| Chinese Web3 media | PANews RSS, WuBlockchain Atom | kept as curated traceable media sources |
+| Official blogs | OpenAI / Google / Cloudflare / Rust / GitHub / ECB RSS or Atom | raises first-hand source density |
+| Manual curated links | `[[public_sources.manual_items]]` | for links you explicitly want readers to continue reading |
+| WeChat RSS feeds | `wechat_rss_*`, `[[public_sources.wechat_accounts]]` | upstream RSS / Atom only, not direct in-process scraping |
+
+### Outputs and Publishing
+
+| Target | Current Support | Notes |
+| --- | --- | --- |
+| Channel report send | active message channel | Available |
+| Local markdown | `daily-report --output` / MCP `report_markdown` | Available |
+| WeChat public-account draft box | `moonpub --render` | minimum viable path verified in real use |
+| Publish visibility | `report-status`, `publish-history`, structured receipts | Available |
+
+## WeChat Report Traits
+
+- WeChat public-account report drafts use a fixed personal-account cover for the `AI · Web3 最新日报` column, branded as `寻月隐君`; the cover uses a light background with dark title text for better mobile-preview contrast, while `moonpub` still owns final rendering and upload.
+- WeChat daily-report titles are fixed as `AI · Web3 最新日报｜YYYY-MM-DD`; the daily angle moves into `digest`, the intro, and the focus block so the latest draft is easier to identify in the draft list.
+- WeChat daily reports render as a review-friendly article layout: intro, "today's three things", a practical focus callout, numbered AI / Web3 / technology-industry-policy / deep-read sections, compact body cards with "worth watching", source evidence, and raw original URLs, plus a small-font `compact-links` source index.
+- The generator now also hardens weak AI output in Rust: malformed JSON is repaired when possible, vague fallback phrases are replaced with more concrete traceability hints, and low-signal Reddit discussion items no longer dominate deep-read or technology body slots by default.
+- The fixed visual direction for this WeChat daily-report line is documented in [docs/wechat-daily-visual-blueprint.md](docs/wechat-daily-visual-blueprint.md). The rule is to stabilize column identity, narrative order, and visual DNA first, while keeping image generation outside the main `QunMind` runtime.
+
+## Quick Start
+
+### 1. Run the bot locally
+
+```bash
+cp config.example.toml config.toml
+$EDITOR config.toml
+cargo run
+```
+
+`config.toml` is intentionally ignored by git because it contains local secrets.
+
+### 2. Rehearse a WeChat daily report
+
+```bash
+just db-create
+just report-status config.toml '微信公众号日报'
+just report-markdown config.toml '微信公众号日报' '/tmp/wechat-report.md'
+just report-publish config.toml '微信公众号日报' '/tmp/wechat-report.md'
+just report-history config.toml '微信公众号日报'
+```
+
+If you explicitly want a public-sources-only draft first:
+
+```bash
+just report-markdown-public-only config.toml '微信公众号日报' '/tmp/wechat-report-public-only.md'
+```
+
+### 3. Diagnose wx-cli before real group testing
+
+```bash
+cargo run -- wx-cli doctor
+cargo run -- wx-cli test-plan --capture-file wx-output.json
+cargo run -- wx-cli handle-once --input wx-output.json --message-id "m-123" --limit 1 --no-send
+```
 
 ## Status
 
@@ -121,16 +211,6 @@ Current working timeline has shifted:
 - June 28, 2026: the layout was further polished into "today's three things", a practical focus block, "worth watching" item notes, and Chinese fallback summaries to avoid clipped English fragments
 - June 25-26, 2026: internal gray rollout and repeated rehearsals are realistic
 - it is still not recommended to describe the path as fully unattended stable production yet
-
-## Quick Start
-
-```bash
-cp config.example.toml config.toml
-$EDITOR config.toml
-cargo run
-```
-
-`config.toml` is intentionally ignored by git because it contains local secrets.
 
 ## Docker Deployment
 
