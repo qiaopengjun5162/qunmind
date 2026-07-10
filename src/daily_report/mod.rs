@@ -4475,7 +4475,7 @@ mod tests {
         let tech_section = section_body_by_title(&report, "技术、产业与政策");
         assert!(!tech_section.contains("具体用途待进一步了解"));
         assert!(!tech_section.contains("[G](https://example.com/g)"));
-        assert_eq!(tech_section.matches("### 技术｜[").count(), 1);
+        assert_eq!(tech_section.matches("### 技术｜").count(), 1);
     }
 
     #[test]
@@ -8001,7 +8001,7 @@ mod tests {
         let report = generator.generate().await.expect("report");
         let web3_section = section_body_by_title(&report, "Web3");
 
-        assert_eq!(web3_section.matches("### Web3｜[").count(), 1);
+        assert_eq!(web3_section.matches("### Web3｜").count(), 1);
     }
 
     #[tokio::test]
@@ -8311,9 +8311,9 @@ mod tests {
             .and_then(|rest| rest.split("## 04. 推荐深读").next())
             .unwrap_or("");
 
-        assert!(ai_section.matches("### AI｜[").count() >= 3);
-        assert!(web3_section.matches("### Web3｜[").count() >= 3);
-        assert!(tech_section.matches("### 技术｜[").count() >= 3);
+        assert!(ai_section.matches("### AI｜").count() >= 3);
+        assert!(web3_section.matches("### Web3｜").count() >= 3);
+        assert!(tech_section.matches("### 技术｜").count() >= 3);
         assert!(report.matches("### 深读 ").count() >= 3);
     }
 

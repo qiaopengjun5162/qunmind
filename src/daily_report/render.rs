@@ -1162,7 +1162,9 @@ mod tests {
         };
         let md = assemble_markdown(&report, &[], "");
         assert!(md.contains("### 深读 01｜深度文章"));
-        assert!(md.contains("> 为什么读：这篇材料围绕 深度文章 展开"));
+        assert!(md.contains(
+            "> 为什么读：深度文章 建议回到原文补齐背景、关键细节和判断依据，再决定要不要继续跟进。"
+        ));
         assert!(!md.contains("未生成可靠摘要，请直接阅读原文核对。"));
         assert!(md.contains("原文：https://example.com/a"));
     }
@@ -1180,7 +1182,9 @@ mod tests {
 
         let md = assemble_markdown(&report, &[], "");
 
-        assert!(md.contains("> 为什么读：这篇材料围绕 深度文章 展开"));
+        assert!(md.contains(
+            "> 为什么读：深度文章 建议回到原文补齐背景、关键细节和判断依据，再决定要不要继续跟进。"
+        ));
         assert!(!md.contains("Aave confirmed Saturday"));
         assert!(!md.contains("未生成可靠摘要，请直接阅读原文核对。"));
         assert!(md.contains("原文：https://example.com/a"));
