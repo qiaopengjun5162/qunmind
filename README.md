@@ -309,6 +309,10 @@ MCP can now also drive the manual report rehearsal path itself. `report_markdown
 
 `report_markdown`, `report_publish`, and `qunmind daily-report` now all share the same report-output context and lint boundary. That means recent sibling `wechat-report-*.md` / `daily-report-*.md` files are reused both as freshness hints and as same-day slug-reuse warnings, instead of CLI and MCP each drifting into their own report-output semantics.
 
+The same manual-report payloads now also include structured `report_source` metadata so operators can see whether a run actually used `group_messages` or fell back to `public_sources`, how many messages/links were loaded, and why any fallback happened. This is especially important when a configured report target has no `chat_id`: the command should no longer look like it read local group messages when it really did not.
+
+When you explicitly want a public-sources-only report, use `qunmind daily-report --public-only` or pass `public_only = true` to MCP `report_markdown` / `report_publish`. That makes the behavior intentional instead of relying on an empty-group fallback side effect.
+
 Manual publish results now also carry their own follow-up hints. After a successful `daily-report --publish` or MCP `report_publish`, the JSON response no longer stops at "published = true": it also includes `follow_up_status`, plus the same `recommended_commands` and `recommended_tool_calls` pattern used by `report-status`, so operators and agents can immediately tell whether the next step is just `publish_history` or a recovery flow such as `report_recover_automation`.
 
 This path has now been verified with at least four real draft pushes:

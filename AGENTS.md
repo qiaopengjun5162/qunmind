@@ -60,6 +60,8 @@
 如果只配置了一个 `schedule.daily_reports` 目标，手工 `daily-report` 应优先自动复用它，而不是退回成脱离正式目标配置的空白 markdown 模式；只有在存在多个日报目标时，才要求显式传 `--report-name`，避免手工联调和正式目标配置脱节。
 
 手工 `daily-report` 的内容来源也应尽量与正式日报目标保持一致：目标群在回看窗口内有已保存消息时，优先基于群消息和链接情报生成；只有群消息为空时，才回退到 `public_sources`。不要让“手工联调”和“定时正式日报”走出两套不同的内容来源语义。
+如果某个 `[[schedule.daily_reports]]` 目标根本没有配置 `chat_id`，那它在当前语义下就不会真实读取本地群消息；手工 `daily-report`、MCP `report_markdown` / `report_publish` 的返回结果必须明确暴露这一点，而不是只口头说“优先读群消息”。当前标准做法是输出结构化 `report_source`，包含本次实际使用的是 `group_messages` 还是 `public_sources`、读到了多少消息/链接，以及为什么回退。后续再遇到“明明说读群消息，实际没读”的问题，优先先看 `report_source`，不要重复靠聊天解释。
+如果操作者明确要“只走公开来源，尽快生成一版日报”，优先使用显式 `--public-only` 或 MCP `public_only = true`，而不是继续借助“空 `chat_id` / 空群回退”的隐式行为去猜。这样既能减少权限误判，也能让命令输出和实际行为保持一致。
 
 `src/source/hn_daily.rs` 抓取 HN Daily 每日 top 10 文章作为日报素材源，HTML 解析逻辑保持无依赖（纯字符串匹配），不需要额外 HTML parser。新增类似轻量抓取来源时参考其模式。
 

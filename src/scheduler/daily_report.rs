@@ -8,7 +8,9 @@ use crate::config::ScheduleConfig;
 use crate::daily_report::DailyReportGenerator;
 use crate::error::Result;
 use crate::publisher::{PublishReceipt, PublishTarget, publish_markdown};
-use crate::reporting::{ReportContentRequest, generate_group_report_from_store};
+use crate::reporting::{
+    GroupReportAttempt, ReportContentRequest, generate_group_report_from_store,
+};
 use crate::source::{PublicNewsItem, PublicNewsSource};
 use crate::storage::{MessageStore, StoredLink, StoredMessage};
 
@@ -155,8 +157,8 @@ impl DailyReportScheduler {
         )
         .await
         {
-            Ok(Some(markdown)) => markdown,
-            Ok(None) => {
+            Ok(GroupReportAttempt::Generated(result)) => result.markdown,
+            Ok(GroupReportAttempt::Empty(_fallback)) => {
                 let Some(source) = &self.public_news_source else {
                     error!("微信日报需要启用 public_sources");
                     return;

@@ -39,6 +39,9 @@ pub enum CliCommand {
         /// 生成 markdown 后，按目标配置继续执行发布
         #[arg(long)]
         publish: bool,
+        /// 显式只使用 public_sources 生成日报，不读取本地群消息
+        #[arg(long)]
+        public_only: bool,
     },
     /// 查看最近的日报发布回执
     #[command(name = "publish-history")]
@@ -635,11 +638,13 @@ mod tests {
                 report_name,
                 hours,
                 publish,
+                public_only,
             }) => {
                 assert_eq!(output, PathBuf::from("/tmp/daily.md"));
                 assert_eq!(report_name, "技术群日报");
                 assert_eq!(hours, 48);
                 assert!(publish);
+                assert!(!public_only);
             }
             _ => panic!("daily-report command should parse"),
         }

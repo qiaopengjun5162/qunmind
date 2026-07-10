@@ -36,6 +36,8 @@
 - 微信公众号日报现在会在 `QunMind` 生成层固定补上“继续交流”标准模板结尾：正文尾部直接写入公众号「寻月隐君」、后台回复「加群」、信息整理 / 非投资建议提醒、回到原文核对，以及点赞 / 推荐 / 在看引导；它始终是全文最后一个正文模块，不再依赖微信后台模板插入，`report-markdown` 本地稿和真实推到 `moonpub` 的正文保持同一份尾部内容。
 - 现在 `daily-report --output` 与 MCP `report_markdown` 在 `output = "wechat"` 时，也会先补齐和真实发布相同的 `cover:` / `wechat_author:` / `theme: notebook` frontmatter，再把稿件写到本地；旧稿里如果残留 `theme: newsletter`，进入微信稿边界时也会被覆盖，避免手机预览继续出现偏黄色主题。
 - 现在 `daily-report --output`、MCP `report_markdown`、MCP `report_publish` 还会统一复用一层 Rust 侧日报 lint：它会检查固定标题 `AI · Web3 最新日报｜YYYY-MM-DD`、`theme: notebook`、唯一且位于全文最后的 `## 继续交流`、正文 `来源依据：` / 完整 `原文：https://...`、`compact-links` 结构，以及同日 slug 复用风险。warning 不阻断本地输出，但会进入 JSON 的 `lint` 字段；error 会把真实发布拦成 `publish_blocked_by_lint = true`，避免明显不合规的稿件继续推到 `moonpub`。
+- 现在 `daily-report --output`、MCP `report_markdown`、MCP `report_publish` 还会额外返回结构化 `report_source`：明确告诉你这次到底用了 `group_messages` 还是 `public_sources`、目标 `chat_id` 是什么、实际读到了多少条消息和链接，以及如果回退了，具体为什么回退。这样以后不需要再靠聊天猜“这次到底有没有真的读群消息”。
+- 如果你明确只想基于公开来源快速出稿，现在也可以显式使用 `qunmind daily-report --public-only`，或在 MCP `report_markdown` / `report_publish` 里传 `public_only = true`。这比依赖“空群自动回退”更稳定，也更容易避开“看起来会读私有群消息、实际却没有”的误会。
 - 同一天内多次手工试发公众号日报时，QunMind 现在会为每次发布生成唯一临时稿件名，避免 `moonpub` 复用旧 `draft.json` 后出现“时间更新了，但正文还是上一版”的错觉。
 - 如果当天已经绕过 `QunMind`、直接用 `moonpub --articles ... push <reviewed_markdown> --render` 手工修稿，也不要在同一个 Markdown 文件名上反复覆盖后重推。`moonpub` 会按文件 stem 复用旧 bundle；更稳的做法是每次修订都复制成新的唯一文件名，例如 `...-intro-fixed.md`、`...-v2.md`，再重新 push。若手机上仍看到旧内容，先怀疑 slug 复用或微信预览缓存，而不是先怀疑正文没改成功。
 - 如果微信公众号发布连续两次以上都报同一个稳定出口 IP 的 `errcode=40164 invalid ip`，而且透明代理 / TUN 已确认关闭，就不要再回头怀疑正文、lint、`moonpub` 或代理是否生效。此时基本可以直接判定为“公众号后台 OpenAPI 白名单未生效、加错位置或未保存成功”，应优先回后台核对 API 白名单配置。
@@ -243,6 +245,8 @@ cargo run -- wechat-articles --account-name '寻月隐君' --limit 20
 为了减少临近交付时的手工操作，如果配置里只有一个 `schedule.daily_reports` 目标，`qunmind daily-report` 现在会默认复用它；只有在配置了多个日报目标时，才需要显式传 `--report-name`。
 
 手工日报现在也会优先复用正式日报目标的素材来源：如果目标群在回看窗口内已经有保存的群消息和链接情报，就直接按该目标的 prompt 和限制生成；只有群消息为空时，才回退到 `public_sources`。这样临时手工跑一版和定时正式跑出来的结果，不会再因为素材入口不同而偏离太多。
+
+如果某个 `[[schedule.daily_reports]]` 目标本身没有配置 `chat_id`，那么这条目标在当前语义下并不会真实读取本地群消息，而是会直接落入公开来源链路；新的 `report_source` 就是为了解决这种“口头上说优先群消息、实际配置并不支持”的可见性问题。
 
 现在连定时 `output = "wechat"` 的公众号日报也对齐到了同一条规则：如果目标群已经有保存的群消息，scheduler 会先按群消息和链接情报生成 markdown；只有群消息为空时，才回退到 `public_sources`。也就是说，“手工演练一版”和“真正定时推草稿”已经不再维护两套不同的素材语义。
 

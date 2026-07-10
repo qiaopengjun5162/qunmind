@@ -10,10 +10,10 @@ use crate::publisher::{
 };
 use crate::reporting::{
     build_ai_client, build_message_store, build_public_news_source, effective_publish_history_name,
-    effective_report_status_target, generate_manual_daily_report_markdown,
+    effective_report_status_target, generate_manual_daily_report_markdown_with_options,
     manual_daily_report_publish_target, manual_publish_response_json,
     persist_manual_publish_receipt, publish_receipt_json, report_status_json,
-    resolve_manual_daily_report_target, with_lint_result,
+    resolve_manual_daily_report_target, with_lint_result, with_report_source_info,
 };
 use crate::source::wechat_rss::{fetch_named_wechat_account_articles, find_wechat_account};
 use crate::storage::MessageStore;
@@ -166,6 +166,10 @@ pub fn list_tools() -> Vec<Tool> {
                     "output": {
                         "type": "string",
                         "description": "Path to write the generated markdown file."
+                    },
+                    "public_only": {
+                        "type": "boolean",
+                        "description": "If true, only use public_sources and skip local group-message loading."
                     }
                 },
                 "required": ["output"]
@@ -184,6 +188,10 @@ pub fn list_tools() -> Vec<Tool> {
                     "output": {
                         "type": "string",
                         "description": "Path to write the generated markdown file before publish."
+                    },
+                    "public_only": {
+                        "type": "boolean",
+                        "description": "If true, only use public_sources and skip local group-message loading."
                     },
                     "confirm_publish": {
                         "type": "boolean",
@@ -596,21 +604,27 @@ async fn tool_report_markdown(config: &Config, args: &serde_json::Value) -> anyh
         .unwrap_or("");
     let output = required_string(args, "output")?;
     let output_path = PathBuf::from(&output);
+    let public_only = args
+        .get("public_only")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
 
     let ai_client = build_ai_client(config)?;
     let report_target = resolve_manual_daily_report_target(config, report_name)?;
     let message_store = build_message_store(config).await?;
     let public_news_source = build_public_news_source(config)?;
     let lint_context = lint_context_for_output(&output_path);
-    let markdown = generate_manual_daily_report_markdown(
+    let generation = generate_manual_daily_report_markdown_with_options(
         config,
         &report_target,
         ai_client,
         message_store,
         public_news_source,
         lint_context.previous_markdown.as_deref(),
+        public_only,
     )
     .await?;
+    let markdown = generation.markdown;
     let output_markdown =
         prepare_report_output_markdown(&markdown, &report_target.output, &output_path)?;
     let lint = lint_daily_report_markdown_with_context(
@@ -621,15 +635,18 @@ async fn tool_report_markdown(config: &Config, args: &serde_json::Value) -> anyh
     std::fs::write(&output_path, &output_markdown)
         .map_err(|err| anyhow::anyhow!("写入日报文件失败: {}", err))?;
 
-    Ok(serde_json::to_string_pretty(&with_lint_result(
-        serde_json::json!({
-            "ok": true,
-            "report_name": report_target.name,
-            "output_path": output_path.display().to_string(),
-            "published": false,
-        }),
-        &lint,
-        false,
+    Ok(serde_json::to_string_pretty(&with_report_source_info(
+        with_lint_result(
+            serde_json::json!({
+                "ok": true,
+                "report_name": report_target.name,
+                "output_path": output_path.display().to_string(),
+                "published": false,
+            }),
+            &lint,
+            false,
+        ),
+        &generation.source_info,
     ))?)
 }
 
@@ -648,21 +665,27 @@ async fn tool_report_publish(config: &Config, args: &serde_json::Value) -> anyho
         .unwrap_or("");
     let output = required_string(args, "output")?;
     let output_path = PathBuf::from(&output);
+    let public_only = args
+        .get("public_only")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
 
     let ai_client = build_ai_client(config)?;
     let report_target = resolve_manual_daily_report_target(config, report_name)?;
     let message_store = build_message_store(config).await?;
     let public_news_source = build_public_news_source(config)?;
     let lint_context = lint_context_for_output(&output_path);
-    let markdown = generate_manual_daily_report_markdown(
+    let generation = generate_manual_daily_report_markdown_with_options(
         config,
         &report_target,
         ai_client,
         message_store.clone(),
         public_news_source,
         lint_context.previous_markdown.as_deref(),
+        public_only,
     )
     .await?;
+    let markdown = generation.markdown;
     let output_markdown =
         prepare_report_output_markdown(&markdown, &report_target.output, &output_path)?;
     let lint = lint_daily_report_markdown_with_context(
@@ -673,15 +696,18 @@ async fn tool_report_publish(config: &Config, args: &serde_json::Value) -> anyho
     std::fs::write(&output_path, &output_markdown)
         .map_err(|err| anyhow::anyhow!("写入日报文件失败: {}", err))?;
     if lint.has_errors {
-        return Ok(serde_json::to_string_pretty(&with_lint_result(
-            serde_json::json!({
-                "ok": true,
-                "report_name": report_target.name,
-                "output_path": output_path.display().to_string(),
-                "published": false,
-            }),
-            &lint,
-            true,
+        return Ok(serde_json::to_string_pretty(&with_report_source_info(
+            with_lint_result(
+                serde_json::json!({
+                    "ok": true,
+                    "report_name": report_target.name,
+                    "output_path": output_path.display().to_string(),
+                    "published": false,
+                }),
+                &lint,
+                true,
+            ),
+            &generation.source_info,
         ))?);
     }
 
@@ -691,15 +717,18 @@ async fn tool_report_publish(config: &Config, args: &serde_json::Value) -> anyho
         persist_manual_publish_receipt(Ok(message_store), &report_target.name, &publish_receipt)
             .await;
 
-    let response = with_lint_result(
-        manual_publish_response_json(
-            &report_target.name,
-            &output_path,
-            &publish_persistence,
-            &publish_receipt,
+    let response = with_report_source_info(
+        with_lint_result(
+            manual_publish_response_json(
+                &report_target.name,
+                &output_path,
+                &publish_persistence,
+                &publish_receipt,
+            ),
+            &lint,
+            false,
         ),
-        &lint,
-        false,
+        &generation.source_info,
     );
 
     Ok(serde_json::to_string_pretty(&response)?)
@@ -1449,6 +1478,17 @@ mod tests {
             json["lint"]["issues"][0]["code"],
             "recent_source_overlap_high"
         );
+    }
+
+    #[test]
+    fn report_markdown_tool_schema_mentions_public_only() {
+        let tools = list_tools();
+        let report_markdown = tools
+            .iter()
+            .find(|tool| tool.name == "report_markdown")
+            .expect("report_markdown tool");
+
+        assert!(report_markdown.input_schema["properties"]["public_only"].is_object());
     }
 
     #[tokio::test]

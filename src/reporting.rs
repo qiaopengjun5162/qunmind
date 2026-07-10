@@ -15,6 +15,30 @@ use std::path::Path;
 use std::sync::Arc;
 use tracing::error;
 
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ManualDailyReportSourceMode {
+    GroupMessages,
+    PublicSources,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct ManualDailyReportSourceInfo {
+    pub mode: ManualDailyReportSourceMode,
+    pub public_only: bool,
+    pub requested_chat_id: String,
+    pub loaded_message_count: usize,
+    pub loaded_link_count: usize,
+    pub fallback_reason_code: Option<String>,
+    pub fallback_reason: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ManualDailyReportGeneration {
+    pub markdown: String,
+    pub source_info: ManualDailyReportSourceInfo,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ReportStatusTarget {
     pub chat_id: String,
@@ -461,6 +485,14 @@ pub fn with_lint_result(
     json
 }
 
+pub fn with_report_source_info(
+    mut json: serde_json::Value,
+    source_info: &ManualDailyReportSourceInfo,
+) -> serde_json::Value {
+    json["report_source"] = serde_json::to_value(source_info).expect("serialize report source");
+    json
+}
+
 pub async fn generate_manual_daily_report_markdown(
     _config: &Config,
     report_target: &ManualDailyReportTarget,
@@ -468,37 +500,112 @@ pub async fn generate_manual_daily_report_markdown(
     message_store: Arc<dyn MessageStore>,
     public_news_source: Option<Arc<dyn PublicNewsSource>>,
     previous_markdown: Option<&str>,
-) -> anyhow::Result<String> {
-    let ai_client_for_fallback = Arc::clone(&ai_client);
-    if let Some(markdown) = generate_group_report_from_store(
+) -> anyhow::Result<ManualDailyReportGeneration> {
+    generate_manual_daily_report_markdown_with_options(
+        _config,
+        report_target,
         ai_client,
         message_store,
-        &ReportContentRequest {
-            chat_id: report_target.chat_id.clone(),
-            prompt: report_target.prompt.clone(),
-            lookback_hours: report_target.lookback_hours,
-            max_messages: report_target.max_messages,
-            max_links: report_target.max_links,
-        },
-        &report_target.daily_quote,
+        public_news_source,
         previous_markdown,
+        false,
     )
-    .await?
-    {
-        return Ok(markdown);
+    .await
+}
+
+pub async fn generate_manual_daily_report_markdown_with_options(
+    _config: &Config,
+    report_target: &ManualDailyReportTarget,
+    ai_client: Arc<dyn AiClient>,
+    message_store: Arc<dyn MessageStore>,
+    public_news_source: Option<Arc<dyn PublicNewsSource>>,
+    previous_markdown: Option<&str>,
+    public_only: bool,
+) -> anyhow::Result<ManualDailyReportGeneration> {
+    let requested_chat_id = report_target.chat_id.clone();
+    let ai_client_for_fallback = Arc::clone(&ai_client);
+    if !public_only {
+        match generate_group_report_from_store(
+            ai_client,
+            message_store,
+            &ReportContentRequest {
+                chat_id: requested_chat_id.clone(),
+                prompt: report_target.prompt.clone(),
+                lookback_hours: report_target.lookback_hours,
+                max_messages: report_target.max_messages,
+                max_links: report_target.max_links,
+            },
+            &report_target.daily_quote,
+            previous_markdown,
+        )
+        .await?
+        {
+            GroupReportAttempt::Generated(result) => {
+                return Ok(ManualDailyReportGeneration {
+                    markdown: result.markdown,
+                    source_info: ManualDailyReportSourceInfo {
+                        mode: ManualDailyReportSourceMode::GroupMessages,
+                        public_only,
+                        requested_chat_id,
+                        loaded_message_count: result.loaded_message_count,
+                        loaded_link_count: result.loaded_link_count,
+                        fallback_reason_code: None,
+                        fallback_reason: None,
+                    },
+                });
+            }
+            GroupReportAttempt::Empty(fallback) => {
+                let public_news_source = public_news_source.ok_or_else(|| {
+                    QunMindError::Config("daily-report 需要启用至少一个 public_sources".to_string())
+                })?;
+                let markdown = generate_manual_public_daily_report(
+                    report_target,
+                    ai_client_for_fallback,
+                    public_news_source,
+                    previous_markdown,
+                )
+                .await?;
+                return Ok(ManualDailyReportGeneration {
+                    markdown,
+                    source_info: ManualDailyReportSourceInfo {
+                        mode: ManualDailyReportSourceMode::PublicSources,
+                        public_only,
+                        requested_chat_id,
+                        loaded_message_count: fallback.loaded_message_count,
+                        loaded_link_count: fallback.loaded_link_count,
+                        fallback_reason_code: Some(fallback.reason_code),
+                        fallback_reason: Some(fallback.reason),
+                    },
+                });
+            }
+        }
     }
 
     let public_news_source = public_news_source.ok_or_else(|| {
         QunMindError::Config("daily-report 需要启用至少一个 public_sources".to_string())
     })?;
 
-    generate_manual_public_daily_report(
+    let markdown = generate_manual_public_daily_report(
         report_target,
         ai_client_for_fallback,
         public_news_source,
         previous_markdown,
     )
-    .await
+    .await?;
+
+    Ok(ManualDailyReportGeneration {
+        markdown,
+        source_info: ManualDailyReportSourceInfo {
+            mode: ManualDailyReportSourceMode::PublicSources,
+            public_only,
+            requested_chat_id,
+            loaded_message_count: 0,
+            loaded_link_count: 0,
+            fallback_reason_code: public_only.then(|| "forced_public_only".to_string()),
+            fallback_reason: public_only
+                .then(|| "本次按 public_only 显式只使用公开来源生成日报。".to_string()),
+        },
+    })
 }
 
 async fn generate_manual_public_daily_report(
@@ -567,13 +674,34 @@ pub struct ReportContentRequest {
     pub max_links: i64,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GroupReportGeneration {
+    pub markdown: String,
+    pub loaded_message_count: usize,
+    pub loaded_link_count: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GroupReportFallback {
+    pub loaded_message_count: usize,
+    pub loaded_link_count: usize,
+    pub reason_code: String,
+    pub reason: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum GroupReportAttempt {
+    Generated(GroupReportGeneration),
+    Empty(GroupReportFallback),
+}
+
 pub async fn generate_group_report_from_store(
     ai_client: Arc<dyn AiClient>,
     message_store: Arc<dyn MessageStore>,
     request: &ReportContentRequest,
     daily_quote: &str,
     previous_markdown: Option<&str>,
-) -> anyhow::Result<Option<String>> {
+) -> anyhow::Result<GroupReportAttempt> {
     let lookback_hours = request.lookback_hours.max(1);
     let max_messages = request.max_messages.max(1);
     let max_links = request.max_links.max(0);
@@ -583,6 +711,8 @@ pub async fn generate_group_report_from_store(
     let messages =
         load_report_messages(message_store.as_ref(), request, since, until, max_messages).await?;
     let links = load_report_links(message_store.as_ref(), request, since, until, max_links).await?;
+    let loaded_message_count = messages.len();
+    let loaded_link_count = links.len();
 
     let items = group_report_items(&messages, &links, since, until);
     if !items.is_empty() {
@@ -594,10 +724,37 @@ pub async fn generate_group_report_from_store(
         .with_recent_used_urls(previous_report_urls(previous_markdown))
         .with_extra_prompt_context(Some(request.prompt.clone()));
         let markdown = generator.generate_from_curated_items(items).await?;
-        return Ok(Some(markdown));
+        return Ok(GroupReportAttempt::Generated(GroupReportGeneration {
+            markdown,
+            loaded_message_count,
+            loaded_link_count,
+        }));
     }
 
-    Ok(None)
+    let (reason_code, reason) = if request.chat_id.trim().is_empty() {
+        (
+            "report_target_chat_id_empty".to_string(),
+            "当前日报目标未配置 chat_id，本次不会读取本地群消息，已回退到公开来源。".to_string(),
+        )
+    } else if loaded_message_count == 0 && loaded_link_count == 0 {
+        (
+            "no_group_material_in_lookback_window".to_string(),
+            "回看窗口内没有读到可用的群消息或链接情报，已回退到公开来源。".to_string(),
+        )
+    } else {
+        (
+            "no_renderable_group_material".to_string(),
+            "虽然读到了群消息或链接，但没有形成可用于日报成稿的素材，已回退到公开来源。"
+                .to_string(),
+        )
+    };
+
+    Ok(GroupReportAttempt::Empty(GroupReportFallback {
+        loaded_message_count,
+        loaded_link_count,
+        reason_code,
+        reason,
+    }))
 }
 
 fn group_report_items(
@@ -1274,8 +1431,12 @@ mod tests {
             None,
         )
         .await
-        .unwrap()
-        .expect("markdown");
+        .unwrap();
+
+        let markdown = match markdown {
+            GroupReportAttempt::Generated(result) => result.markdown,
+            GroupReportAttempt::Empty(_) => panic!("expected group report markdown"),
+        };
 
         assert!(markdown.contains("## 今日焦点"));
         assert!(markdown.contains("### 正文引用来源（"));
@@ -1733,6 +1894,35 @@ mod tests {
         assert_eq!(json["publish_blocked_by_lint"], true);
         assert_eq!(json["lint"]["has_errors"], false);
         assert_eq!(json["lint"]["issues"][0]["code"], "slug_reuse_risk");
+    }
+
+    #[test]
+    fn with_report_source_info_appends_source_payload() {
+        let base = serde_json::json!({
+            "ok": true,
+            "published": false
+        });
+        let json = with_report_source_info(
+            base,
+            &ManualDailyReportSourceInfo {
+                mode: ManualDailyReportSourceMode::PublicSources,
+                public_only: true,
+                requested_chat_id: "group-1".to_string(),
+                loaded_message_count: 0,
+                loaded_link_count: 0,
+                fallback_reason_code: Some("forced_public_only".to_string()),
+                fallback_reason: Some(
+                    "本次按 public_only 显式只使用公开来源生成日报。".to_string(),
+                ),
+            },
+        );
+
+        assert_eq!(json["report_source"]["mode"], "public_sources");
+        assert_eq!(json["report_source"]["public_only"], true);
+        assert_eq!(
+            json["report_source"]["fallback_reason_code"],
+            "forced_public_only"
+        );
     }
 
     impl Drop for EnvVarGuard {
