@@ -811,11 +811,11 @@ fn tool_wechat_article_url(config: &Config, args: &serde_json::Value) -> anyhow:
         .get("output_dir")
         .and_then(|value| value.as_str())
         .map(PathBuf::from);
-    let json = match run_wechat_article_url_helper(&config.public_sources, &url, output_dir.as_deref())
-    {
-        Ok(result) => wechat_article_url_response_json(&result),
-        Err(failure) => wechat_article_url_failure_json(failure.as_ref()),
-    };
+    let json =
+        match run_wechat_article_url_helper(&config.public_sources, &url, output_dir.as_deref()) {
+            Ok(result) => wechat_article_url_response_json(&result),
+            Err(failure) => wechat_article_url_failure_json(failure.as_ref()),
+        };
     Ok(serde_json::to_string_pretty(&json)?)
 }
 

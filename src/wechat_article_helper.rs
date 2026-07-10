@@ -1,6 +1,6 @@
 use std::ffi::OsStr;
-use std::fs;
 use std::fmt;
+use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -112,8 +112,8 @@ pub fn run_wechat_article_url_helper(
     }
 
     let helper_kind = detect_helper_kind(helper_bin);
-    let normalized_url =
-        normalize_wechat_article_url(url).map_err(|err| Box::new(WechatArticleUrlFailure {
+    let normalized_url = normalize_wechat_article_url(url).map_err(|err| {
+        Box::new(WechatArticleUrlFailure {
             requested_url: Some(url.trim().to_string()),
             normalized_url: None,
             helper_bin: helper_bin.to_string(),
@@ -124,7 +124,8 @@ pub fn run_wechat_article_url_helper(
             message: err.to_string(),
             stdout_excerpt: None,
             stderr_excerpt: None,
-        }))?;
+        })
+    })?;
     let output_dir = output_dir
         .map(Path::to_path_buf)
         .unwrap_or_else(|| PathBuf::from(public_sources.wechat_article_helper_output_dir.trim()));
@@ -146,40 +147,44 @@ pub fn run_wechat_article_url_helper(
         }));
     }
 
-    std::fs::create_dir_all(&output_dir).map_err(|err| Box::new(WechatArticleUrlFailure {
-        requested_url: Some(url.trim().to_string()),
-        normalized_url: Some(normalized_url.clone()),
-        helper_bin: helper_bin.to_string(),
-        helper_kind: helper_kind.as_str().to_string(),
-        output_dir: Some(output_dir.clone()),
-        run_dir: None,
-        failure_stage: "prepare_output_dir",
-        message: format!(
-            "创建公众号单链接 helper 输出目录失败 {}: {}",
-            output_dir.display(),
-            err
-        ),
-        stdout_excerpt: None,
-        stderr_excerpt: None,
-    }))?;
+    std::fs::create_dir_all(&output_dir).map_err(|err| {
+        Box::new(WechatArticleUrlFailure {
+            requested_url: Some(url.trim().to_string()),
+            normalized_url: Some(normalized_url.clone()),
+            helper_bin: helper_bin.to_string(),
+            helper_kind: helper_kind.as_str().to_string(),
+            output_dir: Some(output_dir.clone()),
+            run_dir: None,
+            failure_stage: "prepare_output_dir",
+            message: format!(
+                "创建公众号单链接 helper 输出目录失败 {}: {}",
+                output_dir.display(),
+                err
+            ),
+            stdout_excerpt: None,
+            stderr_excerpt: None,
+        })
+    })?;
 
     let run_dir = output_dir.join(format!("run-{}", current_unix_timestamp_millis()));
-    std::fs::create_dir_all(&run_dir).map_err(|err| Box::new(WechatArticleUrlFailure {
-        requested_url: Some(url.trim().to_string()),
-        normalized_url: Some(normalized_url.clone()),
-        helper_bin: helper_bin.to_string(),
-        helper_kind: helper_kind.as_str().to_string(),
-        output_dir: Some(output_dir.clone()),
-        run_dir: Some(run_dir.clone()),
-        failure_stage: "prepare_run_dir",
-        message: format!(
-            "创建公众号单链接 helper 运行目录失败 {}: {}",
-            run_dir.display(),
-            err
-        ),
-        stdout_excerpt: None,
-        stderr_excerpt: None,
-    }))?;
+    std::fs::create_dir_all(&run_dir).map_err(|err| {
+        Box::new(WechatArticleUrlFailure {
+            requested_url: Some(url.trim().to_string()),
+            normalized_url: Some(normalized_url.clone()),
+            helper_bin: helper_bin.to_string(),
+            helper_kind: helper_kind.as_str().to_string(),
+            output_dir: Some(output_dir.clone()),
+            run_dir: Some(run_dir.clone()),
+            failure_stage: "prepare_run_dir",
+            message: format!(
+                "创建公众号单链接 helper 运行目录失败 {}: {}",
+                run_dir.display(),
+                err
+            ),
+            stdout_excerpt: None,
+            stderr_excerpt: None,
+        })
+    })?;
 
     let mut command = Command::new(helper_bin);
     command.args(helper_args_for(helper_kind, &normalized_url, &run_dir));
@@ -189,21 +194,23 @@ pub fn run_wechat_article_url_helper(
     ) {
         command.current_dir(&run_dir);
     }
-    let output = command.output().map_err(|err| Box::new(WechatArticleUrlFailure {
-        requested_url: Some(url.trim().to_string()),
-        normalized_url: Some(normalized_url.clone()),
-        helper_bin: helper_bin.to_string(),
-        helper_kind: helper_kind.as_str().to_string(),
-        output_dir: Some(output_dir.clone()),
-        run_dir: Some(run_dir.clone()),
-        failure_stage: "launch_helper",
-        message: format!(
-            "调用公众号单链接 helper 失败：{}。请确认 {} 已安装且可执行。",
-            err, helper_bin
-        ),
-        stdout_excerpt: None,
-        stderr_excerpt: None,
-    }))?;
+    let output = command.output().map_err(|err| {
+        Box::new(WechatArticleUrlFailure {
+            requested_url: Some(url.trim().to_string()),
+            normalized_url: Some(normalized_url.clone()),
+            helper_bin: helper_bin.to_string(),
+            helper_kind: helper_kind.as_str().to_string(),
+            output_dir: Some(output_dir.clone()),
+            run_dir: Some(run_dir.clone()),
+            failure_stage: "launch_helper",
+            message: format!(
+                "调用公众号单链接 helper 失败：{}。请确认 {} 已安装且可执行。",
+                err, helper_bin
+            ),
+            stdout_excerpt: None,
+            stderr_excerpt: None,
+        })
+    })?;
 
     if !output.status.success() {
         let stderr = non_empty_excerpt(String::from_utf8_lossy(&output.stderr).trim());
