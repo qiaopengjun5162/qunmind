@@ -16,11 +16,11 @@ use qunmind::publisher::{
     preview_wechat_backend, publish_markdown, wechat_login_recovery_hint,
 };
 use qunmind::reporting::{
-    build_ai_client, build_message_store, build_public_news_source, effective_publish_history_name,
-    effective_report_status_target, generate_manual_daily_report_markdown_with_options,
-    manual_daily_report_publish_target, manual_publish_response_json,
-    persist_manual_publish_receipt, publish_receipt_automation_state, publish_receipt_json,
-    report_status_json, resolve_manual_daily_report_target, with_lint_result,
+    build_ai_client, build_message_store, build_noop_message_store, build_public_news_source,
+    effective_publish_history_name, effective_report_status_target,
+    generate_manual_daily_report_markdown_with_options, manual_daily_report_publish_target,
+    manual_publish_response_json, persist_manual_publish_receipt, publish_receipt_automation_state,
+    publish_receipt_json, report_status_json, resolve_manual_daily_report_target, with_lint_result,
     with_report_source_info,
 };
 use qunmind::scheduler::daily_report::DailyReportScheduler;
@@ -135,7 +135,11 @@ async fn run_diagnostic_command(
         } => {
             let ai_client = build_ai_client(config)?;
             let report_target = resolve_manual_daily_report_target(config, &report_name)?;
-            let message_store = build_message_store(config).await?;
+            let message_store = if public_only {
+                build_noop_message_store()
+            } else {
+                build_message_store(config).await?
+            };
             let public_news_source = build_public_news_source(config)?;
             let lint_context = lint_context_for_output(&output);
             let previous_markdown = lint_context.previous_markdown.as_deref();
@@ -1083,6 +1087,61 @@ mod tests {
             Some("forced_public_only")
         );
         assert!(markdown.markdown.contains("Rust release"));
+    }
+
+    #[tokio::test]
+    async fn manual_daily_report_public_only_does_not_require_database_store() {
+        let config = config_from(
+            r#"
+            [ai]
+            provider = "hermes"
+
+            [[schedule.daily_reports]]
+            name = "微信公众号日报"
+            output = "wechat"
+            "#,
+        );
+        let source = Arc::new(ManualReportNewsSource {
+            items: vec![PublicNewsItem {
+                source: "OpenAI".to_string(),
+                title: "GPT update".to_string(),
+                url: "https://example.com/gpt".to_string(),
+                summary: Some("OpenAI update".to_string()),
+                author: Some("openai".to_string()),
+                published_at: Some("2026-07-10T00:00:00+00:00".to_string()),
+                score: Some(100),
+                comments: Some(20),
+                ai_score: None,
+                category: None,
+            }],
+        });
+        let ai = Arc::new(ManualReportAi::new(
+            r#"{"title_hint":"公开来源日报","intro":"今天有新的公开资料","focus_text":"","focus_url":"","ai_items":[],"ai_signals":[],"web3_items":[],"tech_items":[],"tech_timeline":[],"reads":[],"summary":"总结"}"#,
+        ));
+        let report_target = must(
+            resolve_manual_daily_report_target(&config, ""),
+            "manual daily report target",
+        );
+
+        let generation = must(
+            generate_manual_daily_report_markdown_with_options(
+                &config,
+                &report_target,
+                ai,
+                qunmind::reporting::build_noop_message_store(),
+                Some(source),
+                None,
+                true,
+            )
+            .await,
+            "public-only generation without db store",
+        );
+
+        assert_eq!(
+            generation.source_info.mode,
+            ManualDailyReportSourceMode::PublicSources
+        );
+        assert!(generation.markdown.contains("GPT update"));
     }
 
     #[test]

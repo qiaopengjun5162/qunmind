@@ -344,6 +344,10 @@ pub async fn build_message_store(config: &Config) -> anyhow::Result<Arc<dyn Mess
     ))
 }
 
+pub fn build_noop_message_store() -> Arc<dyn MessageStore> {
+    Arc::new(NoopMessageStore)
+}
+
 pub fn build_ai_client(config: &Config) -> anyhow::Result<Arc<dyn AiClient>> {
     Ok(match config.ai.provider {
         AiProvider::OpenAi => {
@@ -363,6 +367,35 @@ pub fn build_public_news_source(
     config: &Config,
 ) -> anyhow::Result<Option<Arc<dyn PublicNewsSource>>> {
     source::registry::build(&config.public_sources).map_err(Into::into)
+}
+
+struct NoopMessageStore;
+
+#[async_trait::async_trait]
+impl MessageStore for NoopMessageStore {
+    async fn save(&self, _message: crate::storage::NewMessage) -> crate::error::Result<()> {
+        Ok(())
+    }
+
+    async fn text_messages(
+        &self,
+        _chat_id: &str,
+        _since: chrono::DateTime<chrono::Utc>,
+        _until: chrono::DateTime<chrono::Utc>,
+        _limit: i64,
+    ) -> crate::error::Result<Vec<StoredMessage>> {
+        Ok(Vec::new())
+    }
+
+    async fn recent_links(
+        &self,
+        _chat_id: &str,
+        _since: chrono::DateTime<chrono::Utc>,
+        _until: chrono::DateTime<chrono::Utc>,
+        _limit: i64,
+    ) -> crate::error::Result<Vec<StoredLink>> {
+        Ok(Vec::new())
+    }
 }
 
 pub fn manual_daily_report_publish_target(

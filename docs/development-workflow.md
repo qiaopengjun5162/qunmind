@@ -9,6 +9,8 @@ This document defines the default change workflow for `QunMind` so every meaning
 - optional visual-operation history when drawings, diagrams, or generated assets are involved
 - a branch, commit, push, and pull request
 
+Before making a non-trivial change, read `docs/README.md` and `docs/change-routing-index.md` first. They are the fast localization layer for this repository and should reduce repeated “where do I start?” exploration.
+
 ## Required Workflow
 
 For every non-trivial project change, follow this order:
@@ -36,6 +38,7 @@ When a change touches architecture, workflow, commands, constraints, roadmap, or
 - `CONTRIBUTING.md`
 - `.github/pull_request_template.md`
 - this file
+- `docs/README.md` and `docs/change-routing-index.md` when the stable entry points or routing guidance change
 
 When a change expands the project's research / diligence toolkit, update both the structured Rust catalog and the human-facing roadmap doc together. In this repository that means checking `src/research/tools.rs` and `docs/research-tools.md` in the same change.
 

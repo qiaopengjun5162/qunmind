@@ -173,6 +173,7 @@ MCP 侧的 `report_markdown` / `report_publish` 也应继续复用 `src/reportin
 如果微信草稿发布实际还依赖上游 publisher 的运行时环境变量（当前本机 `moonpub` 已确认依赖 `WECHAT_APPID` 与 `WECHAT_SECRET`），`report-status` / `doctor` 也要把这类缺失提前暴露成 blocker，不要让状态页显示 ready、真实试发时才在 publisher stderr 里失败。
 
 如果用户目标是“尽快测试公众号日报发布”，默认优先给出 RSS 上游联调路径，而不是展开按公众号名字抓取的高风控方案。最短可执行路径应围绕 `report-status` -> `daily-report --output` -> `daily-report --publish` -> `publish-history` 展开。
+如果不确定“要改日报/发布/MCP/wx-cli/公共来源时先看哪里”，优先从 `docs/change-routing-index.md` 开始，而不是每次重新从 `main.rs` 或 `src/` 全局搜索。后续只要形成新的稳定改动入口，也要同步补到这份索引里，减少重复定位成本。
 
 如果通过 MCP 暴露真实发布入口，也要保留和 CLI 一样的显式授权边界：像 `report_publish` 这类会触发真实外部发布的 tool，必须要求 `confirm_publish = true` 之类的明确确认参数，不要让 Agent 仅凭工具名就直接发出去。
 
@@ -205,7 +206,9 @@ MCP 侧的 `report_markdown` / `report_publish` 也应继续复用 `src/reportin
 - `just report-configure config.toml '微信公众号日报'`：重试公众号浏览器自动化配置
 - `just report-recover-automation config.toml '微信公众号日报'`：一键执行公众号登录与浏览器自动化重试
 - `just report-markdown config.toml '微信公众号日报' '/tmp/wechat-report.md'`：只生成本地日报 markdown，不触发发布
+- `just report-markdown-public-only config.toml '微信公众号日报' '/tmp/wechat-report-public-only.md'`：只用公开来源生成本地日报 markdown，不触发发布
 - `just report-publish config.toml '微信公众号日报' '/tmp/wechat-report.md'`：沿正式 publisher 边界真实推送日报
+- `just report-publish-public-only config.toml '微信公众号日报' '/tmp/wechat-report-public-only.md'`：只用公开来源生成并推送日报
 - `just report-history config.toml '微信公众号日报'`：查看最近发布回执
 - `just run`：运行本地服务
 - `just docker-build`：构建本地 Docker 镜像 `qunmind:local`

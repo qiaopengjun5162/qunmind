@@ -9,11 +9,12 @@ use crate::publisher::{
     preview_wechat_backend, publish_markdown, wechat_login_recovery_hint,
 };
 use crate::reporting::{
-    build_ai_client, build_message_store, build_public_news_source, effective_publish_history_name,
-    effective_report_status_target, generate_manual_daily_report_markdown_with_options,
-    manual_daily_report_publish_target, manual_publish_response_json,
-    persist_manual_publish_receipt, publish_receipt_json, report_status_json,
-    resolve_manual_daily_report_target, with_lint_result, with_report_source_info,
+    build_ai_client, build_message_store, build_noop_message_store, build_public_news_source,
+    effective_publish_history_name, effective_report_status_target,
+    generate_manual_daily_report_markdown_with_options, manual_daily_report_publish_target,
+    manual_publish_response_json, persist_manual_publish_receipt, publish_receipt_json,
+    report_status_json, resolve_manual_daily_report_target, with_lint_result,
+    with_report_source_info,
 };
 use crate::source::wechat_rss::{fetch_named_wechat_account_articles, find_wechat_account};
 use crate::storage::MessageStore;
@@ -611,7 +612,11 @@ async fn tool_report_markdown(config: &Config, args: &serde_json::Value) -> anyh
 
     let ai_client = build_ai_client(config)?;
     let report_target = resolve_manual_daily_report_target(config, report_name)?;
-    let message_store = build_message_store(config).await?;
+    let message_store = if public_only {
+        build_noop_message_store()
+    } else {
+        build_message_store(config).await?
+    };
     let public_news_source = build_public_news_source(config)?;
     let lint_context = lint_context_for_output(&output_path);
     let generation = generate_manual_daily_report_markdown_with_options(
@@ -672,7 +677,11 @@ async fn tool_report_publish(config: &Config, args: &serde_json::Value) -> anyho
 
     let ai_client = build_ai_client(config)?;
     let report_target = resolve_manual_daily_report_target(config, report_name)?;
-    let message_store = build_message_store(config).await?;
+    let message_store = if public_only {
+        build_noop_message_store()
+    } else {
+        build_message_store(config).await?
+    };
     let public_news_source = build_public_news_source(config)?;
     let lint_context = lint_context_for_output(&output_path);
     let generation = generate_manual_daily_report_markdown_with_options(

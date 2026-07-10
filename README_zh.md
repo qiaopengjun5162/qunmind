@@ -2,6 +2,8 @@
 
 `QunMind` 是一个 Rust 实现的微信群 AI 群智中枢。
 
+如果你要改这个项目，但不确定从哪里开始，先看 [docs/README.md](./docs/README.md) 和 [docs/change-routing-index.md](./docs/change-routing-index.md)。这两份文档会把“要改日报、发布、MCP、wx-cli、公共来源时应先看哪里、再改哪些实现、最后跑什么验证”先收口出来，减少每次都从头翻代码和聊天记录。
+
 当前核心边界：
 
 - `Channel`：负责从企业微信或 wx-cli 类通道收发消息。
@@ -293,6 +295,14 @@ just report-markdown config.toml '微信公众号日报' '/tmp/wechat-report.md'
 just report-publish config.toml '微信公众号日报' '/tmp/wechat-report.md'
 just report-history config.toml '微信公众号日报'
 ```
+
+如果你明确只想基于公开来源先快速出稿，现在也可以直接用显式入口：
+
+```bash
+just report-markdown-public-only config.toml '微信公众号日报' '/tmp/wechat-report-public-only.md'
+```
+
+这样不会再依赖“空 `chat_id` / 空群自动回退”的隐式行为，命令语义和实际行为会更一致。
 
 推荐顺序是：
 - 先确认 `report-status` 里的 `blockers` 和 `missing_publish_env` 已清空；只要还看到 `WECHAT_APPID` / `WECHAT_SECRET`，就先不要继续真实试发

@@ -428,6 +428,9 @@
 
 ### Done
 
+- **借鉴 `qintopia-agent-os` 补了项目内“改动定位索引”** — 新增 `docs/README.md` 和 `docs/change-routing-index.md`，把 `QunMind` 里最容易反复返工的几类改动路径先收口出来，特别是日报、发布、MCP、wx-cli 和公共来源链路。目标不是模仿它的 monorepo 结构，而是吸收它“先看哪里、再改哪里、最后验什么”的稳定协作方式，减少每次都从聊天记录和源码全局搜索重新定位。
+- **日报公开来源联调补了显式 Justfile 入口** — `Justfile` 现在新增 `report-markdown-public-only` 和 `report-publish-public-only`。这样“今天先按公开来源出一版稿”终于变成了命令级稳定入口，而不是继续依赖空 `chat_id` 或空群回退的隐式行为。
+- **`public_only` 手工日报不再强依赖本地数据库** — 这轮继续把公开来源-only 场景收紧到真实需求：CLI / MCP 在 `public_only` 时会直接走空消息库，不再先初始化 PostgreSQL。现在 `just report-markdown-public-only` 若失败，优先看公共来源网络可达性，而不是再被“数据库错误”掩盖真实问题。
 - **手工日报来源链路开始显式可见** — `qunmind daily-report`、MCP `report_markdown` 和 `report_publish` 现在会把本次实际使用的来源链路作为结构化 `report_source` 一并返回：包括 `group_messages` / `public_sources`、目标 `chat_id`、实际读取到的消息数和链接数，以及回退原因。这样以后不再需要靠聊天解释“这次到底有没有真的读到本地群消息”。
 - **`chat_id` 为空的日报目标不再制造误解** — 这轮把一个很容易反复踩的坑写死了：如果某个 `[[schedule.daily_reports]]` 目标没有配置 `chat_id`，它在当前语义下就不会真实读取群消息，而会直接走公开来源。新的 `report_source` 会把这件事明确暴露出来，避免再出现“用户已经授权读取本地群消息，但实际配置根本没有可读取目标”的重复沟通。
 - **手工日报显式补上 `public_only` 通道** — CLI `daily-report` 和 MCP `report_markdown` / `report_publish` 现在都支持显式 `public_only`。当用户只想尽快基于公开来源出一版今日日报时，可以直接走这条稳定入口，而不是继续依赖“空群 / 空 `chat_id` 自动回退”的隐式行为。

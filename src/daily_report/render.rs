@@ -8,7 +8,6 @@ const MAX_REFERENCE_ITEMS: usize = 15;
 const MAX_SOURCE_LINK_ITEMS: usize = 50;
 const COMPACT_REF_TITLE_CHARS: usize = 24;
 const COMPACT_REF_SOURCE_CHARS: usize = 28;
-const COMPACT_REF_NOTE_CHARS: usize = 12;
 const OVERVIEW_FOCUS_PREVIEW_CHARS: usize = 34;
 const OVERVIEW_PRIORITY_PREVIEW_CHARS: usize = 22;
 const REPORT_OUTRO_TITLE: &str = "继续交流";
@@ -417,14 +416,10 @@ fn format_reference_entry(
         COMPACT_REF_SOURCE_CHARS,
     ));
     match style {
-        ReferenceEntryStyle::Cited => {
-            let note = reference_note(item).unwrap_or_else(|| "正文已引用。".to_string());
-            let note = table_cell(&truncate_reference_cell(&note, COMPACT_REF_NOTE_CHARS));
-            format!(
-                "- {:02} | {} | {}｜{} | {}\n",
-                index, compact_title, source, note, url
-            )
-        }
+        ReferenceEntryStyle::Cited => format!(
+            "- {:02} | {} | {}｜已引 | {}\n",
+            index, compact_title, source, url
+        ),
         ReferenceEntryStyle::SourceOnly => format!(
             "- {:02} | {} | {} | {}\n",
             index, compact_title, source, url
@@ -439,51 +434,6 @@ fn table_cell(value: &str) -> String {
         .split_whitespace()
         .collect::<Vec<_>>()
         .join(" ")
-}
-
-fn truncate_reference_cell(value: &str, max_chars: usize) -> String {
-    truncate_str(value, max_chars).replace("...", "……")
-}
-
-fn reference_note(item: &PublicNewsItem) -> Option<String> {
-    let summary = item.summary.as_deref()?.trim();
-    if is_useful_chinese_summary(summary) && !has_ascii_ellipsis_fragment(summary) {
-        return Some(compact_reference_note(summary));
-    }
-    None
-}
-
-fn compact_reference_note(value: &str) -> String {
-    let sanitized = sanitize(value)
-        .replace("...", "……")
-        .split_whitespace()
-        .collect::<Vec<_>>()
-        .join(" ");
-    let trimmed = sanitized.trim();
-    if trimmed.is_empty() {
-        return String::new();
-    }
-
-    if let Some(sentence_end) = trimmed
-        .char_indices()
-        .find_map(|(index, ch)| matches!(ch, '。' | '！' | '？').then_some(index + ch.len_utf8()))
-        && sentence_end >= 18
-    {
-        return trimmed[..sentence_end].to_string();
-    }
-
-    let max_chars = 90usize;
-    let chars = trimmed.chars().collect::<Vec<_>>();
-    if chars.len() <= max_chars {
-        return ensure_sentence_end(trimmed);
-    }
-
-    let excerpt = chars[..max_chars]
-        .iter()
-        .collect::<String>()
-        .trim_end_matches(['，', '、', '；', ':', '：', ',', ';', '.', '…'])
-        .to_string();
-    format!("{excerpt}……")
 }
 
 fn normalize_story_url(url: &str) -> String {
@@ -758,9 +708,10 @@ fn fallback_section_reason(title: &str, url: &str) -> String {
 fn fallback_reason_from_title_and_url(title: &str, url: &str) -> String {
     let title = sanitize(title.trim());
     let lower_url = url.trim().to_lowercase();
+    let short_title = compact_read_title(&title, 28);
 
     if title.is_empty() {
-        return "这条材料更适合直接打开原文，核对关键事实、上下文和适用边界。".to_string();
+        return "建议直接打开原文，先核对关键事实、上下文和适用边界。".to_string();
     }
 
     if lower_url.contains("openai.com/")
@@ -770,29 +721,29 @@ fn fallback_reason_from_title_and_url(title: &str, url: &str) -> String {
         || lower_url.contains("github.blog/")
     {
         return format!(
-            "这篇官方材料围绕 {} 展开，适合直接回到一手原文核对发布细节、约束条件和实际影响。",
-            compact_read_title(&title, 28)
+            "{} 是官方发布，建议重点核对这次更新具体改了什么、适用范围到哪里，以及落地门槛高不高。",
+            short_title
         );
     }
 
     if lower_url.contains("ethresear.ch/") {
         return format!(
-            "这篇材料讨论 {}，更适合直接阅读原文，核对研究假设、机制设计和潜在影响。",
-            compact_read_title(&title, 28)
+            "{} 更像研究讨论稿，重点看它的机制假设、争议点，以及真正落地还差哪些前提。",
+            short_title
         );
     }
 
     if lower_url.contains("arxiv.org/") || lower_url.contains("eprint.iacr.org/") {
         return format!(
-            "这篇论文材料聚焦 {}，建议直接核对原文里的方法设定、实验结果和适用边界。",
-            compact_read_title(&title, 28)
+            "{} 更适合回到论文原文，重点核对方法设定、实验结果和结论边界。",
+            short_title
         );
     }
 
     if lower_url.contains("github.com/") {
         return format!(
-            "这条开源材料指向 {}，值得直接打开原文，确认项目现状、关键实现和使用门槛。",
-            compact_read_title(&title, 28)
+            "{} 直接看仓库最有效，先确认项目现状、关键实现和上手门槛。",
+            short_title
         );
     }
 
@@ -803,8 +754,8 @@ fn fallback_reason_from_title_and_url(title: &str, url: &str) -> String {
         || lower_url.contains("web3")
     {
         return format!(
-            "这篇材料涉及 {}，适合直接回到原文，核对事件背景、关键参与方和后续变化。",
-            compact_read_title(&title, 28)
+            "{} 值得先核对事件背景、关键参与方，以及它会不会继续影响协议、资金或监管判断。",
+            short_title
         );
     }
 
@@ -815,14 +766,14 @@ fn fallback_reason_from_title_and_url(title: &str, url: &str) -> String {
         || lower_url.contains("anthropic")
     {
         return format!(
-            "这篇材料涉及 {}，建议直接阅读原文，确认能力变化、适用场景和实际限制。",
-            compact_read_title(&title, 28)
+            "{} 适合重点核对能力变化、使用场景和实际限制，再判断要不要纳入自己的工作流。",
+            short_title
         );
     }
 
     format!(
-        "这篇材料围绕 {} 展开，适合直接打开原文，补齐背景信息、关键细节和判断依据。",
-        compact_read_title(&title, 28)
+        "{} 建议回到原文补齐背景、关键细节和判断依据，再决定要不要继续跟进。",
+        short_title
     )
 }
 
@@ -1210,8 +1161,8 @@ mod tests {
 
         let md = assemble_markdown(&report, &[], "");
 
-        assert!(md.contains("这篇官方材料围绕 Announcing the Monetization"));
-        assert!(md.contains("适合直接回到一手原文核对发布细节、约束条件和实际影响"));
+        assert!(md.contains("Announcing the Monetization"));
+        assert!(md.contains("是官方发布，建议重点核对这次更新具体改了什么"));
     }
 
     #[test]
@@ -1285,7 +1236,7 @@ mod tests {
 
         let rendered = format_section_item(&item, "AI").expect("section item");
 
-        assert!(rendered.contains("这篇材料涉及 AI learns the dark art"));
+        assert!(rendered.contains("AI learns the dark art 适合重点核对能力变化"));
         assert!(!rendered.contains("AI learns the dark art of R..."));
         assert!(!rendered.contains("摘要不够完整"));
         assert!(rendered.contains("原文：https://example.com/ai-rfic"));
@@ -1567,7 +1518,7 @@ mod tests {
         assert!(refs.contains(":::compact-links"));
         assert!(refs.contains("- 01 | used"));
         assert!(refs.contains("· 10 points"));
-        assert!(refs.contains("正文已引用。"));
+        assert!(refs.contains("｜已引 |"));
         assert!(refs.contains("https://example.com/used"));
         assert!(!refs.contains("> 原文：https://example.com/used"));
         assert!(refs.contains("### 补充阅读池（2）"));
@@ -1577,31 +1528,7 @@ mod tests {
         assert!(refs.contains("https://example.com/another"));
         let source_links = refs.split("### 补充阅读池").nth(1).unwrap_or_default();
         assert!(!source_links.contains("说明："));
-        assert!(!source_links.contains("正文已引用"));
-    }
-
-    #[test]
-    fn reference_note_uses_compact_chinese_sentence() {
-        let item = PublicNewsItem {
-            source: "吴说区块链".to_string(),
-            title: "巴西警方冻结资产".to_string(),
-            url: "https://example.com/brazil".to_string(),
-            summary: Some("据彭博社报道，巴西联邦警察 7 月 3 日启动 Operation Exchange 行动，打击涉嫌为国际贩毒资金洗钱的犯罪组织。警方称，相关被调查人员通过非法加密资产转账、大额银行交易...".to_string()),
-            author: None,
-            published_at: None,
-            score: Some(120),
-            comments: None,
-            ai_score: None,
-            category: None,
-        };
-
-        let rendered = format_reference_entry(1, &item, ReferenceEntryStyle::Cited);
-
-        assert!(rendered.contains("据彭博社报道"));
-        assert!(!rendered.contains("..."));
-        assert!(rendered.contains("……"));
-        assert!(!rendered.contains("警方称"));
-        assert!(rendered.lines().count() <= 1);
+        assert!(!source_links.contains("已引"));
     }
 
     #[test]
