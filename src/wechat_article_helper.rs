@@ -1,5 +1,7 @@
+use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde_json::json;
 
@@ -10,7 +12,9 @@ use crate::error::{QunMindError, Result};
 pub struct WechatArticleUrlOutput {
     pub url: String,
     pub helper_bin: String,
+    pub helper_kind: String,
     pub output_dir: PathBuf,
+    pub run_dir: PathBuf,
     pub article_dir: Option<PathBuf>,
     pub markdown_path: Option<PathBuf>,
     pub images_dir: Option<PathBuf>,
@@ -24,6 +28,23 @@ pub struct WechatArticleMarkdown {
     pub published_at: Option<String>,
     pub source_url: Option<String>,
     pub summary: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum WechatArticleHelperKind {
+    Jackwener,
+    Noisepoint,
+    Generic,
+}
+
+impl WechatArticleHelperKind {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Jackwener => "jackwener",
+            Self::Noisepoint => "noisepoint",
+            Self::Generic => "generic",
+        }
+    }
 }
 
 pub fn run_wechat_article_url_helper(
@@ -57,17 +78,30 @@ pub fn run_wechat_article_url_helper(
         ))
     })?;
 
-    let output = Command::new(helper_bin)
-        .arg(&normalized_url)
-        .arg("--output")
-        .arg(&output_dir)
-        .output()
-        .map_err(|err| {
-            QunMindError::Config(format!(
-                "调用公众号单链接 helper 失败：{}。请确认 {} 已安装且可执行。",
-                err, helper_bin
-            ))
-        })?;
+    let helper_kind = detect_helper_kind(helper_bin);
+    let run_dir = output_dir.join(format!("run-{}", current_unix_timestamp_millis()));
+    std::fs::create_dir_all(&run_dir).map_err(|err| {
+        QunMindError::Config(format!(
+            "创建公众号单链接 helper 运行目录失败 {}: {}",
+            run_dir.display(),
+            err
+        ))
+    })?;
+
+    let mut command = Command::new(helper_bin);
+    command.args(helper_args_for(helper_kind, &normalized_url, &run_dir));
+    if matches!(
+        helper_kind,
+        WechatArticleHelperKind::Noisepoint | WechatArticleHelperKind::Jackwener
+    ) {
+        command.current_dir(&run_dir);
+    }
+    let output = command.output().map_err(|err| {
+        QunMindError::Config(format!(
+            "调用公众号单链接 helper 失败：{}。请确认 {} 已安装且可执行。",
+            err, helper_bin
+        ))
+    })?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
@@ -84,14 +118,7 @@ pub fn run_wechat_article_url_helper(
         )));
     }
 
-    let article_dir = newest_subdir(&output_dir);
-    let markdown_path = article_dir
-        .as_ref()
-        .and_then(|dir| first_markdown_in_dir(dir));
-    let images_dir = article_dir
-        .as_ref()
-        .map(|dir| dir.join("images"))
-        .filter(|path| path.is_dir());
+    let (article_dir, markdown_path, images_dir) = discover_helper_output(&run_dir);
     let parsed = markdown_path
         .as_ref()
         .and_then(|path| parse_wechat_article_markdown(path).ok());
@@ -99,7 +126,9 @@ pub fn run_wechat_article_url_helper(
     Ok(WechatArticleUrlOutput {
         url: normalized_url,
         helper_bin: helper_bin.to_string(),
+        helper_kind: helper_kind.as_str().to_string(),
         output_dir,
+        run_dir,
         article_dir,
         markdown_path,
         images_dir,
@@ -122,7 +151,9 @@ pub fn wechat_article_url_response_json(output: &WechatArticleUrlOutput) -> serd
         "ok": true,
         "url": output.url,
         "helper_bin": output.helper_bin,
+        "helper_kind": output.helper_kind,
         "output_dir": output.output_dir.display().to_string(),
+        "run_dir": output.run_dir.display().to_string(),
         "article_dir": output.article_dir.as_ref().map(|path| path.display().to_string()),
         "markdown_path": output.markdown_path.as_ref().map(|path| path.display().to_string()),
         "images_dir": output.images_dir.as_ref().map(|path| path.display().to_string()),
@@ -149,21 +180,92 @@ fn normalize_wechat_article_url(url: &str) -> Result<String> {
     Ok(trimmed.to_string())
 }
 
-fn newest_subdir(root: &Path) -> Option<PathBuf> {
-    let mut dirs = std::fs::read_dir(root)
-        .ok()?
-        .filter_map(|entry| entry.ok())
-        .filter_map(|entry| {
-            let path = entry.path();
-            if !path.is_dir() {
-                return None;
-            }
-            let modified = entry.metadata().ok()?.modified().ok()?;
-            Some((modified, path))
-        })
-        .collect::<Vec<_>>();
-    dirs.sort_by_key(|entry| std::cmp::Reverse(entry.0));
-    dirs.into_iter().map(|(_, path)| path).next()
+fn detect_helper_kind(helper_bin: &str) -> WechatArticleHelperKind {
+    let lower = Path::new(helper_bin)
+        .file_name()
+        .and_then(OsStr::to_str)
+        .unwrap_or(helper_bin)
+        .to_ascii_lowercase();
+
+    if lower.contains("mp-weixin-to-md") {
+        WechatArticleHelperKind::Noisepoint
+    } else if lower.contains("wechat-article-to-markdown") || lower == "main.py" {
+        WechatArticleHelperKind::Jackwener
+    } else {
+        WechatArticleHelperKind::Generic
+    }
+}
+
+fn helper_args_for(helper_kind: WechatArticleHelperKind, url: &str, run_dir: &Path) -> Vec<String> {
+    match helper_kind {
+        WechatArticleHelperKind::Noisepoint => vec![
+            url.to_string(),
+            "-o".to_string(),
+            "article.md".to_string(),
+            "--download-assets".to_string(),
+            "--assets-dir".to_string(),
+            "images".to_string(),
+        ],
+        WechatArticleHelperKind::Jackwener => vec![url.to_string()],
+        WechatArticleHelperKind::Generic => vec![
+            url.to_string(),
+            "--output".to_string(),
+            run_dir.display().to_string(),
+        ],
+    }
+}
+
+fn current_unix_timestamp_millis() -> u128 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |duration| duration.as_millis())
+}
+
+fn discover_helper_output(root: &Path) -> (Option<PathBuf>, Option<PathBuf>, Option<PathBuf>) {
+    if let Some(markdown_path) = first_markdown_in_dir(root) {
+        let article_dir = Some(root.to_path_buf());
+        let images_dir = root.join("images");
+        return (
+            article_dir,
+            Some(markdown_path),
+            images_dir.is_dir().then_some(images_dir),
+        );
+    }
+
+    let markdown_path = collect_markdown_files(root, 3).into_iter().next();
+    let article_dir = markdown_path
+        .as_ref()
+        .and_then(|path| path.parent().map(Path::to_path_buf));
+    let images_dir = article_dir
+        .as_ref()
+        .map(|dir| dir.join("images"))
+        .filter(|path| path.is_dir());
+    (article_dir, markdown_path, images_dir)
+}
+
+fn collect_markdown_files(root: &Path, max_depth: usize) -> Vec<PathBuf> {
+    let mut files = Vec::new();
+    collect_markdown_files_inner(root, max_depth, &mut files);
+    files.sort();
+    files
+}
+
+fn collect_markdown_files_inner(root: &Path, depth_left: usize, files: &mut Vec<PathBuf>) {
+    let Ok(entries) = std::fs::read_dir(root) else {
+        return;
+    };
+
+    for entry in entries.filter_map(|entry| entry.ok()) {
+        let path = entry.path();
+        if path.is_file() && path.extension().and_then(|ext| ext.to_str()) == Some("md") {
+            files.push(path);
+            continue;
+        }
+
+        if depth_left > 0 && path.is_dir() {
+            collect_markdown_files_inner(&path, depth_left - 1, files);
+        }
+    }
 }
 
 fn first_markdown_in_dir(dir: &Path) -> Option<PathBuf> {
@@ -229,7 +331,10 @@ fn parse_wechat_article_markdown_str(content: &str) -> Result<WechatArticleMarkd
             if trimmed.is_empty() {
                 continue;
             }
-        } else if !trimmed.is_empty() {
+            in_header = false;
+        }
+
+        if !trimmed.is_empty() {
             body_lines.push(trimmed.to_string());
         }
     }
@@ -324,9 +429,134 @@ mod tests {
     }
 
     #[test]
+    fn parses_markdown_without_metadata_separator() {
+        let markdown = r#"# 一篇公众号文章
+
+这是没有头部分隔线时的正文第一段。
+
+第二段补充说明。
+"#;
+
+        let parsed = parse_wechat_article_markdown_str(markdown).unwrap();
+
+        assert_eq!(parsed.title, "一篇公众号文章");
+        assert_eq!(
+            parsed.summary.as_deref(),
+            Some("这是没有头部分隔线时的正文第一段。")
+        );
+    }
+
+    #[test]
     fn errors_when_helper_markdown_has_no_title() {
         let err = parse_wechat_article_markdown_str("> 公众号: 寻月隐君").unwrap_err();
         assert!(err.to_string().contains("缺少标题"));
+    }
+
+    #[test]
+    fn detects_known_helper_kinds_from_binary_name() {
+        assert_eq!(
+            detect_helper_kind("/usr/local/bin/mp-weixin-to-md"),
+            WechatArticleHelperKind::Noisepoint
+        );
+        assert_eq!(
+            detect_helper_kind("/Users/test/.local/bin/wechat-article-to-markdown"),
+            WechatArticleHelperKind::Jackwener
+        );
+        assert_eq!(
+            detect_helper_kind("/opt/tools/custom-helper"),
+            WechatArticleHelperKind::Generic
+        );
+    }
+
+    #[test]
+    fn helper_args_use_flat_output_for_noisepoint() {
+        let args = helper_args_for(
+            WechatArticleHelperKind::Noisepoint,
+            "https://mp.weixin.qq.com/s/example",
+            Path::new("/tmp/wechat-helper/run-1"),
+        );
+
+        assert_eq!(
+            args,
+            vec![
+                "https://mp.weixin.qq.com/s/example".to_string(),
+                "-o".to_string(),
+                "article.md".to_string(),
+                "--download-assets".to_string(),
+                "--assets-dir".to_string(),
+                "images".to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn helper_args_use_url_only_for_jackwener() {
+        let args = helper_args_for(
+            WechatArticleHelperKind::Jackwener,
+            "https://mp.weixin.qq.com/s/example",
+            Path::new("/tmp/wechat-helper/run-2"),
+        );
+
+        assert_eq!(args, vec!["https://mp.weixin.qq.com/s/example".to_string()]);
+    }
+
+    #[test]
+    fn helper_args_use_output_dir_for_generic_helper() {
+        let args = helper_args_for(
+            WechatArticleHelperKind::Generic,
+            "https://mp.weixin.qq.com/s/example",
+            Path::new("/tmp/wechat-helper/run-3"),
+        );
+
+        assert_eq!(
+            args,
+            vec![
+                "https://mp.weixin.qq.com/s/example".to_string(),
+                "--output".to_string(),
+                "/tmp/wechat-helper/run-3".to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn discover_helper_output_supports_flat_markdown_layout() {
+        let root = PathBuf::from(format!(
+            "/tmp/qunmind-wechat-helper-flat-{}",
+            current_unix_timestamp_millis()
+        ));
+        std::fs::create_dir_all(root.join("images")).unwrap();
+        std::fs::write(root.join("article.md"), "# 标题\n\n正文").unwrap();
+
+        let (article_dir, markdown_path, images_dir) = discover_helper_output(&root);
+        let markdown_file = root.join("article.md");
+        let images_path = root.join("images");
+
+        assert_eq!(article_dir.as_deref(), Some(root.as_path()));
+        assert_eq!(markdown_path.as_deref(), Some(markdown_file.as_path()));
+        assert_eq!(images_dir.as_deref(), Some(images_path.as_path()));
+
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn discover_helper_output_supports_nested_article_directory() {
+        let root = PathBuf::from(format!(
+            "/tmp/qunmind-wechat-helper-nested-{}",
+            current_unix_timestamp_millis()
+        ));
+        let article_dir_path = root.join("output").join("some-article");
+        std::fs::create_dir_all(article_dir_path.join("images")).unwrap();
+        std::fs::write(article_dir_path.join("some-article.md"), "# 标题\n\n正文").unwrap();
+
+        let (article_dir, markdown_path, images_dir) = discover_helper_output(&root);
+        let markdown_file = article_dir_path.join("some-article.md");
+        let images_path = article_dir_path.join("images");
+
+        assert_eq!(article_dir.as_deref(), Some(article_dir_path.as_path()));
+        assert_eq!(markdown_path.as_deref(), Some(markdown_file.as_path()));
+        assert_eq!(images_dir.as_deref(), Some(images_path.as_path()));
+
+        std::fs::remove_dir_all(root).unwrap();
     }
 
     #[test]
@@ -334,7 +564,9 @@ mod tests {
         let output = WechatArticleUrlOutput {
             url: "https://mp.weixin.qq.com/s/example".to_string(),
             helper_bin: "wechat-article-to-markdown".to_string(),
+            helper_kind: "jackwener".to_string(),
             output_dir: PathBuf::from("/tmp/qunmind-wechat-helper"),
+            run_dir: PathBuf::from("/tmp/qunmind-wechat-helper/run-1"),
             article_dir: Some(PathBuf::from("/tmp/qunmind-wechat-helper/article")),
             markdown_path: Some(PathBuf::from(
                 "/tmp/qunmind-wechat-helper/article/article.md",
@@ -352,6 +584,7 @@ mod tests {
         let json = wechat_article_url_response_json(&output);
 
         assert_eq!(json["title"], "一篇公众号文章");
+        assert_eq!(json["helper_kind"], "jackwener");
         assert_eq!(json["parsed"]["title"], "一篇公众号文章");
         assert_eq!(json["parsed"]["account_name"], "寻月隐君");
         assert_eq!(json["parsed"]["published_at"], "2026-07-01 08:00:00");
