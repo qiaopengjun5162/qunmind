@@ -1,5 +1,6 @@
 use std::ffi::OsStr;
 use std::fs;
+use std::fmt;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -29,6 +30,20 @@ pub struct WechatArticleMarkdown {
     pub published_at: Option<String>,
     pub source_url: Option<String>,
     pub summary: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WechatArticleUrlFailure {
+    pub requested_url: Option<String>,
+    pub normalized_url: Option<String>,
+    pub helper_bin: String,
+    pub helper_kind: String,
+    pub output_dir: Option<PathBuf>,
+    pub run_dir: Option<PathBuf>,
+    pub failure_stage: &'static str,
+    pub message: String,
+    pub stdout_excerpt: Option<String>,
+    pub stderr_excerpt: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -67,46 +82,104 @@ impl WechatArticleHelperKind {
     }
 }
 
+impl fmt::Display for WechatArticleUrlFailure {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}: {}", self.failure_stage, self.message)
+    }
+}
+
+impl std::error::Error for WechatArticleUrlFailure {}
+
 pub fn run_wechat_article_url_helper(
     public_sources: &PublicSourcesConfig,
     url: &str,
     output_dir: Option<&Path>,
-) -> Result<WechatArticleUrlOutput> {
+) -> std::result::Result<WechatArticleUrlOutput, Box<WechatArticleUrlFailure>> {
     let helper_bin = public_sources.wechat_article_helper_bin.trim();
     if helper_bin.is_empty() {
-        return Err(QunMindError::Config(
-            "未配置 public_sources.wechat_article_helper_bin；请先显式配置单篇公众号链接 helper，再使用 wechat-article-url 入口。".to_string(),
-        ));
+        return Err(Box::new(WechatArticleUrlFailure {
+            requested_url: Some(url.trim().to_string()),
+            normalized_url: None,
+            helper_bin: helper_bin.to_string(),
+            helper_kind: detect_helper_kind(helper_bin).as_str().to_string(),
+            output_dir: output_dir.map(Path::to_path_buf),
+            run_dir: None,
+            failure_stage: "config_validation",
+            message: "未配置 public_sources.wechat_article_helper_bin；请先显式配置单篇公众号链接 helper，再使用 wechat-article-url 入口。".to_string(),
+            stdout_excerpt: None,
+            stderr_excerpt: None,
+        }));
     }
 
-    let normalized_url = normalize_wechat_article_url(url)?;
+    let helper_kind = detect_helper_kind(helper_bin);
+    let normalized_url =
+        normalize_wechat_article_url(url).map_err(|err| Box::new(WechatArticleUrlFailure {
+            requested_url: Some(url.trim().to_string()),
+            normalized_url: None,
+            helper_bin: helper_bin.to_string(),
+            helper_kind: helper_kind.as_str().to_string(),
+            output_dir: output_dir.map(Path::to_path_buf),
+            run_dir: None,
+            failure_stage: "url_validation",
+            message: err.to_string(),
+            stdout_excerpt: None,
+            stderr_excerpt: None,
+        }))?;
     let output_dir = output_dir
         .map(Path::to_path_buf)
         .unwrap_or_else(|| PathBuf::from(public_sources.wechat_article_helper_output_dir.trim()));
 
     if output_dir.as_os_str().is_empty() {
-        return Err(QunMindError::Config(
-            "未配置 public_sources.wechat_article_helper_output_dir，且本次也没有显式传 output_dir。".to_string(),
-        ));
+        return Err(Box::new(WechatArticleUrlFailure {
+            requested_url: Some(url.trim().to_string()),
+            normalized_url: Some(normalized_url),
+            helper_bin: helper_bin.to_string(),
+            helper_kind: helper_kind.as_str().to_string(),
+            output_dir: Some(output_dir),
+            run_dir: None,
+            failure_stage: "config_validation",
+            message:
+                "未配置 public_sources.wechat_article_helper_output_dir，且本次也没有显式传 output_dir。"
+                    .to_string(),
+            stdout_excerpt: None,
+            stderr_excerpt: None,
+        }));
     }
 
-    std::fs::create_dir_all(&output_dir).map_err(|err| {
-        QunMindError::Config(format!(
+    std::fs::create_dir_all(&output_dir).map_err(|err| Box::new(WechatArticleUrlFailure {
+        requested_url: Some(url.trim().to_string()),
+        normalized_url: Some(normalized_url.clone()),
+        helper_bin: helper_bin.to_string(),
+        helper_kind: helper_kind.as_str().to_string(),
+        output_dir: Some(output_dir.clone()),
+        run_dir: None,
+        failure_stage: "prepare_output_dir",
+        message: format!(
             "创建公众号单链接 helper 输出目录失败 {}: {}",
             output_dir.display(),
             err
-        ))
-    })?;
+        ),
+        stdout_excerpt: None,
+        stderr_excerpt: None,
+    }))?;
 
-    let helper_kind = detect_helper_kind(helper_bin);
     let run_dir = output_dir.join(format!("run-{}", current_unix_timestamp_millis()));
-    std::fs::create_dir_all(&run_dir).map_err(|err| {
-        QunMindError::Config(format!(
+    std::fs::create_dir_all(&run_dir).map_err(|err| Box::new(WechatArticleUrlFailure {
+        requested_url: Some(url.trim().to_string()),
+        normalized_url: Some(normalized_url.clone()),
+        helper_bin: helper_bin.to_string(),
+        helper_kind: helper_kind.as_str().to_string(),
+        output_dir: Some(output_dir.clone()),
+        run_dir: Some(run_dir.clone()),
+        failure_stage: "prepare_run_dir",
+        message: format!(
             "创建公众号单链接 helper 运行目录失败 {}: {}",
             run_dir.display(),
             err
-        ))
-    })?;
+        ),
+        stdout_excerpt: None,
+        stderr_excerpt: None,
+    }))?;
 
     let mut command = Command::new(helper_bin);
     command.args(helper_args_for(helper_kind, &normalized_url, &run_dir));
@@ -116,29 +189,61 @@ pub fn run_wechat_article_url_helper(
     ) {
         command.current_dir(&run_dir);
     }
-    let output = command.output().map_err(|err| {
-        QunMindError::Config(format!(
+    let output = command.output().map_err(|err| Box::new(WechatArticleUrlFailure {
+        requested_url: Some(url.trim().to_string()),
+        normalized_url: Some(normalized_url.clone()),
+        helper_bin: helper_bin.to_string(),
+        helper_kind: helper_kind.as_str().to_string(),
+        output_dir: Some(output_dir.clone()),
+        run_dir: Some(run_dir.clone()),
+        failure_stage: "launch_helper",
+        message: format!(
             "调用公众号单链接 helper 失败：{}。请确认 {} 已安装且可执行。",
             err, helper_bin
-        ))
-    })?;
+        ),
+        stdout_excerpt: None,
+        stderr_excerpt: None,
+    }))?;
 
     if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-        let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
-        let detail = if !stderr.is_empty() {
-            stderr
-        } else if !stdout.is_empty() {
-            stdout
-        } else {
-            format!("exit status {}", output.status)
-        };
-        return Err(QunMindError::Other(anyhow::anyhow!(
-            "公众号单链接 helper 执行失败: {detail}"
-        )));
+        let stderr = non_empty_excerpt(String::from_utf8_lossy(&output.stderr).trim());
+        let stdout = non_empty_excerpt(String::from_utf8_lossy(&output.stdout).trim());
+        let detail = stderr
+            .as_deref()
+            .or(stdout.as_deref())
+            .map(str::to_string)
+            .unwrap_or_else(|| format!("exit status {}", output.status));
+        return Err(Box::new(WechatArticleUrlFailure {
+            requested_url: Some(url.trim().to_string()),
+            normalized_url: Some(normalized_url),
+            helper_bin: helper_bin.to_string(),
+            helper_kind: helper_kind.as_str().to_string(),
+            output_dir: Some(output_dir),
+            run_dir: Some(run_dir),
+            failure_stage: "helper_exit_non_zero",
+            message: format!("公众号单链接 helper 执行失败: {detail}"),
+            stdout_excerpt: stdout,
+            stderr_excerpt: stderr,
+        }));
     }
 
     let (article_dir, markdown_path, images_dir) = discover_helper_output(&run_dir);
+    if markdown_path.is_none() {
+        return Err(Box::new(WechatArticleUrlFailure {
+            requested_url: Some(url.trim().to_string()),
+            normalized_url: Some(normalized_url),
+            helper_bin: helper_bin.to_string(),
+            helper_kind: helper_kind.as_str().to_string(),
+            output_dir: Some(output_dir),
+            run_dir: Some(run_dir),
+            failure_stage: "discover_output",
+            message:
+                "helper 已成功退出，但运行目录下未发现 markdown 结果；请先查看 doctor 输出的布局预期是否与当前 helper 一致。"
+                    .to_string(),
+            stdout_excerpt: non_empty_excerpt(String::from_utf8_lossy(&output.stdout).trim()),
+            stderr_excerpt: non_empty_excerpt(String::from_utf8_lossy(&output.stderr).trim()),
+        }));
+    }
     let parsed = markdown_path
         .as_ref()
         .and_then(|path| parse_wechat_article_markdown(path).ok());
@@ -183,6 +288,45 @@ pub fn wechat_article_url_response_json(output: &WechatArticleUrlOutput) -> serd
         "published_at": output.parsed.as_ref().and_then(|parsed| parsed.published_at.clone()),
         "source_url": output.parsed.as_ref().and_then(|parsed| parsed.source_url.clone()),
         "summary": output.parsed.as_ref().and_then(|parsed| parsed.summary.clone()),
+        "note": "该入口调用外部 helper 处理单篇公众号链接；失败不会影响 RSS / 日报主链路。",
+    })
+}
+
+pub fn wechat_article_url_failure_json(failure: &WechatArticleUrlFailure) -> serde_json::Value {
+    let doctor_output_dir = failure.output_dir.as_deref();
+    let doctor_json = wechat_article_url_doctor_json(
+        &PublicSourcesConfig {
+            wechat_article_helper_bin: failure.helper_bin.clone(),
+            wechat_article_helper_output_dir: failure
+                .output_dir
+                .as_ref()
+                .map(|path| path.display().to_string())
+                .unwrap_or_default(),
+            ..PublicSourcesConfig::default()
+        },
+        failure.requested_url.as_deref(),
+        doctor_output_dir,
+    );
+
+    json!({
+        "ok": false,
+        "requested_url": failure.requested_url,
+        "url": failure.normalized_url,
+        "helper_bin": failure.helper_bin,
+        "helper_kind": failure.helper_kind,
+        "output_dir": failure.output_dir.as_ref().map(|path| path.display().to_string()),
+        "run_dir": failure.run_dir.as_ref().map(|path| path.display().to_string()),
+        "failure_stage": failure.failure_stage,
+        "message": failure.message,
+        "stdout_excerpt": failure.stdout_excerpt,
+        "stderr_excerpt": failure.stderr_excerpt,
+        "recommended_doctor_command": recommended_doctor_command(
+            failure.requested_url.as_deref(),
+            failure.output_dir.as_deref(),
+        ),
+        "layout_expectation": helper_layout_expectation(detect_helper_kind(&failure.helper_bin)),
+        "helper_known_advice": helper_known_advice(detect_helper_kind(&failure.helper_bin)),
+        "doctor": doctor_json,
         "note": "该入口调用外部 helper 处理单篇公众号链接；失败不会影响 RSS / 日报主链路。",
     })
 }
@@ -250,6 +394,7 @@ pub fn wechat_article_url_doctor_json(
             "resolved_path": helper_status.resolved_path.as_ref().map(|path| path.display().to_string()),
             "exists": helper_status.exists,
             "executable": helper_status.executable,
+            "known_advice": helper_known_advice(helper_kind),
             "invocation_preview": {
                 "cwd": helper_invocation_cwd(helper_kind, &run_dir_example).display().to_string(),
                 "args": helper_args_for(
@@ -348,6 +493,25 @@ fn helper_layout_expectation(helper_kind: WechatArticleHelperKind) -> &'static s
     }
 }
 
+fn helper_known_advice(helper_kind: WechatArticleHelperKind) -> Vec<&'static str> {
+    match helper_kind {
+        WechatArticleHelperKind::Noisepoint => vec![
+            "默认会把 markdown 直接写进本次 run_dir，而不是再套一层文章目录。",
+            "当前适配会默认附带 --download-assets，并把图片放到 run_dir/images。",
+            "如果执行成功却没找到结果，优先先看 run_dir 下是否生成了 article.md 或 images/。",
+        ],
+        WechatArticleHelperKind::Jackwener => vec![
+            "常见输出是 run_dir 下再生成一层文章目录，markdown 往往不在根目录。",
+            "如果 helper 自身成功退出但结果缺失，优先检查 output/ 或文章标题目录是否真的生成。",
+            "这类 helper 更适合作为重备选，不要把它的目录假设扩散到主命令入口。",
+        ],
+        WechatArticleHelperKind::Generic => vec![
+            "通用 helper 需要自己保证支持 --output 或等价输出目录参数。",
+            "如果 doctor 预览参数和 helper 实际契约不一致，先改 helper 配置而不是改主进程。",
+        ],
+    }
+}
+
 fn helper_binary_status(helper_bin: &str) -> HelperBinaryStatus {
     let resolved_path = resolve_helper_bin_path(helper_bin);
     let exists = resolved_path.as_ref().is_some_and(|path| path.is_file());
@@ -427,6 +591,26 @@ fn wechat_article_url_doctor_next_steps(
     }
     steps.push("doctor_is_read_only_then_run_wechat_article_url_when_ready");
     steps
+}
+
+fn recommended_doctor_command(url: Option<&str>, output_dir: Option<&Path>) -> String {
+    let mut command = String::from("cargo run -- wechat-article-url-doctor");
+    if let Some(url) = url {
+        command.push_str(&format!(" --url '{}'", url));
+    }
+    if let Some(output_dir) = output_dir {
+        command.push_str(&format!(" --output-dir '{}'", output_dir.display()));
+    }
+    command
+}
+
+fn non_empty_excerpt(value: &str) -> Option<String> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(truncate_chars(trimmed, 400))
+    }
 }
 
 fn current_unix_timestamp_millis() -> u128 {
@@ -813,6 +997,33 @@ mod tests {
     }
 
     #[test]
+    fn failure_json_includes_doctor_command_and_stage() {
+        let failure = WechatArticleUrlFailure {
+            requested_url: Some("https://mp.weixin.qq.com/s/example".to_string()),
+            normalized_url: Some("https://mp.weixin.qq.com/s/example".to_string()),
+            helper_bin: "/usr/local/bin/mp-weixin-to-md".to_string(),
+            helper_kind: "noisepoint".to_string(),
+            output_dir: Some(PathBuf::from("/tmp/qunmind-wechat-helper")),
+            run_dir: Some(PathBuf::from("/tmp/qunmind-wechat-helper/run-1")),
+            failure_stage: "helper_exit_non_zero",
+            message: "公众号单链接 helper 执行失败: bad gateway".to_string(),
+            stdout_excerpt: None,
+            stderr_excerpt: Some("bad gateway".to_string()),
+        };
+
+        let json = wechat_article_url_failure_json(&failure);
+
+        assert_eq!(json["ok"], false);
+        assert_eq!(json["failure_stage"], "helper_exit_non_zero");
+        assert_eq!(json["helper_kind"], "noisepoint");
+        assert_eq!(
+            json["recommended_doctor_command"],
+            "cargo run -- wechat-article-url-doctor --url 'https://mp.weixin.qq.com/s/example' --output-dir '/tmp/qunmind-wechat-helper'"
+        );
+        assert_eq!(json["doctor"]["doctor"], true);
+    }
+
+    #[test]
     fn doctor_reports_missing_helper_config_as_blocker() {
         let config = PublicSourcesConfig::default();
 
@@ -844,6 +1055,13 @@ mod tests {
         );
 
         assert_eq!(json["helper"]["kind"], "noisepoint");
+        assert!(
+            json["helper"]["known_advice"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|value| value.as_str().unwrap().contains("run_dir/images"))
+        );
         assert_eq!(json["url"], "https://mp.weixin.qq.com/s/example");
         assert!(
             json["output"]["run_dir_example"]

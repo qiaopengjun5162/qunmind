@@ -20,7 +20,8 @@ use crate::source::wechat_rss::{fetch_named_wechat_account_articles, find_wechat
 use crate::storage::MessageStore;
 use crate::storage::postgres::PostgresMessageStore;
 use crate::wechat_article_helper::{
-    run_wechat_article_url_helper, wechat_article_url_doctor_json, wechat_article_url_response_json,
+    run_wechat_article_url_helper, wechat_article_url_doctor_json, wechat_article_url_failure_json,
+    wechat_article_url_response_json,
 };
 use crate::wx_cli_runtime;
 
@@ -810,11 +811,12 @@ fn tool_wechat_article_url(config: &Config, args: &serde_json::Value) -> anyhow:
         .get("output_dir")
         .and_then(|value| value.as_str())
         .map(PathBuf::from);
-    let result =
-        run_wechat_article_url_helper(&config.public_sources, &url, output_dir.as_deref())?;
-    Ok(serde_json::to_string_pretty(
-        &wechat_article_url_response_json(&result),
-    )?)
+    let json = match run_wechat_article_url_helper(&config.public_sources, &url, output_dir.as_deref())
+    {
+        Ok(result) => wechat_article_url_response_json(&result),
+        Err(failure) => wechat_article_url_failure_json(failure.as_ref()),
+    };
+    Ok(serde_json::to_string_pretty(&json)?)
 }
 
 fn tool_wechat_article_url_doctor(
@@ -1234,19 +1236,28 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn tool_wechat_article_url_errors_before_execution_when_helper_not_configured() {
+    async fn tool_wechat_article_url_returns_structured_failure_when_helper_not_configured() {
         let config = config_from("");
 
-        let err = call_tool(
+        let output = call_tool(
             &config,
             std::path::Path::new("test-config.toml"),
             "wechat_article_url",
             &serde_json::json!({"url": "https://mp.weixin.qq.com/s/example"}),
         )
         .await
-        .unwrap_err();
+        .unwrap();
 
-        assert!(err.to_string().contains("wechat_article_helper_bin"));
+        let json: serde_json::Value = serde_json::from_str(&output).unwrap();
+        assert_eq!(json["ok"], false);
+        assert_eq!(json["failure_stage"], "config_validation");
+        assert!(
+            json["message"]
+                .as_str()
+                .unwrap()
+                .contains("wechat_article_helper_bin")
+        );
+        assert_eq!(json["doctor"]["doctor"], true);
     }
 
     #[tokio::test]

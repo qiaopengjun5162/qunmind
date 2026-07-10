@@ -26,7 +26,8 @@ use qunmind::reporting::{
 use qunmind::scheduler::daily_report::DailyReportScheduler;
 use qunmind::source::wechat_rss::{fetch_named_wechat_account_articles, find_wechat_account};
 use qunmind::wechat_article_helper::{
-    run_wechat_article_url_helper, wechat_article_url_doctor_json, wechat_article_url_response_json,
+    run_wechat_article_url_helper, wechat_article_url_doctor_json, wechat_article_url_failure_json,
+    wechat_article_url_response_json,
 };
 use qunmind::wx_cli_commands::run_wx_cli_command;
 use std::path::Path;
@@ -488,12 +489,15 @@ async fn run_diagnostic_command(
             Ok(())
         }
         CliCommand::WechatArticleUrl { url, output_dir } => {
-            let result =
-                run_wechat_article_url_helper(&config.public_sources, &url, output_dir.as_deref())?;
-            println!(
-                "{}",
-                serde_json::to_string_pretty(&wechat_article_url_response_json(&result))?
-            );
+            let json = match run_wechat_article_url_helper(
+                &config.public_sources,
+                &url,
+                output_dir.as_deref(),
+            ) {
+                Ok(result) => wechat_article_url_response_json(&result),
+                Err(failure) => wechat_article_url_failure_json(failure.as_ref()),
+            };
+            println!("{}", serde_json::to_string_pretty(&json)?);
             Ok(())
         }
         CliCommand::WechatArticleUrlDoctor { url, output_dir } => {

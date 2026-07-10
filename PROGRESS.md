@@ -38,6 +38,9 @@
 
 ### Done
 
+- **公众号单链接 helper 失败路径也收成结构化诊断结果** — 之前 `wechat-article-url` 一旦 helper 没配好、子进程非零退出，或者 helper 成功退出却没产出 markdown，CLI / MCP 基本只会抛一条错误字符串，后续排障仍然要靠聊天解释。这轮把失败边界继续收口到 `src/wechat_article_helper.rs`：`wechat-article-url` 现在会返回结构化失败 JSON，至少带 `failure_stage`、`stdout_excerpt`、`stderr_excerpt`、`recommended_doctor_command`、`helper_known_advice`，并内嵌一份同参数的只读 `doctor` 结果。这样以后问题不会每次都从头排查，而是可以先消费同一份机器可读诊断结果。
+- **doctor 开始直接输出已知 helper 的操作建议** — `wechat_article_url_doctor_json(...)` 这轮不再只告诉你“识别成哪种 helper”，还会把 `mp-weixin-to-md` 与 `wechat-article-to-markdown` 的已知布局习惯和排障注意点直接返回在 `known_advice` 里。这样后续看到“helper 成功但没找到 markdown”这类问题时，不需要再回忆到底应该先看平铺 run_dir 还是嵌套文章目录。
+
 - **日报慢点已定位到公共来源串行抓取，并完成第一轮提速** — 这次用户的核心抱怨已经不是排版，而是“每日日报生成太慢，离一句话/一条命令即可差得太远”。排查后确认，瓶颈首先在 `src/source/mod.rs` 的 `CompositePublicNewsSource::fetch_top_items`：之前会把所有启用的 `public_sources` 一个一个串行等待，谁慢就整份日报一起等。现在这一层已经改成“来源之间并发抓取、完成后仍按配置顺序合并”，既保留原有来源优先级和去重语义，也把总耗时从“近似所有来源耗时求和”收敛到“主要看最慢几个来源”。
 - **HN 与 GitHub Trending 内部串行也一起拆掉了** — 这次没有只停在聚合层。`src/source/hacker_news.rs` 现在会并发抓候选 story item，再按 HN 排名顺序取前 `max_items`；`src/source/github_trending.rs` 现在会并发抓各语言 trending 页面，再按语言配置顺序拼接结果。这样常见慢点不再是“聚合层并发了，但单个 source 自己还在慢慢串行抓”。
 - **日报慢问题的排查顺序已经补成项目规则** — 经验已经同步到 `AGENTS.md`：后续如果日报再次变慢，优先检查新增 source 自身 timeout、source 内部多请求是否仍串行、以及上游站点稳定性；不要再先从 `render.rs`、lint、封面或发布链路开始怀疑。这样下次不会又从头重复同一轮排查。

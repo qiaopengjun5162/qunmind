@@ -284,6 +284,17 @@ wechat_article_helper_output_dir = "/tmp/qunmind-wechat-article-helper"
 
 新增的 `wechat-article-url-doctor` 则刻意保持只读：它会报告 helper 是否已配置、二进制是否可找到且可执行、QunMind 会走哪种适配类型、预期工作目录和参数预览，以及输出目录父路径是否存在，但不会真正抓文章、不会改代理、也不会碰微信 UI。这条边界就是为了把“先诊断、再执行”的高风险 helper 工作流固定下来。
 
+`wechat-article-url` 本身现在也不再只在失败时抛一条裸错误字符串。只要你已经传了 `url`，即使 helper 没配置、子进程退出非零，或者 helper 成功退出却没有产出 markdown，CLI / MCP 也会尽量返回结构化失败 JSON，至少包含：
+
+- `failure_stage`
+- `message`
+- `stdout_excerpt` / `stderr_excerpt`
+- `recommended_doctor_command`
+- `helper_known_advice`
+- `doctor`（嵌套的只读预检结果）
+
+这样后续排障时可以先看 JSON 结果，再决定是修路径、修权限、修 helper 契约，还是先单独跑 `doctor`，不用每次都从聊天记录里重新回忆规则。
+
 如果后面要继续往“长期资料库 / 历史文章检索 / 研究记忆层”发展，方向又和单篇 helper 不同。那一层更适合借鉴 [`khoj-ai/khoj`](https://github.com/khoj-ai/khoj) 这类项目的“资料入库 + 检索增强 + Agent 使用”分层，但不适合把整套 second brain 系统直接并进 `QunMind` 主进程；对本项目来说，更合理的做法是把它当成未来辅助检索边界，而不是新的主产品形态。
 
 X / Twitter 这类一手信息也走同样的轻量边界：通过 `[public_sources] x_rss_*` 配置 RSSHub、Nitter 兼容源或自建 X List RSS / Atom 上游，QunMind 会把它们归一成 `X RSS` 公共素材。主进程不内嵌 X 登录、抓取、代理或反风控逻辑。
