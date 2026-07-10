@@ -1,52 +1,124 @@
 # QunMind
 
-`QunMind` 是一个 Rust 实现的微信群 AI 群智中枢。
+`QunMind` 是一个 Rust 实现的微信群 AI 中枢与可追溯日报引擎。它优先解决真实微信场景里的三件事：消息接入、上下文回复、以及能真正推到公众号草稿箱的日报发布链路。
 
-如果你要改这个项目，但不确定从哪里开始，先看 [docs/README.md](./docs/README.md) 和 [docs/change-routing-index.md](./docs/change-routing-index.md)。这两份文档会把“要改日报、发布、MCP、wx-cli、公共来源时应先看哪里、再改哪些实现、最后跑什么验证”先收口出来，减少每次都从头翻代码和聊天记录。
+如果你要改这个项目，但不确定从哪里开始，先看 [docs/README.md](./docs/README.md) 和 [docs/change-routing-index.md](./docs/change-routing-index.md)。这两份文档会先回答“要改哪条链路、先看哪些文件、最后跑什么验证”，减少每次都从头翻代码和聊天记录。
 
-当前核心边界：
+## 为什么需要 QunMind
+
+很多“微信群 AI”项目只覆盖其中一小段：
+
+- 只会收消息和回消息，但缺少持久化、上下文和真实群测诊断。
+- 只会抓热点或拼摘要，但来源不可追溯，也不面向真实公众号发布。
+- 只会调用模型，却没有把 `日报生成 -> lint -> 发布 -> 回执 -> 历史` 做成稳定链路。
+
+`QunMind` 想解决的是一条更完整的真实路径：
+
+- 群消息能真正落库、抽链接、做短期上下文。
+- 日报既能基于群消息生成，也能在群消息为空时回退到公开来源。
+- 微信公众号日报不是“导出一份 markdown 就结束”，而是能继续推到 `moonpub` 和公众号草稿箱。
+- 出问题时尽量先给结构化状态、诊断结果和恢复入口，而不是只剩一条报错字符串。
+
+## 它怎么工作
+
+`QunMind` 当前围绕 3 个稳定边界组织：
 
 - `Channel`：负责从企业微信或 wx-cli 类通道收发消息。
 - `AiClient`：负责对接 OpenAI 兼容接口或 Hermes / 小龙虾类 Agent 平台。
-- `DailyReportScheduler`：负责通过当前通道定时发送群日报。
+- `DailyReportScheduler`：负责按日报目标生成和发送群日报。
 
-当前已支持：
+主链路可以概括成：
 
-- 企业微信内部群智能机器人 WebSocket 通道。
-- wx-cli 本地微信通道 MVP，用于普通微信群 / 外部群实验。
-- OpenAI 兼容 API。
-- Hermes / 爱马仕类 HTTP Agent 适配。
-- 群聊 @ 触发过滤。
-- 多群启用状态、@ 名称、上下文窗口和 persona prompt 覆盖。
-- PostgreSQL 消息持久化。
-- 回复时纳入最近已保存群消息作为基础对话上下文。
-- 入站消息链接抽取和去重存储。
-- Rust 侧项目投研工具目录，用于后续扩展市场数据、链上分析、代码安全、社区、资金动向和研究观点来源。
-- Rust 侧 AI / Agent 学习资源目录，用于梳理 LLM 基础、API 调用、coding agent、agent 框架、Hermes 执行层，以及 Lean / Software Foundations 一类 Formal Methods 学习入口。
-- Cron 定时日报。
-- 基于最近已保存群消息和链接情报生成日报。
-- 多群日报目标配置，可按群覆盖 cron、prompt、回看窗口、消息数量和链接数量。
-- 群消息为空时可选使用 Hacker News、CoinMarketCap、CoinGecko、DeFi Llama、Dune、GitHub Trending、Slerf Blog、Reddit RSS 生成公共信息参考日报。
-- 支持 `[[public_sources.manual_items]]` 手工精选入口，用来补入你明确想推荐大家阅读的一手官方文章、X 原帖或其他优质链接。
-- 默认 `web3_media_urls` 现已包含 `PANews RSS`，`panewslab.com` 这类中文 Web3 原文也会作为可追溯精选来源保留下来。
-- 默认 `web3_media_urls` 现已同时包含 `吴说区块链 Atom feed`，`wublock123.com` 这类中文 Web3 / 交易所快讯也会作为可追溯精选来源保留下来。
-- 默认 `official_blogs_urls` 现已同时包含 `ECB` 官方 RSS，可把全球官方政策与宏观信号稳定接入日报素材池，而不只依赖产品博客或加密媒体。
+1. 从 `WeCom` 或 `wx-cli` 接入消息。
+2. 保存消息、抽取链接、读取同会话最近上下文。
+3. 按群级启用状态、@ 规则和 persona 决定是否调用 AI 回复。
+4. 需要日报时，优先使用群消息和链接情报；为空时再回退 `public_sources`。
+5. 生成 markdown 后统一经过日报 lint，再决定是本地输出、群内发送，还是推送到公众号草稿箱。
+
+## 核心能力
+
+- **微信群 AI 主链路**：消息接入、保存、上下文、群级 persona、回复发送。
+- **可追溯日报**：正文观点、焦点、深读和资料索引都保留完整 `原文：https://...` 入口。
+- **公众号发布链路**：本地生成微信稿、固定封面、`moonpub --render` 推草稿、保存发布回执。
+- **诊断与回放**：`wx-cli doctor`、`test-plan`、`handle-once`、`report-status`、`publish-history` 等只读或半自动入口。
+
+## 支持矩阵
+
+### 通道与模型
+
+| 类别 | 当前支持 | 状态 |
+| --- | --- | --- |
+| 企业微信内部群 | WebSocket 机器人 | 可用 |
+| 普通微信 / 外部群 | wx-cli 本地通道 | MVP，真实联调持续补强中 |
+| 模型接口 | OpenAI 兼容 API | 可用 |
+| Agent 执行层 | Hermes / 爱马仕类 HTTP 适配 | 可用 |
+
+### 日报素材来源
+
+| 类别 | 当前支持 | 说明 |
+| --- | --- | --- |
+| 群消息 | 最近保存消息 + 链接情报 | 正式日报优先来源 |
+| 公开来源 | Hacker News、CoinMarketCap、CoinGecko、DeFi Llama、Dune、GitHub Trending、Slerf Blog、Reddit RSS | 群消息为空时回退 |
+| 中文 Web3 媒体 | PANews RSS、吴说区块链 Atom | 作为可追溯精选来源保留 |
+| 官方博客 | OpenAI / Google / Cloudflare / Rust / GitHub / ECB 等 RSS / Atom | 提升一手来源密度 |
+| 手工精选 | `[[public_sources.manual_items]]` | 补入你明确想推荐读者继续阅读的原文 |
+| 公众号 RSS | `wechat_rss_*`、`[[public_sources.wechat_accounts]]` | 通过上游 RSS / Atom 接入，不在主进程里硬抓微信 |
+
+### 输出与发布
+
+| 输出目标 | 当前支持 | 说明 |
+| --- | --- | --- |
+| 群内日报 | 当前消息通道发送 | 可用 |
+| 本地 markdown | `daily-report --output` / MCP `report_markdown` | 可用 |
+| 微信公众号草稿箱 | `moonpub --render` | 最小可用链路已真实打通 |
+| 发布状态可见性 | `report-status`、`publish-history`、结构化回执 | 可用 |
+
+## 微信日报特点
+
 - 微信公众号日报发布前会注入固定个人号封面：栏目是 `AI · Web3 最新日报`，署名是 `寻月隐君`，当前封面使用浅色底和深色主标题，避免手机预览里白字低对比；最终仍由 `moonpub --render` 负责渲染和上传。
 - 微信公众号日报标题当前固定为 `AI · Web3 最新日报｜YYYY-MM-DD`，当天主线放在 `digest`、导语和焦点模块里，方便在草稿箱中快速辨认最新一条。
-- 微信公众号日报正文现在按“导语 -> 今日三件事 -> 今日焦点 -> AI / Web3 / 技术、产业与政策 / 深读编号分区 -> 资料索引 / 补充阅读池”组织，首屏速览用 `summary` 块、焦点用 `callout` 块突出主线，正文第三板块不再只收狭义工程新闻，也会承接工程发布、产业基础设施、全球官方信号和高质量政策变化；正文条目用“标题 + 值得关注 / 来源依据 / 原文”的引用卡片呈现，深读区用“为什么读 / 原文”，文末来源区统一用 `compact-links` 小字号资料索引，单条尽量压成“序号｜短标题｜来源/短说明｜原文完整 URL”，避免链接区篇幅压过正文。当前默认还会去掉正文标题、深读标题和焦点 `callout` 里的额外 Markdown 链接，只保留裸 `原文：https://...` 作为唯一追溯入口，减少手机端视觉噪音。
-- 如果后续继续优化封面或视觉风格，优先参考 [docs/wechat-daily-visual-blueprint.md](docs/wechat-daily-visual-blueprint.md)。这份蓝图把“固定栏目身份、固定叙事顺序、固定视觉 DNA、图像生成放在主链路外部”收口成了项目规则，避免以后每次又从头讨论封面和排版方向。
+- 微信公众号日报正文现在按“导语 -> 今日三件事 -> 今日焦点 -> AI / Web3 / 技术、产业与政策 / 深读编号分区 -> 资料索引 / 补充阅读池”组织，首屏速览用 `summary` 块、焦点用 `callout` 块突出主线，正文第三板块不再只收狭义工程新闻，也会承接工程发布、产业基础设施、全球官方信号和高质量政策变化；正文条目用“标题 + 值得关注 / 来源依据 / 原文”的引用卡片呈现，深读区用“为什么读 / 原文”，文末来源区统一用 `compact-links` 小字号资料索引，单条尽量压成“序号｜短标题｜来源/短说明｜原文完整 URL”，避免链接区篇幅压过正文。
 - 日报生成现在还额外做两层质量兜底：一层是模型 JSON 坏输出修复（例如尾部多余逗号、解释性尾巴），另一层是 Rust 侧 comment / summary 清洗，主动替换“相关主题相关材料”“近期受到关注”这类空泛句式。这样即使模型发挥不稳定，正文也尽量保持可读和可追溯。
-- 微信公众号日报现在会在 `QunMind` 生成层固定补上“继续交流”标准模板结尾：正文尾部直接写入公众号「寻月隐君」、后台回复「加群」、信息整理 / 非投资建议提醒、回到原文核对，以及点赞 / 推荐 / 在看引导；它始终是全文最后一个正文模块，不再依赖微信后台模板插入，`report-markdown` 本地稿和真实推到 `moonpub` 的正文保持同一份尾部内容。
-- 现在 `daily-report --output` 与 MCP `report_markdown` 在 `output = "wechat"` 时，也会先补齐和真实发布相同的 `cover:` / `wechat_author:` / `theme: notebook` frontmatter，再把稿件写到本地；旧稿里如果残留 `theme: newsletter`，进入微信稿边界时也会被覆盖，避免手机预览继续出现偏黄色主题。
-- 现在 `daily-report --output`、MCP `report_markdown`、MCP `report_publish` 还会统一复用一层 Rust 侧日报 lint：它会检查固定标题 `AI · Web3 最新日报｜YYYY-MM-DD`、`theme: notebook`、唯一且位于全文最后的 `## 继续交流`、正文 `来源依据：` / 完整 `原文：https://...`、`compact-links` 结构，以及同日 slug 复用风险。warning 不阻断本地输出，但会进入 JSON 的 `lint` 字段；error 会把真实发布拦成 `publish_blocked_by_lint = true`，避免明显不合规的稿件继续推到 `moonpub`。
-- 现在 `daily-report --output`、MCP `report_markdown`、MCP `report_publish` 还会额外返回结构化 `report_source`：明确告诉你这次到底用了 `group_messages` 还是 `public_sources`、目标 `chat_id` 是什么、实际读到了多少条消息和链接，以及如果回退了，具体为什么回退。这样以后不需要再靠聊天猜“这次到底有没有真的读群消息”。
-- 如果你明确只想基于公开来源快速出稿，现在也可以显式使用 `qunmind daily-report --public-only`，或在 MCP `report_markdown` / `report_publish` 里传 `public_only = true`。这比依赖“空群自动回退”更稳定，也更容易避开“看起来会读私有群消息、实际却没有”的误会。
-- 同一天内多次手工试发公众号日报时，QunMind 现在会为每次发布生成唯一临时稿件名，避免 `moonpub` 复用旧 `draft.json` 后出现“时间更新了，但正文还是上一版”的错觉。
-- 如果当天已经绕过 `QunMind`、直接用 `moonpub --articles ... push <reviewed_markdown> --render` 手工修稿，也不要在同一个 Markdown 文件名上反复覆盖后重推。`moonpub` 会按文件 stem 复用旧 bundle；更稳的做法是每次修订都复制成新的唯一文件名，例如 `...-intro-fixed.md`、`...-v2.md`，再重新 push。若手机上仍看到旧内容，先怀疑 slug 复用或微信预览缓存，而不是先怀疑正文没改成功。
-- 如果微信公众号发布连续两次以上都报同一个稳定出口 IP 的 `errcode=40164 invalid ip`，而且透明代理 / TUN 已确认关闭，就不要再回头怀疑正文、lint、`moonpub` 或代理是否生效。此时基本可以直接判定为“公众号后台 OpenAPI 白名单未生效、加错位置或未保存成功”，应优先回后台核对 API 白名单配置。
-- 现在 CLI 与 MCP 在手工日报出口上也复用了同一份“最近稿件上下文”：同目录最近几份 `wechat-report-*.md` / `daily-report-*.md` 既会继续作为去重新鲜度信号，也会参与 slug 风险告警。这样“今天换个入口重跑一下”不再容易出现 CLI 和 MCP 对同一份稿件给出两套不同判断。
-- 公共来源日报链路现在已经做了第一轮性能收口：`src/source/mod.rs` 会并发抓取所有启用的 `public_sources`，但最终仍按配置顺序合并结果；`Hacker News` 的候选 item 抓取和 `GitHub Trending` 的多语言页面抓取也都改成并发。它的目标不是让日报“无限快”，而是避免总耗时继续被“所有来源串行相加”拖垮，让日常生成更接近“一条命令即可”的体验。
-- 这轮又补了两处真实慢点：`official_blogs` 现在也按 feed 并发抓取，并对 OpenAI RSS 一类偶发坏编码改用 `bytes -> utf8_lossy` 容错；`reddit_rss` 一旦本轮命中 `429 Too Many Requests`，后续 subreddit 会直接止损跳过，不再把日报时间浪费在同类限流错误上。
+- 微信公众号日报现在会在 `QunMind` 生成层固定补上“继续交流”标准模板结尾：正文尾部直接写入公众号「寻月隐君」、后台回复「加群」、信息整理 / 非投资建议提醒、回到原文核对，以及点赞 / 推荐 / 在看引导；它始终是全文最后一个正文模块，不再依赖微信后台模板插入。
+- 如果后续继续优化封面或视觉风格，优先参考 [docs/wechat-daily-visual-blueprint.md](docs/wechat-daily-visual-blueprint.md)。这份蓝图把“固定栏目身份、固定叙事顺序、固定视觉 DNA、图像生成放在主链路外部”收口成了项目规则，避免以后每次又从头讨论封面和排版方向。
+
+## 快速开始
+
+### 1. 本地跑起机器人
+
+```bash
+cp config.example.toml config.toml
+$EDITOR config.toml
+cargo run
+```
+
+`config.toml` 包含本地凭据，已被 `.gitignore` 忽略。
+
+### 2. 联调公众号日报
+
+```bash
+just db-create
+just report-status config.toml '微信公众号日报'
+just report-markdown config.toml '微信公众号日报' '/tmp/wechat-report.md'
+just report-publish config.toml '微信公众号日报' '/tmp/wechat-report.md'
+just report-history config.toml '微信公众号日报'
+```
+
+如果你明确只想用公开来源先快速出稿：
+
+```bash
+just report-markdown-public-only config.toml '微信公众号日报' '/tmp/wechat-report-public-only.md'
+```
+
+### 3. 先做 wx-cli 真实群测前诊断
+
+```bash
+cargo run -- wx-cli doctor
+cargo run -- wx-cli test-plan --capture-file wx-output.json
+cargo run -- wx-cli handle-once --input wx-output.json --message-id "m-123" --limit 1 --no-send
+```
+
+下面的章节会继续展开 Docker、wx-cli、日报来源、公众号发布和多平台边界的细节。
 
 ## 当前状态
 
@@ -86,12 +158,6 @@
 4. 实测多群 persona、群级 context 和 `schedule.daily_reports` 组合行为。
 5. 持续同步 README / PROGRESS / AGENTS，让项目进度对内对外都清楚。
 
-下一步马上要做的事：
-
-1. 继续把 `src/mcp/tools.rs` 的命令层重复往纯 helper 收口。
-2. 往新的 `tests/fixtures/wx_cli/` 里补更多匿名化真实样本。
-3. 让 README / PROGRESS 的阶段描述持续可复用。
-
 ## 日报联调状态
 
 `QunMind` 当前的微信公众号日报不是独立闭环，而是依赖本地 `moonpub`：
@@ -118,16 +184,6 @@
 - `2026-06-27`：ZK 手工精选版已真实推送到公众号草稿箱，回执为 `automation_state = "ok"`、`warnings = []`
 - `2026-06-25` 到 `2026-06-26`：适合做内部灰度和连续试发
 - 不建议把“已经能推草稿”直接表述成“完全无人值守稳定上线”
-
-## 快速开始
-
-```bash
-cp config.example.toml config.toml
-$EDITOR config.toml
-cargo run
-```
-
-`config.toml` 包含本地凭据，已被 `.gitignore` 忽略。
 
 ## Docker 部署
 
