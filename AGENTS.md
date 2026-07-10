@@ -123,6 +123,7 @@ Reddit RSS 现在默认只作为补充社区信号，不应进入公众号日报
 手工 `daily-report --output <path>` 在回退到 `public_sources` 生成公众号日报时，会优先读取同路径上一次生成的 markdown，并额外读取同目录最近几份 `wechat-report-*.md` / `daily-report-*.md`，提取正文 `原文：https://...` 与 `compact-links` 里的完整 URL 作为“近期已用链接”降权信号。该信号只影响本次焦点、正文板块与推荐深读的选材新鲜度，不会删除“完整素材链接”区里的可追溯来源。优化同一天或跨天连续重跑体验时，优先沿这个轻量降权边界演进，不要急着引入复杂的跨日状态库。
 
 日报生成后的 markdown 现在还有一层 `src/daily_report/lint.rs` 统一校验，属于主链路而不是可选脚本。`daily-report --output`、MCP `report_markdown`、MCP `report_publish` 和后续同类手工出口都应复用同一份 lint 结果：它会校验固定标题、`theme: notebook`、唯一 `## 继续交流`、`####` 禁止项、正文 `来源依据：` / `原文：https://...`、`compact-links` 结构，以及同日 slug 复用风险。命中 warning 允许继续输出 markdown，但要把 `lint` 结构化结果带回 JSON；命中 error 时，真实发布必须被 `publish_blocked_by_lint = true` 阻断，不要再把明显不合规的稿件继续推给 `moonpub`。
+`recent_source_overlap_high`` 这类 lint warning` 的语义要继续收紧为“跨天新鲜度提醒”，而不是“同一天反复修稿自我比较”。`lint_context_for_output(...)` 读取 previous markdown 时应优先排除和当前输出同一日期的兄弟稿件，避免今天为了修摘要、修封面或修排版连续重跑时，被无意义的 overlap warning 持续淹没。
 如果用户已经明确给出类似“同意读取本地数据库并生成今天日报”的授权，可以继续在沙箱外执行真实 `daily-report` 生成链路；这类授权要记录成经验，但不能偷换成泛化的默认权限。后续遇到同类需要读库并可能走外部模型/资讯链路的操作，仍然要以用户的明确授权原话为准。
 
 `推荐深读` 当前优先选择更像文章、论文、官方说明或手工精选的入口；普通 `GitHub Trending` 榜单仓库只有在缺少更好替代项时才作为保底保留 1 条。目标是减少“深读区看起来像又重复了一遍技术榜单”的问题，但不能把深读区直接过滤成空白。

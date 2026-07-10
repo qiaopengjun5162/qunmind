@@ -1165,6 +1165,29 @@ mod tests {
     }
 
     #[test]
+    fn lint_context_previous_markdown_skips_same_day_variants() {
+        let dir = std::env::temp_dir().join(format!(
+            "qunmind-previous-markdown-same-day-{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&dir).expect("create temp dir");
+        let older_path = dir.join("wechat-report-2026-07-09.md");
+        let same_day_path = dir.join("wechat-report-2026-07-10-public-only-v2.md");
+        let output_path = dir.join("wechat-report-2026-07-10-public-only-v3.md");
+        std::fs::write(&older_path, "> 原文：https://example.com/yesterday\n")
+            .expect("write older report");
+        std::fs::write(&same_day_path, "> 原文：https://example.com/same-day\n")
+            .expect("write same-day report");
+
+        let context = qunmind::daily_report::lint::lint_context_for_output(&output_path);
+        let previous = context.previous_markdown.expect("previous context");
+
+        assert!(previous.contains("https://example.com/yesterday"));
+        assert!(!previous.contains("https://example.com/same-day"));
+        std::fs::remove_dir_all(&dir).expect("remove temp dir");
+    }
+
+    #[test]
     fn resolve_manual_daily_report_target_uses_named_daily_report() {
         let config = config_from(
             r#"

@@ -164,6 +164,26 @@ pub fn recent_report_markdown_candidates(dir: &Path, output: &Path) -> Vec<PathB
         .collect()
 }
 
+fn report_date_from_path(path: &Path) -> Option<NaiveDate> {
+    static DATE_RE: std::sync::OnceLock<Regex> = std::sync::OnceLock::new();
+    let regex = DATE_RE.get_or_init(|| Regex::new(r"(20\d{2}-\d{2}-\d{2})").expect("date regex"));
+    let name = path.file_name()?.to_str()?;
+    let captures = regex.captures(name)?;
+    let date = captures.get(1)?.as_str();
+    NaiveDate::parse_from_str(date, "%Y-%m-%d").ok()
+}
+
+fn previous_report_markdown_candidates(dir: &Path, output: &Path) -> Vec<PathBuf> {
+    let output_date = report_date_from_path(output);
+    recent_report_markdown_candidates(dir, output)
+        .into_iter()
+        .filter(|path| match (output_date, report_date_from_path(path)) {
+            (Some(current), Some(candidate)) => candidate < current,
+            _ => true,
+        })
+        .collect()
+}
+
 pub fn lint_context_for_output(output: &Path) -> DailyReportLintContext {
     DailyReportLintContext {
         output_path: Some(output.to_path_buf()),
@@ -171,7 +191,24 @@ pub fn lint_context_for_output(output: &Path) -> DailyReportLintContext {
             .parent()
             .map(|dir| recent_report_markdown_candidates(dir, output))
             .unwrap_or_default(),
-        previous_markdown: previous_markdown_context_for_output(output),
+        previous_markdown: output.parent().and_then(|dir| {
+            let mut chunks = Vec::new();
+            let mut candidates = previous_report_markdown_candidates(dir, output);
+            candidates.sort_by_key(|path| {
+                std::fs::metadata(path)
+                    .and_then(|metadata| metadata.modified())
+                    .ok()
+            });
+            candidates.reverse();
+            for path in candidates.into_iter().take(5) {
+                if let Ok(markdown) = std::fs::read_to_string(&path)
+                    && !markdown.trim().is_empty()
+                {
+                    chunks.push(markdown);
+                }
+            }
+            (!chunks.is_empty()).then(|| chunks.join("\n\n"))
+        }),
     }
 }
 

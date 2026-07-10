@@ -866,6 +866,26 @@ fn chinese_topic_label(item: &PublicNewsItem) -> String {
     if haystack.contains("openai") && haystack.contains("chip") {
         return "OpenAI 自研芯片进展".to_string();
     }
+    if haystack.contains("validator redirected revenue") {
+        return "验证者收入重定向机制".to_string();
+    }
+    if haystack.contains("native utxos on ethereum") {
+        return "在 Ethereum 中引入原生 UTXO".to_string();
+    }
+    if haystack.contains("spread")
+        && contains_any_text(&haystack, &["gossipsub", "anonymous", "dissemination"])
+    {
+        return "匿名传播版 GossipSub 扩展方案".to_string();
+    }
+    if haystack.contains("qingming-stark") || haystack.contains("goldilocks stark backend") {
+        return "面向 AMD ROCm/HIP 的 STARK 后端实现".to_string();
+    }
+    if haystack.contains("lean chain") {
+        return "极简链状态设计".to_string();
+    }
+    if haystack.contains("client data reporting") {
+        return "协议内客户端数据上报".to_string();
+    }
     if haystack.contains("agent") || haystack.contains("multi-agent") {
         return "Agent 工作流与多智能体协作".to_string();
     }
@@ -4062,6 +4082,59 @@ mod tests {
         assert!(!focus_section.contains("What if post-quantum Ethereum"));
         assert!(!web3_section.contains("What if post-quantum Ethereum 近期受到关注"));
         assert!(report.contains(&format!("原文：{url}")));
+    }
+
+    #[tokio::test]
+    async fn generate_humanizes_specific_ethresearch_titles() {
+        let title = "Native UTXOs on Ethereum";
+        let url = "https://ethresear.ch/t/native-utxos-on-ethereum/25368";
+        let json = format!(
+            r#"{{
+            "title_hint":"测试日报",
+            "intro":"测试导语",
+            "focus_text":"{title}",
+            "focus_url":"{url}",
+            "ai_items":[],
+            "ai_signals":[],
+            "web3_items":[
+                {{
+                    "title":"{title}",
+                    "url":"{url}",
+                    "comment":"",
+                    "source":"ethresear.ch",
+                    "points":16
+                }}
+            ],
+            "tech_items":[],
+            "tech_timeline":[],
+            "reads":[],
+            "summary":"测试总结"
+        }}"#
+        );
+        let generator = DailyReportGenerator::new(
+            Arc::new(FakeAi::new(vec![json])),
+            Arc::new(FakeNewsSource {
+                items: vec![PublicNewsItem {
+                    source: "ethresear.ch".to_string(),
+                    title: title.to_string(),
+                    url: url.to_string(),
+                    summary: Some(
+                        "Discussion about introducing native UTXOs to Ethereum.".to_string(),
+                    ),
+                    author: None,
+                    published_at: Some("2026-07-10T00:00:00Z".to_string()),
+                    score: Some(16),
+                    comments: None,
+                    ai_score: None,
+                    category: Some("web3".to_string()),
+                }],
+            }),
+            String::new(),
+        );
+
+        let report = generator.generate().await.expect("report");
+        assert!(report.contains("在 Ethereum 中引入原生 UTXO"));
+        assert!(!report.contains("以太坊研究议题"));
     }
 
     #[tokio::test]
