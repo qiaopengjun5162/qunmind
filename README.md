@@ -16,6 +16,13 @@ If you are about to change this repository and are not sure where to start, read
 "which workflow am I changing, which files should I inspect first, and what should I validate"
 before you start wandering through code and chat history.
 
+## At a Glance
+
+- **What it is first**: a backend hub for real WeChat workflows, centered on message intake, context-aware replies, traceable reports, and draft-box publishing.
+- **Why it is not just a report script**: a report here does not stop at markdown generation; it continues through lint, publish receipts, and history visibility.
+- **Why it is not just a bot demo**: messages are persisted, links are extracted, short-term context is read, and group policy still decides whether replies happen.
+- **How to enter the repo**: if you want to run the bot, start at "Quick Start"; if you want to ship reports, start at "Recommended Paths" and "Daily Report Integration Status".
+
 ## Why QunMind
 
 Many "WeChat AI bot" projects only solve one slice of the real workflow:
@@ -80,6 +87,13 @@ Correspondingly, it is **not** currently the best fit for:
 - a large all-in-one multi-platform chat-bot suite
 - an in-process WeChat scraping and anti-bot bypass system
 - a public-account publisher that can already be promised as fully unattended production automation
+
+## Common Misreads
+
+- **"This is a multi-platform bot platform"**: not really. The core line is still a WeChat and WeChat-group AI hub, not a universal wrapper around every chat surface.
+- **"It already embeds WeChat scraping and anti-bot bypass"**: no. External content intake is intentionally pushed toward helpers and `PublicNewsSource` boundaries instead of living inside the main runtime.
+- **"It is already a zero-touch public-account autopublisher"**: no. The minimum viable path is real, but the project still emphasizes diagnosis, receipts, and human review around publishing.
+- **"The project is mainly about report layout"**: no. Reports matter, but they should not overshadow the message, persistence, context, and real-WeChat integration backbone.
 
 ## Support Matrix
 
@@ -165,6 +179,13 @@ If this is your first time in the repository, do not read it strictly top to bot
 - **I want to validate the normal-WeChat / external-group loop**: start with the wx-cli diagnostic commands in "Quick Start", then read "wx-cli Diagnostics".
 - **I want to improve sources or report quality**: start from the source boundaries in "Support Matrix", then continue into "Public Source Fallback", "Research Tool Map", and `docs/change-routing-index.md`.
 - **I want to change code but do not know where to look first**: go directly to [docs/README.md](./docs/README.md) and [docs/change-routing-index.md](./docs/change-routing-index.md).
+
+## FAQ
+
+- **Why does the README keep stressing traceability**: because the report line is supposed to point every body item, focus pick, deep read, and source index back to a raw original URL instead of stopping at model phrasing.
+- **Why not build scraping, browser bypass, and proxy orchestration straight into the main runtime**: because those edges change quickly, carry higher risk, and are easier to isolate as helpers, upstream RSS / Atom feeds, or operator diagnostics.
+- **Why keep repeating the `moonpub` boundary**: because `QunMind` should decide what to generate, when to send, and whether a target is ready, while platform rendering and draft-box publishing stay outside this repo.
+- **Why turn the README homepage into guided entry paths**: because otherwise every new contributor has to reconstruct the same explanation from chat history, which is exactly the repetition the project is trying to remove.
 
 ## Status
 
