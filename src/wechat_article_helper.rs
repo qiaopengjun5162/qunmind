@@ -1,4 +1,5 @@
 use std::ffi::OsStr;
+use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -28,6 +29,25 @@ pub struct WechatArticleMarkdown {
     pub published_at: Option<String>,
     pub source_url: Option<String>,
     pub summary: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct HelperBinaryStatus {
+    resolved_path: Option<PathBuf>,
+    exists: bool,
+    executable: bool,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct WechatArticleDoctorContext<'a> {
+    helper_kind: WechatArticleHelperKind,
+    helper_bin: &'a str,
+    helper_status: &'a HelperBinaryStatus,
+    output_dir_declared: bool,
+    output_dir_exists: bool,
+    output_dir_parent_exists: bool,
+    requested_url: Option<&'a str>,
+    normalized_url: Option<&'a str>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -167,6 +187,98 @@ pub fn wechat_article_url_response_json(output: &WechatArticleUrlOutput) -> serd
     })
 }
 
+pub fn wechat_article_url_doctor_json(
+    public_sources: &PublicSourcesConfig,
+    url: Option<&str>,
+    output_dir: Option<&Path>,
+) -> serde_json::Value {
+    let helper_bin = public_sources.wechat_article_helper_bin.trim().to_string();
+    let helper_kind = detect_helper_kind(helper_bin.as_str());
+    let helper_status = helper_binary_status(helper_bin.as_str());
+    let normalized_url = url.and_then(|value| normalize_wechat_article_url(value).ok());
+    let effective_output_dir = output_dir
+        .map(Path::to_path_buf)
+        .unwrap_or_else(|| PathBuf::from(public_sources.wechat_article_helper_output_dir.trim()));
+    let run_dir_example = effective_output_dir.join("run-<timestamp>");
+    let output_dir_exists = effective_output_dir.is_dir();
+    let output_dir_parent = effective_output_dir.parent().map(Path::to_path_buf);
+    let output_dir_parent_exists = output_dir_parent
+        .as_ref()
+        .is_some_and(|parent| parent.is_dir());
+    let output_dir_declared = !effective_output_dir.as_os_str().is_empty();
+
+    let mut blockers = Vec::new();
+    if helper_bin.trim().is_empty() {
+        blockers.push("helper_bin_missing");
+    }
+    if !helper_bin.trim().is_empty() && !helper_status.exists {
+        blockers.push("helper_bin_not_found");
+    }
+    if helper_status.exists && !helper_status.executable {
+        blockers.push("helper_bin_not_executable");
+    }
+    if !output_dir_declared {
+        blockers.push("output_dir_missing");
+    } else if !output_dir_exists && !output_dir_parent_exists {
+        blockers.push("output_dir_parent_missing");
+    }
+    if let Some(original_url) = url
+        && normalize_wechat_article_url(original_url).is_err()
+    {
+        blockers.push("url_invalid");
+    }
+
+    let next_steps = wechat_article_url_doctor_next_steps(WechatArticleDoctorContext {
+        helper_kind,
+        helper_bin: helper_bin.as_str(),
+        helper_status: &helper_status,
+        output_dir_declared,
+        output_dir_exists,
+        output_dir_parent_exists,
+        requested_url: url,
+        normalized_url: normalized_url.as_deref(),
+    });
+
+    json!({
+        "ok": blockers.is_empty(),
+        "doctor": true,
+        "url": normalized_url,
+        "helper": {
+            "configured": !helper_bin.trim().is_empty(),
+            "bin": helper_bin,
+            "kind": helper_kind.as_str(),
+            "resolved_path": helper_status.resolved_path.as_ref().map(|path| path.display().to_string()),
+            "exists": helper_status.exists,
+            "executable": helper_status.executable,
+            "invocation_preview": {
+                "cwd": helper_invocation_cwd(helper_kind, &run_dir_example).display().to_string(),
+                "args": helper_args_for(
+                    helper_kind,
+                    normalized_url.as_deref().unwrap_or("https://mp.weixin.qq.com/s/example"),
+                    &run_dir_example,
+                ),
+            },
+            "layout_expectation": helper_layout_expectation(helper_kind),
+        },
+        "output": {
+            "effective_output_dir": effective_output_dir.display().to_string(),
+            "exists": output_dir_exists,
+            "parent_dir": output_dir_parent.as_ref().map(|path| path.display().to_string()),
+            "parent_exists": output_dir_parent_exists,
+            "run_dir_example": run_dir_example.display().to_string(),
+        },
+        "safety": {
+            "read_only_diagnostic": true,
+            "executes_helper": false,
+            "mutates_proxy": false,
+            "touches_wechat_ui": false,
+            "note": "只做预检和参数预览，不抓文章、不改代理、不碰微信登录态。",
+        },
+        "blockers": blockers,
+        "next_steps": next_steps,
+    })
+}
+
 fn normalize_wechat_article_url(url: &str) -> Result<String> {
     let trimmed = url.trim().trim_matches('"').trim_matches('\'');
     if trimmed.is_empty() {
@@ -213,6 +325,108 @@ fn helper_args_for(helper_kind: WechatArticleHelperKind, url: &str, run_dir: &Pa
             run_dir.display().to_string(),
         ],
     }
+}
+
+fn helper_invocation_cwd(helper_kind: WechatArticleHelperKind, run_dir: &Path) -> &Path {
+    if matches!(
+        helper_kind,
+        WechatArticleHelperKind::Noisepoint | WechatArticleHelperKind::Jackwener
+    ) {
+        run_dir
+    } else {
+        Path::new(".")
+    }
+}
+
+fn helper_layout_expectation(helper_kind: WechatArticleHelperKind) -> &'static str {
+    match helper_kind {
+        WechatArticleHelperKind::Noisepoint => "flat_markdown_with_optional_images_dir",
+        WechatArticleHelperKind::Jackwener => "nested_article_directory_with_markdown_and_images",
+        WechatArticleHelperKind::Generic => {
+            "generic_output_dir_with_markdown_somewhere_under_run_dir"
+        }
+    }
+}
+
+fn helper_binary_status(helper_bin: &str) -> HelperBinaryStatus {
+    let resolved_path = resolve_helper_bin_path(helper_bin);
+    let exists = resolved_path.as_ref().is_some_and(|path| path.is_file());
+    let executable = resolved_path
+        .as_ref()
+        .is_some_and(|path| is_executable_file(path));
+    HelperBinaryStatus {
+        resolved_path,
+        exists,
+        executable,
+    }
+}
+
+fn resolve_helper_bin_path(helper_bin: &str) -> Option<PathBuf> {
+    let trimmed = helper_bin.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    let candidate = PathBuf::from(trimmed);
+    if candidate.components().count() > 1 || trimmed.contains(std::path::MAIN_SEPARATOR) {
+        return Some(candidate);
+    }
+
+    std::env::var_os("PATH").and_then(|paths| {
+        std::env::split_paths(&paths)
+            .map(|dir| dir.join(trimmed))
+            .find(|path| path.is_file())
+    })
+}
+
+#[cfg(unix)]
+fn is_executable_file(path: &Path) -> bool {
+    use std::os::unix::fs::PermissionsExt;
+
+    fs::metadata(path)
+        .map(|meta| meta.permissions().mode() & 0o111 != 0)
+        .unwrap_or(false)
+}
+
+#[cfg(not(unix))]
+fn is_executable_file(path: &Path) -> bool {
+    path.is_file()
+}
+
+fn wechat_article_url_doctor_next_steps(
+    context: WechatArticleDoctorContext<'_>,
+) -> Vec<&'static str> {
+    let mut steps = Vec::new();
+    if context.helper_bin.trim().is_empty() {
+        steps.push("configure_public_sources_wechat_article_helper_bin");
+    }
+    if !context.helper_bin.trim().is_empty() && !context.helper_status.exists {
+        steps.push("install_or_fix_helper_bin_path");
+    }
+    if context.helper_status.exists && !context.helper_status.executable {
+        steps.push("mark_helper_bin_executable");
+    }
+    if !context.output_dir_declared {
+        steps.push("configure_public_sources_wechat_article_helper_output_dir");
+    } else if !context.output_dir_exists && !context.output_dir_parent_exists {
+        steps.push("create_output_dir_parent_before_running_helper");
+    }
+    if context.requested_url.is_some() && context.normalized_url.is_none() {
+        steps.push("use_full_mp_weixin_article_url");
+    }
+    match context.helper_kind {
+        WechatArticleHelperKind::Noisepoint => {
+            steps.push("expect_flat_markdown_output_in_run_dir");
+        }
+        WechatArticleHelperKind::Jackwener => {
+            steps.push("expect_nested_article_directory_under_run_dir");
+        }
+        WechatArticleHelperKind::Generic => {
+            steps.push("verify_generic_helper_supports_output_dir_argument");
+        }
+    }
+    steps.push("doctor_is_read_only_then_run_wechat_article_url_when_ready");
+    steps
 }
 
 fn current_unix_timestamp_millis() -> u128 {
@@ -595,6 +809,47 @@ mod tests {
         assert_eq!(
             json["parsed"]["summary"],
             "这是正文第一段，用来测试摘要提取。"
+        );
+    }
+
+    #[test]
+    fn doctor_reports_missing_helper_config_as_blocker() {
+        let config = PublicSourcesConfig::default();
+
+        let json = wechat_article_url_doctor_json(&config, None, None);
+
+        assert_eq!(json["doctor"], true);
+        assert_eq!(json["ok"], false);
+        assert!(
+            json["blockers"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|value| value == "helper_bin_missing")
+        );
+    }
+
+    #[test]
+    fn doctor_reports_known_helper_kind_and_run_dir_example() {
+        let config = PublicSourcesConfig {
+            wechat_article_helper_bin: "/usr/local/bin/mp-weixin-to-md".to_string(),
+            wechat_article_helper_output_dir: "/tmp/qunmind-wechat-helper".to_string(),
+            ..PublicSourcesConfig::default()
+        };
+
+        let json = wechat_article_url_doctor_json(
+            &config,
+            Some("https://mp.weixin.qq.com/s/example"),
+            None,
+        );
+
+        assert_eq!(json["helper"]["kind"], "noisepoint");
+        assert_eq!(json["url"], "https://mp.weixin.qq.com/s/example");
+        assert!(
+            json["output"]["run_dir_example"]
+                .as_str()
+                .unwrap()
+                .contains("/tmp/qunmind-wechat-helper/run-")
         );
     }
 }

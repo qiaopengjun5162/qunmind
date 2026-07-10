@@ -20,7 +20,7 @@ use crate::source::wechat_rss::{fetch_named_wechat_account_articles, find_wechat
 use crate::storage::MessageStore;
 use crate::storage::postgres::PostgresMessageStore;
 use crate::wechat_article_helper::{
-    run_wechat_article_url_helper, wechat_article_url_response_json,
+    run_wechat_article_url_helper, wechat_article_url_doctor_json, wechat_article_url_response_json,
 };
 use crate::wx_cli_runtime;
 
@@ -239,6 +239,24 @@ pub fn list_tools() -> Vec<Tool> {
             }),
         },
         Tool {
+            name: "wechat_article_url_doctor".into(),
+            description: "Read-only preflight for the configured WeChat single-article helper. It checks helper path, output-dir readiness, helper kind detection, and argument preview without executing the helper.".into(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "url": {
+                        "type": "string",
+                        "description": "Optional WeChat public-account article URL for shape validation."
+                    },
+                    "output_dir": {
+                        "type": "string",
+                        "description": "Optional output directory override for doctor preview."
+                    }
+                },
+                "required": []
+            }),
+        },
+        Tool {
             name: "wxcli_doctor".into(),
             description: "Validate wx-cli readiness. Optionally parse a captured JSON file for group reply candidate analysis.".into(),
             input_schema: serde_json::json!({
@@ -400,6 +418,7 @@ pub async fn call_tool(
         "report_publish" => tool_report_publish(config, arguments).await,
         "wechat_articles" => tool_wechat_articles(config, arguments).await,
         "wechat_article_url" => tool_wechat_article_url(config, arguments),
+        "wechat_article_url_doctor" => tool_wechat_article_url_doctor(config, arguments),
         "wxcli_doctor" => tool_doctor(config, arguments),
         "wxcli_capture" => tool_capture(config, config_path, arguments).await,
         "wxcli_test_plan" => tool_test_plan(config, config_path, arguments),
@@ -798,6 +817,20 @@ fn tool_wechat_article_url(config: &Config, args: &serde_json::Value) -> anyhow:
     )?)
 }
 
+fn tool_wechat_article_url_doctor(
+    config: &Config,
+    args: &serde_json::Value,
+) -> anyhow::Result<String> {
+    let url = args.get("url").and_then(|value| value.as_str());
+    let output_dir = args
+        .get("output_dir")
+        .and_then(|value| value.as_str())
+        .map(PathBuf::from);
+    Ok(serde_json::to_string_pretty(
+        &wechat_article_url_doctor_json(&config.public_sources, url, output_dir.as_deref()),
+    )?)
+}
+
 fn tool_doctor(config: &Config, args: &serde_json::Value) -> anyhow::Result<String> {
     let limit = args
         .get("limit")
@@ -1003,9 +1036,9 @@ mod tests {
     }
 
     #[test]
-    fn list_tools_returns_seventeen_tools() {
+    fn list_tools_returns_eighteen_tools() {
         let tools = list_tools();
-        assert_eq!(tools.len(), 17);
+        assert_eq!(tools.len(), 18);
         let names: Vec<&str> = tools.iter().map(|t| t.name.as_str()).collect();
         assert!(names.contains(&"publish_history"));
         assert!(names.contains(&"report_status"));
@@ -1017,6 +1050,7 @@ mod tests {
         assert!(names.contains(&"report_publish"));
         assert!(names.contains(&"wechat_articles"));
         assert!(names.contains(&"wechat_article_url"));
+        assert!(names.contains(&"wechat_article_url_doctor"));
         assert!(names.contains(&"wxcli_doctor"));
         assert!(names.contains(&"wxcli_capture"));
         assert!(names.contains(&"wxcli_test_plan"));
@@ -1213,6 +1247,62 @@ mod tests {
         .unwrap_err();
 
         assert!(err.to_string().contains("wechat_article_helper_bin"));
+    }
+
+    #[tokio::test]
+    async fn tool_wechat_article_url_doctor_reports_missing_helper_without_throwing() {
+        let config = config_from("");
+
+        let output = call_tool(
+            &config,
+            std::path::Path::new("test-config.toml"),
+            "wechat_article_url_doctor",
+            &serde_json::json!({"url": "https://mp.weixin.qq.com/s/example"}),
+        )
+        .await
+        .unwrap();
+
+        let json: serde_json::Value = serde_json::from_str(&output).unwrap();
+        assert_eq!(json["doctor"], true);
+        assert_eq!(json["ok"], false);
+        assert_eq!(json["helper"]["configured"], false);
+        assert!(
+            json["blockers"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|value| value == "helper_bin_missing")
+        );
+    }
+
+    #[tokio::test]
+    async fn tool_wechat_article_url_doctor_marks_invalid_url_as_blocker() {
+        let config = config_from(
+            r#"
+            [public_sources]
+            wechat_article_helper_bin = "/bin/echo"
+            wechat_article_helper_output_dir = "/tmp/qunmind-wechat-helper"
+            "#,
+        );
+
+        let output = call_tool(
+            &config,
+            std::path::Path::new("test-config.toml"),
+            "wechat_article_url_doctor",
+            &serde_json::json!({"url": "https://example.com/not-wechat"}),
+        )
+        .await
+        .unwrap();
+
+        let json: serde_json::Value = serde_json::from_str(&output).unwrap();
+        assert_eq!(json["ok"], false);
+        assert!(
+            json["blockers"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|value| value == "url_invalid")
+        );
     }
 
     #[tokio::test]

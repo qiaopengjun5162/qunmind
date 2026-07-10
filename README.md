@@ -251,6 +251,13 @@ cargo run -- wechat-article-url \
   --url 'https://mp.weixin.qq.com/s/xxxxxxxx'
 ```
 
+There is now also a read-only preflight entry for the same helper boundary:
+
+```bash
+cargo run -- wechat-article-url-doctor \
+  --url 'https://mp.weixin.qq.com/s/xxxxxxxx'
+```
+
 It currently requires an explicit external helper configuration first:
 
 ```toml
@@ -262,6 +269,8 @@ wechat_article_helper_output_dir = "/tmp/qunmind-wechat-article-helper"
 Without that helper, QunMind fails early with a clear config error instead of attempting unstable built-in scraping. The intent is to keep the adapter generic enough that we can swap helper implementations later instead of binding the project forever to one scraping tool's CLI details.
 
 When the helper succeeds and leaves a markdown file behind, QunMind now also best-effort parses the generated article header and first useful body paragraph back into structured JSON fields such as `title`, `account_name`, `published_at`, `source_url`, and `summary`, alongside `helper_kind`, `run_dir`, `article_dir`, `markdown_path`, and `images_dir`. The adapter currently auto-detects two known output layouts: `mp-weixin-to-md` style flat markdown in the per-run working directory, and `wechat-article-to-markdown` style nested article directories. The intent is to make a single WeChat article link immediately reusable as a traceable daily-report source item, while still keeping the actual browser automation and anti-bot surface outside the main process.
+
+The new doctor path is intentionally read-only. It reports whether the helper is configured, whether the binary can be found and executed, which adapter kind QunMind will use, which working directory and arguments it would pass, and whether the output directory parent exists. This mirrors the "diagnose first, execute later" boundary we want for higher-risk content-export helpers.
 
 For longer-horizon knowledge work, the direction is different again: QunMind may eventually add a separate research-memory layer for stored article markdown, official blogs, manual curated links, and prior report context, but that should remain an auxiliary retrieval boundary rather than turning the core bot into a full "second brain" product. Projects like [`khoj-ai/khoj`](https://github.com/khoj-ai/khoj) are useful references for that later phase because they demonstrate the right separation between ingestion, retrieval, and agent usage.
 

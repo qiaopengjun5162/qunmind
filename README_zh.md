@@ -263,6 +263,13 @@ cargo run -- wechat-article-url \
   --url 'https://mp.weixin.qq.com/s/xxxxxxxx'
 ```
 
+同一条 helper 边界现在也补了一个只读预检入口：
+
+```bash
+cargo run -- wechat-article-url-doctor \
+  --url 'https://mp.weixin.qq.com/s/xxxxxxxx'
+```
+
 使用前需要先显式配置外部 helper：
 
 ```toml
@@ -274,6 +281,8 @@ wechat_article_helper_output_dir = "/tmp/qunmind-wechat-article-helper"
 如果 helper 没配置，QunMind 会在执行前直接报配置错误，而不是假装自己能在主进程里稳定抓正文。这里刻意把配置写成通用路径，而不是把项目永久绑定到某一个抓取工具的 CLI 名称。
 
 如果外部 helper 成功产出 markdown，QunMind 现在还会最佳努力解析其中的头部信息和正文第一段，直接在结构化 JSON 里补出 `title`、`account_name`、`published_at`、`source_url`、`summary`，并继续返回 `helper_kind`、`run_dir`、`article_dir`、`markdown_path`、`images_dir`。当前适配层已经能自动识别两类已知输出布局：`mp-weixin-to-md` 这类“单次运行目录里直接生成 markdown”的平铺布局，以及 `wechat-article-to-markdown` 这类“再套一层文章目录”的嵌套布局。这样单篇公众号链接不只是“下载到一个目录里”，还可以更自然地被后续日报素材链路复用，同时继续把浏览器抓取和反风控复杂度隔离在主进程外。
+
+新增的 `wechat-article-url-doctor` 则刻意保持只读：它会报告 helper 是否已配置、二进制是否可找到且可执行、QunMind 会走哪种适配类型、预期工作目录和参数预览，以及输出目录父路径是否存在，但不会真正抓文章、不会改代理、也不会碰微信 UI。这条边界就是为了把“先诊断、再执行”的高风险 helper 工作流固定下来。
 
 如果后面要继续往“长期资料库 / 历史文章检索 / 研究记忆层”发展，方向又和单篇 helper 不同。那一层更适合借鉴 [`khoj-ai/khoj`](https://github.com/khoj-ai/khoj) 这类项目的“资料入库 + 检索增强 + Agent 使用”分层，但不适合把整套 second brain 系统直接并进 `QunMind` 主进程；对本项目来说，更合理的做法是把它当成未来辅助检索边界，而不是新的主产品形态。
 

@@ -26,7 +26,7 @@ use qunmind::reporting::{
 use qunmind::scheduler::daily_report::DailyReportScheduler;
 use qunmind::source::wechat_rss::{fetch_named_wechat_account_articles, find_wechat_account};
 use qunmind::wechat_article_helper::{
-    run_wechat_article_url_helper, wechat_article_url_response_json,
+    run_wechat_article_url_helper, wechat_article_url_doctor_json, wechat_article_url_response_json,
 };
 use qunmind::wx_cli_commands::run_wx_cli_command;
 use std::path::Path;
@@ -493,6 +493,17 @@ async fn run_diagnostic_command(
             println!(
                 "{}",
                 serde_json::to_string_pretty(&wechat_article_url_response_json(&result))?
+            );
+            Ok(())
+        }
+        CliCommand::WechatArticleUrlDoctor { url, output_dir } => {
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&wechat_article_url_doctor_json(
+                    &config.public_sources,
+                    url.as_deref(),
+                    output_dir.as_deref(),
+                ))?
             );
             Ok(())
         }

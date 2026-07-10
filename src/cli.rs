@@ -139,6 +139,16 @@ pub enum CliCommand {
         #[arg(long)]
         output_dir: Option<PathBuf>,
     },
+    /// 只读诊断单篇公众号链接 helper 配置、输出目录和调用预览
+    #[command(name = "wechat-article-url-doctor")]
+    WechatArticleUrlDoctor {
+        /// 可选公众号文章链接；传入时会额外校验 URL 形态
+        #[arg(long)]
+        url: Option<String>,
+        /// 可选输出目录；未传时使用 public_sources.wechat_article_helper_output_dir
+        #[arg(long)]
+        output_dir: Option<PathBuf>,
+    },
 }
 
 #[derive(Debug, Subcommand)]
@@ -863,6 +873,26 @@ mod tests {
                 assert_eq!(output_dir, Some(PathBuf::from("/tmp/wechat-helper")));
             }
             _ => panic!("wechat-article-url command should parse"),
+        }
+    }
+
+    #[test]
+    fn parses_wechat_article_url_doctor_command() {
+        let args = parse_args(&[
+            "qunmind",
+            "wechat-article-url-doctor",
+            "--url",
+            "https://mp.weixin.qq.com/s/example",
+            "--output-dir",
+            "/tmp/wechat-helper",
+        ]);
+
+        match args.command {
+            Some(CliCommand::WechatArticleUrlDoctor { url, output_dir }) => {
+                assert_eq!(url.as_deref(), Some("https://mp.weixin.qq.com/s/example"));
+                assert_eq!(output_dir, Some(PathBuf::from("/tmp/wechat-helper")));
+            }
+            _ => panic!("wechat-article-url-doctor command should parse"),
         }
     }
 }
