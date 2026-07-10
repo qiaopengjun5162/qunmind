@@ -67,6 +67,20 @@ flowchart LR
 - **Public-account publishing path**: local WeChat-ready markdown, fixed cover handling, `moonpub --render`, publish receipts
 - **Diagnostics and replay**: `wx-cli doctor`, `test-plan`, `handle-once`, `report-status`, `publish-history`, and related structured status exits
 
+## Best-Fit Scenarios
+
+`QunMind` currently fits three kinds of use cases best:
+
+- **AI backends for WeChat or WeCom groups**: when you need more than a one-off demo and want persistence, short-term context, and room for group-level policy.
+- **Traceable public-account daily-report production**: when a report should not stop at "the model generated some text", but continue through source traceability, lint, draft publishing, and receipt visibility.
+- **Real-world WeChat rehearsals that need diagnostics first**: when you want `doctor`, `test-plan`, and `report-status` style guardrails before sending messages or pushing drafts for real.
+
+Correspondingly, it is **not** currently the best fit for:
+
+- a large all-in-one multi-platform chat-bot suite
+- an in-process WeChat scraping and anti-bot bypass system
+- a public-account publisher that can already be promised as fully unattended production automation
+
 ## Support Matrix
 
 ### Channels and Models
