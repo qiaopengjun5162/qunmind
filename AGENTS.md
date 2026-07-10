@@ -2,6 +2,8 @@
 
 每次项目发生实质性修改后，都要同步更新相关文档，不要把文档更新留到“之后再说”。至少检查 `AGENTS.md`、`PROGRESS.md`、`README.md`、`README_zh.md`、`CONTRIBUTING.md` 和 `.github/pull_request_template.md` 是否需要同步。
 
+`README.md`、`README_zh.md`、`docs/README.md` 和 `docs/change-routing-index.md` 不只是“有空再补”的介绍文档，它们是项目用来减少重复解释和重复定位成本的固定入口层。只要本次改动改变了项目定位、推荐进入路径、稳定工作流边界，或新增了“以后应该先看哪里”的共识，就要把这层入口同步写进去，不要继续把这些知识只留在聊天记录里。
+
 如果本次工作涉及绘画、图示、生成图片、界面草图或其他可视化操作，必须把来源、输出文件和备注追加记录到 `docs/visual-operations.md`，避免后续重复生成和重复消耗 token。
 
 默认把一次完整项目修改视为 **代码/文档完成 + 验证完成 + Commit + Push + PR 已创建**。除非用户明确要求停在本地修改，否则不要把“只改完文件”当成流程结束。

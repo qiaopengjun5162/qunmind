@@ -15,6 +15,7 @@
 - [ ] `AGENTS.md` updated when project rules or constraints changed
 - [ ] `PROGRESS.md` updated when project stage, roadmap, or real completion state changed
 - [ ] `README.md` / `README_zh.md` updated when user-facing status, commands, or positioning changed
+- [ ] `docs/README.md` / `docs/change-routing-index.md` updated when entry paths, change-routing guidance, or "look here first" rules changed
 - [ ] `CONTRIBUTING.md` updated when workflow changed
 - [ ] `docs/visual-operations.md` updated when the change included visual work
 

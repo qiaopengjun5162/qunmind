@@ -36,6 +36,7 @@ QUNMIND_TEST_DATABASE_URL="postgres://postgres:postgres@localhost:5432/qunmind_t
 - Create a `codex-<short-topic>` branch for each focused change.
 - Keep changes small enough to review in one pull request.
 - Update `README.md`, `README_zh.md`, `PROGRESS.md`, and `AGENTS.md` when architecture or workflow changes.
+- If the change affects project positioning, onboarding paths, or "where to look first", also sync `docs/README.md` and `docs/change-routing-index.md` so future contributors do not have to reconstruct the same guidance from chat history.
 - Update related docs in the same branch whenever project state, roadmap, commands, or constraints changed.
 - If the change includes generated images, diagrams, or other visual operations, append a record to `docs/visual-operations.md`.
 - Add or update tests for behavior changes.
