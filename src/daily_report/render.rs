@@ -5,8 +5,8 @@ use crate::source::PublicNewsItem;
 
 const AI_SUBSECTIONS: [&str; 3] = ["多Agent编排", "单Agent应用", "工作方式变革"];
 const MAX_REFERENCE_ITEMS: usize = 15;
-const MAX_SOURCE_LINK_ITEMS: usize = 50;
-const COMPACT_REF_TITLE_CHARS: usize = 20;
+const MAX_SOURCE_LINK_ITEMS: usize = 8;
+const COMPACT_REF_TITLE_CHARS: usize = 18;
 const COMPACT_REF_SOURCE_CHARS: usize = 28;
 const OVERVIEW_FOCUS_PREVIEW_CHARS: usize = 34;
 const OVERVIEW_PRIORITY_PREVIEW_CHARS: usize = 22;
@@ -370,15 +370,29 @@ fn build_refs_block(report: &ReportJson, items: &[PublicNewsItem], section_index
         ));
     }
 
-    let unreferenced = items
+    let mut unreferenced = items
         .iter()
         .filter(|item| !referenced_urls.contains(&normalize_story_url(&item.url)))
+        .filter(|item| is_curated_source_link_candidate(item))
         .filter(|item| seen_normalized_urls.insert(normalize_story_url(&item.url)))
         .take(MAX_SOURCE_LINK_ITEMS)
         .collect::<Vec<_>>();
+
+    if unreferenced.len() < MAX_SOURCE_LINK_ITEMS {
+        for item in items
+            .iter()
+            .filter(|item| !referenced_urls.contains(&normalize_story_url(&item.url)))
+            .filter(|item| seen_normalized_urls.insert(normalize_story_url(&item.url)))
+        {
+            if unreferenced.len() >= MAX_SOURCE_LINK_ITEMS {
+                break;
+            }
+            unreferenced.push(item);
+        }
+    }
     if !unreferenced.is_empty() {
         block.push_str(&format!(
-            "\n### 补充阅读池（{}）\n\n这些是今天没写进正文、但仍值得留档或继续挖的素材入口。\n\n:::compact-links\n",
+            "\n### 补充阅读池（{}）\n\n这里不再平铺当天所有素材，只保留少量更值得继续深挖的补充入口。\n\n:::compact-links\n",
             unreferenced.len()
         ));
         for (i, item) in unreferenced.iter().enumerate() {
@@ -434,6 +448,30 @@ fn table_cell(value: &str) -> String {
         .split_whitespace()
         .collect::<Vec<_>>()
         .join(" ")
+}
+
+fn is_curated_source_link_candidate(item: &PublicNewsItem) -> bool {
+    let source = item.source.to_lowercase();
+    let url = item.url.to_lowercase();
+    let has_reliable_summary = item.summary.as_deref().is_some_and(|summary| {
+        is_useful_chinese_summary(summary) && !has_ascii_ellipsis_fragment(summary)
+    });
+
+    url.contains("openai.com/")
+        || url.contains("blog.google/")
+        || url.contains("blog.cloudflare.com/")
+        || url.contains("blog.rust-lang.org/")
+        || url.contains("github.blog/")
+        || url.contains("ethresear.ch/")
+        || url.contains("arxiv.org/")
+        || url.contains("eprint.iacr.org/")
+        || source.contains("openai")
+        || source.contains("github blog")
+        || source.contains("cloudflare blog")
+        || source.contains("rust blog")
+        || source.contains("ethresear")
+        || source.contains("arxiv")
+        || has_reliable_summary
 }
 
 fn normalize_story_url(url: &str) -> String {
@@ -1522,6 +1560,7 @@ mod tests {
         assert!(refs.contains("https://example.com/used"));
         assert!(!refs.contains("> 原文：https://example.com/used"));
         assert!(refs.contains("### 补充阅读池（2）"));
+        assert!(refs.contains("只保留少量更值得继续深挖的补充入口"));
         assert!(refs.contains("- 01 | unreferenced"));
         assert!(refs.contains("https://example.com/unreferenced"));
         assert!(refs.contains("- 02 | another"));
@@ -1529,6 +1568,33 @@ mod tests {
         let source_links = refs.split("### 补充阅读池").nth(1).unwrap_or_default();
         assert!(!source_links.contains("说明："));
         assert!(!source_links.contains("已引"));
+    }
+
+    #[test]
+    fn refs_block_caps_supplemental_pool_to_curated_small_set() {
+        let items = (0..20)
+            .map(|index| PublicNewsItem {
+                source: "OpenAI".to_string(),
+                title: format!("OpenAI long read {index}"),
+                url: format!("https://openai.com/index/article-{index}"),
+                summary: Some("这是一篇适合继续深挖的官方长文。".to_string()),
+                author: None,
+                published_at: None,
+                score: Some(100 - index),
+                comments: None,
+                ai_score: None,
+                category: None,
+            })
+            .collect::<Vec<_>>();
+        let refs = build_refs_block(&ReportJson::default(), &items, 5);
+        let source_links = refs.split("### 补充阅读池").nth(1).unwrap_or_default();
+        assert_eq!(
+            source_links
+                .lines()
+                .filter(|line| line.starts_with("- "))
+                .count(),
+            MAX_SOURCE_LINK_ITEMS
+        );
     }
 
     #[test]
