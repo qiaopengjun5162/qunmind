@@ -142,6 +142,16 @@ cargo run -- wx-cli test-plan --capture-file wx-output.json
 cargo run -- wx-cli handle-once --input wx-output.json --message-id "m-123" --limit 1 --no-send
 ```
 
+## Recommended Paths
+
+If this is your first time in the repository, do not read it strictly top to bottom. Enter through the path closest to your goal:
+
+- **I want to run the bot locally first**: start with "Quick Start", then "Docker Deployment" if needed.
+- **I want to verify the WeChat daily-report publishing path**: start with the report rehearsal commands in "Quick Start", then read "Daily Report Integration Status".
+- **I want to validate the normal-WeChat / external-group loop**: start with the wx-cli diagnostic commands in "Quick Start", then read "wx-cli Diagnostics".
+- **I want to improve sources or report quality**: start from the source boundaries in "Support Matrix", then continue into "Public Source Fallback", "Research Tool Map", and `docs/change-routing-index.md`.
+- **I want to change code but do not know where to look first**: go directly to [docs/README.md](./docs/README.md) and [docs/change-routing-index.md](./docs/change-routing-index.md).
+
 ## Status
 
 This is still an MVP foundation, not a fully production-ready bot yet. The basic WeChat public-account daily-report path has now been verified end-to-end into the draft box, and the next important step is real wx-cli group testing plus turning the `QunMind × moonpub` report path from "can publish a real draft" into something more stable, higher quality, and easier to diagnose before runtime.
