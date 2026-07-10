@@ -886,6 +886,11 @@ fn chinese_topic_label(item: &PublicNewsItem) -> String {
     if haystack.contains("client data reporting") {
         return "协议内客户端数据上报".to_string();
     }
+    if haystack.contains("threshold encrypted mempools")
+        || (haystack.contains("mempool") && haystack.contains("preconfirmation"))
+    {
+        return "阈值加密内存池与预确认机制".to_string();
+    }
     if haystack.contains("agent") || haystack.contains("multi-agent") {
         return "Agent 工作流与多智能体协作".to_string();
     }
@@ -4135,6 +4140,60 @@ mod tests {
         let report = generator.generate().await.expect("report");
         assert!(report.contains("在 Ethereum 中引入原生 UTXO"));
         assert!(!report.contains("以太坊研究议题"));
+    }
+
+    #[tokio::test]
+    async fn generate_humanizes_threshold_encrypted_mempool_title() {
+        let title = "Threshold Encrypted Mempools with mev-commit Preconfirmations";
+        let url = "https://ethresear.ch/t/threshold-encrypted-mempools-with-mev-commit-preconfirmations/23588";
+        let json = format!(
+            r#"{{
+            "title_hint":"测试日报",
+            "intro":"测试导语",
+            "focus_text":"{title}",
+            "focus_url":"{url}",
+            "ai_items":[],
+            "ai_signals":[],
+            "web3_items":[
+                {{
+                    "title":"{title}",
+                    "url":"{url}",
+                    "comment":"",
+                    "source":"ethresear.ch",
+                    "points":4
+                }}
+            ],
+            "tech_items":[],
+            "tech_timeline":[],
+            "reads":[],
+            "summary":"测试总结"
+        }}"#
+        );
+        let generator = DailyReportGenerator::new(
+            Arc::new(FakeAi::new(vec![json])),
+            Arc::new(FakeNewsSource {
+                items: vec![PublicNewsItem {
+                    source: "ethresear.ch".to_string(),
+                    title: title.to_string(),
+                    url: url.to_string(),
+                    summary: Some(
+                        "Discussion about threshold encrypted mempools and mev-commit preconfirmations."
+                            .to_string(),
+                    ),
+                    author: None,
+                    published_at: Some("2026-07-10T00:00:00Z".to_string()),
+                    score: Some(4),
+                    comments: None,
+                    ai_score: None,
+                    category: Some("web3".to_string()),
+                }],
+            }),
+            String::new(),
+        );
+
+        let report = generator.generate().await.expect("report");
+        assert!(report.contains("阈值加密内存池与预确认机制"));
+        assert!(!report.contains("Web3相关主题"));
     }
 
     #[tokio::test]

@@ -6,7 +6,7 @@ use crate::source::PublicNewsItem;
 const AI_SUBSECTIONS: [&str; 3] = ["多Agent编排", "单Agent应用", "工作方式变革"];
 const MAX_REFERENCE_ITEMS: usize = 15;
 const MAX_SOURCE_LINK_ITEMS: usize = 50;
-const COMPACT_REF_TITLE_CHARS: usize = 24;
+const COMPACT_REF_TITLE_CHARS: usize = 20;
 const COMPACT_REF_SOURCE_CHARS: usize = 28;
 const OVERVIEW_FOCUS_PREVIEW_CHARS: usize = 34;
 const OVERVIEW_PRIORITY_PREVIEW_CHARS: usize = 22;
