@@ -7,6 +7,8 @@ mod types;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
+use chrono::{DateTime, NaiveDate, Utc};
+
 use crate::ai::{AiClient, ChatMessage};
 use crate::daily_report::types::{ReportJson, ReportRead, ReportSection};
 use crate::error::{QunMindError, Result};
@@ -32,6 +34,7 @@ const PROMPT_AI_ITEM_BUDGET: usize = 10;
 const PROMPT_WEB3_ITEM_BUDGET: usize = 10;
 const PROMPT_TECH_ITEM_BUDGET: usize = 8;
 const PROMPT_MAX_ITEMS_PER_SOURCE: usize = 2;
+const MAX_DETERMINISTIC_ITEM_AGE_DAYS: i64 = 4;
 
 pub struct DailyReportGenerator {
     ai: Arc<dyn AiClient>,
@@ -94,6 +97,7 @@ impl DailyReportGenerator {
         items: Vec<PublicNewsItem>,
     ) -> Result<String> {
         let ranked = curate_report_items(items)?;
+        let ranked = fresh_deterministic_report_items(ranked);
         let report = enrich_report(ReportJson::default(), &ranked, &self.recent_used_urls);
         Ok(assemble_markdown(&report, &ranked, &self.daily_quote))
     }
@@ -111,6 +115,56 @@ fn curate_report_items(mut items: Vec<PublicNewsItem>) -> Result<Vec<PublicNewsI
 
     sort_items_for_report(&mut items);
     Ok(select_report_items(items))
+}
+
+fn fresh_deterministic_report_items(items: Vec<PublicNewsItem>) -> Vec<PublicNewsItem> {
+    let fresh = items
+        .iter()
+        .filter(|item| !is_explicitly_stale_report_item(item))
+        .cloned()
+        .collect::<Vec<_>>();
+
+    if fresh.len() >= MIN_SECTION_ITEMS {
+        fresh
+    } else {
+        items
+    }
+}
+
+fn is_explicitly_stale_report_item(item: &PublicNewsItem) -> bool {
+    let Some(date) = report_item_date(item) else {
+        return false;
+    };
+
+    let age_days = Utc::now()
+        .date_naive()
+        .signed_duration_since(date)
+        .num_days();
+    age_days > MAX_DETERMINISTIC_ITEM_AGE_DAYS
+}
+
+fn report_item_date(item: &PublicNewsItem) -> Option<NaiveDate> {
+    item.published_at
+        .as_deref()
+        .and_then(parse_report_item_date)
+        .or_else(|| date_from_report_url(&item.url))
+}
+
+fn parse_report_item_date(value: &str) -> Option<NaiveDate> {
+    DateTime::parse_from_rfc3339(value)
+        .map(|value| value.date_naive())
+        .or_else(|_| DateTime::parse_from_rfc2822(value).map(|value| value.date_naive()))
+        .ok()
+}
+
+fn date_from_report_url(url: &str) -> Option<NaiveDate> {
+    let parts = url.split('/').collect::<Vec<_>>();
+    parts.windows(3).find_map(|parts| {
+        let year = parts[0].parse().ok()?;
+        let month = parts[1].parse().ok()?;
+        let day = parts[2].parse().ok()?;
+        NaiveDate::from_ymd_opt(year, month, day)
+    })
 }
 
 fn enrich_report(
@@ -819,10 +873,10 @@ fn fallback_comment(item: &PublicNewsItem) -> String {
             )
         }
         _ => {
-            let title = reportable_title(item);
+            let subject = chinese_topic_label(item);
             format!(
-                "这条材料围绕《{}》，建议打开原文核对关键参与方、具体变化和上下文。",
-                title
+                "{}，建议打开原文核对关键参与方、具体变化和上下文。",
+                subject
             )
         }
     }
@@ -905,6 +959,19 @@ fn chinese_topic_label(item: &PublicNewsItem) -> String {
     }
     if haystack.contains("openai") && haystack.contains("chip") {
         return "OpenAI 自研芯片进展".to_string();
+    }
+    if haystack.contains("robinhood")
+        && contains_any_text(&haystack, &["ai agent", "ai agents"])
+        && haystack.contains("crypto")
+    {
+        return "Robinhood 计划把 AI Agent 扩展到加密交易者".to_string();
+    }
+    if haystack.contains("democrats")
+        && haystack.contains("senate")
+        && haystack.contains("trump")
+        && haystack.contains("crypto")
+    {
+        return "美国民主党人要求就特朗普的加密收益举行参议院听证".to_string();
     }
     if haystack.contains("validator redirected revenue") {
         return "验证者收入重定向机制".to_string();
@@ -3871,6 +3938,7 @@ mod tests {
     use super::*;
     use crate::error::QunMindError;
     use async_trait::async_trait;
+    use chrono::Datelike;
     use tokio::sync::Mutex;
 
     struct FakeAi {
@@ -4149,6 +4217,36 @@ mod tests {
         assert!(report.contains("theme: notebook"));
         assert!(report.contains("## 继续交流"));
         assert!(report.contains("原文：https://openai.com/news/agent-tool"));
+    }
+
+    #[test]
+    fn deterministic_candidates_drop_explicitly_stale_material() {
+        let today = Utc::now().date_naive();
+        let mut stale = test_item("stale", Some(100));
+        stale.url = "https://example.com/2026/01/01/stale".to_string();
+
+        let fresh = (0..3)
+            .map(|index| {
+                let mut item = test_item(&format!("fresh-{index}"), Some(90 - index));
+                item.url = format!(
+                    "https://example.com/{}/{:02}/{:02}/fresh-{index}",
+                    today.year(),
+                    today.month(),
+                    today.day()
+                );
+                item
+            })
+            .collect::<Vec<_>>();
+
+        let selected =
+            fresh_deterministic_report_items(std::iter::once(stale).chain(fresh).collect());
+
+        assert_eq!(selected.len(), 3);
+        assert!(
+            selected
+                .iter()
+                .all(|item| !item.url.contains("/2026/01/01/"))
+        );
     }
 
     #[tokio::test]
@@ -8739,6 +8837,46 @@ mod tests {
         let comment = fallback_comment(&item);
         assert!(comment.starts_with("Robinhood Chain 代币化股票持有地址达 3.7 万个"));
         assert!(!comment.contains("这条材料围绕"));
+    }
+
+    #[test]
+    fn fallback_comment_humanizes_robinhood_ai_agent_update() {
+        let item = PublicNewsItem {
+            source: "Cointelegraph".to_string(),
+            title: "Robinhood says its AI agent feature will soon support crypto users".to_string(),
+            url: "https://cointelegraph.com/news/robinhood-ai-agents-crypto-users".to_string(),
+            summary: None,
+            author: None,
+            published_at: Some("2026-07-11T08:00:00Z".to_string()),
+            score: Some(120),
+            comments: None,
+            ai_score: None,
+            category: Some("Web3".to_string()),
+        };
+
+        let comment = fallback_comment(&item);
+        assert!(comment.contains("Robinhood 计划把 AI Agent 扩展到加密交易者"));
+        assert!(!comment.contains("这条材料围绕"));
+    }
+
+    #[test]
+    fn fallback_comment_humanizes_us_crypto_hearing_update() {
+        let item = PublicNewsItem {
+            source: "Decrypt".to_string(),
+            title: "Democrats Call for Senate Hearings on Trump's Massive Crypto Profits"
+                .to_string(),
+            url: "https://decrypt.co/373289/democrats-senate-hearings-trump-massive-crypto-profits"
+                .to_string(),
+            summary: None,
+            author: None,
+            published_at: Some("2026-07-11T08:00:00Z".to_string()),
+            score: Some(120),
+            comments: None,
+            ai_score: None,
+            category: Some("Web3".to_string()),
+        };
+
+        assert!(fallback_comment(&item).contains("特朗普的加密收益举行参议院听证"));
     }
 
     #[test]
