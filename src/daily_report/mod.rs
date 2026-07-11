@@ -827,6 +827,10 @@ fn fallback_comment(item: &PublicNewsItem) -> String {
     let source = item.source.to_lowercase();
     let url = item.url.to_lowercase();
 
+    if is_robinhood_ai_agent_item(item) {
+        return "Robinhood 表示其 AI Agent 功能将很快支持加密资产用户，意味着这项能力正从现有交易场景延伸到加密交易；首批支持范围和上线节奏仍以官方说明为准。".to_string();
+    }
+
     if contains_useful_chinese_text(item.title.trim()) {
         return format!(
             "{}；建议核对原文中的参与方、时间口径和后续影响。",
@@ -960,10 +964,7 @@ fn chinese_topic_label(item: &PublicNewsItem) -> String {
     if haystack.contains("openai") && haystack.contains("chip") {
         return "OpenAI 自研芯片进展".to_string();
     }
-    if haystack.contains("robinhood")
-        && contains_any_text(&haystack, &["ai agent", "ai agents"])
-        && haystack.contains("crypto")
-    {
+    if has_robinhood_ai_agent_story_signal(&haystack) {
         return "Robinhood 计划把 AI Agent 扩展到加密交易者".to_string();
     }
     if haystack.contains("democrats")
@@ -1110,6 +1111,10 @@ fn read_summary_quality_score(summary: &str) -> usize {
 }
 
 fn is_tech_worthy_item(item: &PublicNewsItem) -> bool {
+    if is_consumer_phishing_alert_item(item) {
+        return false;
+    }
+
     if item.source.contains("GitHub") || is_ai_item(item) || is_web3_item(item) {
         return true;
     }
@@ -1296,6 +1301,30 @@ fn is_non_technical_policy_item(item: &PublicNewsItem) -> bool {
     )
 }
 
+fn is_consumer_phishing_alert_item(item: &PublicNewsItem) -> bool {
+    let haystack = format!(
+        "{} {} {} {}",
+        item.source,
+        item.title,
+        item.url,
+        item.summary.as_deref().unwrap_or("")
+    )
+    .to_lowercase();
+
+    contains_any_text(
+        &haystack,
+        &[
+            "伪冒网站",
+            "钓鱼网站",
+            "盗取个人信息",
+            "个人信息诈骗",
+            "虚拟钱包实施诈骗",
+            "phishing site",
+            "phishing website",
+        ],
+    )
+}
+
 fn tech_section_is_worthy(section: &ReportSection, items: &[PublicNewsItem]) -> bool {
     if is_ai_section_item(section, items) || is_web3_section_item(section, items) {
         return false;
@@ -1422,6 +1451,7 @@ fn finalize_section_classification(report: &mut ReportJson, items: &[PublicNewsI
     dedup_sections(&mut report.ai_items);
     dedup_sections(&mut report.web3_items);
     dedup_sections(&mut report.tech_items);
+    dedup_similar_section_stories(&mut report.web3_items, items);
     report
         .web3_items
         .sort_by_key(|item| std::cmp::Reverse(web3_section_priority(item, items)));
@@ -1608,6 +1638,10 @@ fn similar_section_story(a: &ReportSection, b: &ReportSection, items: &[PublicNe
         return true;
     }
 
+    if same_robinhood_ai_agent_story(a, b, items) {
+        return true;
+    }
+
     let a_text = normalize_story_text(&format!("{} {}", a.title, best_section_comment(a, items)));
     let b_text = normalize_story_text(&format!("{} {}", b.title, best_section_comment(b, items)));
 
@@ -1634,6 +1668,39 @@ fn similar_section_story(a: &ReportSection, b: &ReportSection, items: &[PublicNe
     let smaller = a_shingles.len().min(b_shingles.len());
 
     intersection >= 4 && intersection * 100 >= smaller * 60
+}
+
+fn same_robinhood_ai_agent_story(
+    a: &ReportSection,
+    b: &ReportSection,
+    items: &[PublicNewsItem],
+) -> bool {
+    let Some(a_item) = items.iter().find(|item| item.url == a.url) else {
+        return false;
+    };
+    let Some(b_item) = items.iter().find(|item| item.url == b.url) else {
+        return false;
+    };
+
+    is_robinhood_ai_agent_item(a_item) && is_robinhood_ai_agent_item(b_item)
+}
+
+fn is_robinhood_ai_agent_item(item: &PublicNewsItem) -> bool {
+    let haystack = format!(
+        "{} {} {} {}",
+        item.source,
+        item.title,
+        item.url,
+        item.summary.as_deref().unwrap_or("")
+    )
+    .to_lowercase();
+    has_robinhood_ai_agent_story_signal(&haystack)
+}
+
+fn has_robinhood_ai_agent_story_signal(haystack: &str) -> bool {
+    haystack.contains("robinhood")
+        && contains_any_text(haystack, &["ai agent", "ai agents", "ai代理", "ai 代理"])
+        && contains_any_text(haystack, &["crypto", "web3", "加密", "交易"])
 }
 
 fn normalize_story_text(value: &str) -> String {
@@ -2322,7 +2389,7 @@ fn backfill_section_after_focus_removal(
                 continue;
             }
 
-            additions.push(ReportSection {
+            let candidate = ReportSection {
                 title: compact_title(item.title.trim(), 50),
                 url: item.url.clone(),
                 comment: fallback_comment(item),
@@ -2333,7 +2400,16 @@ fn backfill_section_after_focus_removal(
                 } else {
                     String::new()
                 },
-            });
+            };
+            if section_items
+                .iter()
+                .chain(additions.iter())
+                .any(|existing| similar_section_story(existing, &candidate, items))
+            {
+                continue;
+            }
+
+            additions.push(candidate);
 
             if section_items.len() + additions.len() >= target_len {
                 break;
@@ -3451,7 +3527,8 @@ fn best_fresh_focus_candidate<'a>(
 }
 
 fn is_focus_worthy_item(item: &PublicNewsItem) -> bool {
-    !is_generic_market_wrap_item(item)
+    !is_consumer_phishing_alert_item(item)
+        && !is_generic_market_wrap_item(item)
         && !is_roundup_style_item(item)
         && !is_brief_news_style_item(item)
         && !is_market_commentary_item(item)
@@ -8855,8 +8932,64 @@ mod tests {
         };
 
         let comment = fallback_comment(&item);
-        assert!(comment.contains("Robinhood 计划把 AI Agent 扩展到加密交易者"));
+        assert!(comment.contains("Robinhood 表示其 AI Agent 功能"));
+        assert!(comment.contains("支持加密资产用户"));
+        assert!(!comment.contains("建议打开原文核对"));
         assert!(!comment.contains("这条材料围绕"));
+    }
+
+    #[test]
+    fn web3_section_dedup_keeps_the_chinese_robinhood_agent_report() {
+        let panews = PublicNewsItem {
+            source: "PANews".to_string(),
+            title: "Robinhood：AI代理即将支持Web3交易".to_string(),
+            url: "https://www.panewslab.com/zh/articles/robinhood-agent".to_string(),
+            summary: Some(
+                "Robinhood宣布AI代理即将扩展至Web3交易，用户可设置风险限制。".to_string(),
+            ),
+            author: None,
+            published_at: Some("2026-07-11T08:00:00Z".to_string()),
+            score: Some(120),
+            comments: None,
+            ai_score: None,
+            category: Some("web3_media".to_string()),
+        };
+        let cointelegraph = PublicNewsItem {
+            source: "Cointelegraph".to_string(),
+            title: "Robinhood says its AI agent feature will soon support crypto users".to_string(),
+            url: "https://cointelegraph.com/news/robinhood-ai-agent-crypto".to_string(),
+            summary: None,
+            author: None,
+            published_at: Some("2026-07-11T08:00:00Z".to_string()),
+            score: Some(120),
+            comments: None,
+            ai_score: None,
+            category: Some("web3_media".to_string()),
+        };
+        let items = vec![panews.clone(), cointelegraph.clone()];
+        let mut sections = vec![
+            ReportSection {
+                title: panews.title.clone(),
+                url: panews.url.clone(),
+                comment: fallback_comment(&panews),
+                source: panews.source.clone(),
+                points: 120,
+                subsection: String::new(),
+            },
+            ReportSection {
+                title: cointelegraph.title.clone(),
+                url: cointelegraph.url.clone(),
+                comment: fallback_comment(&cointelegraph),
+                source: cointelegraph.source.clone(),
+                points: 120,
+                subsection: String::new(),
+            },
+        ];
+
+        dedup_similar_section_stories(&mut sections, &items);
+
+        assert_eq!(sections.len(), 1);
+        assert_eq!(sections[0].url, panews.url);
     }
 
     #[test]
@@ -8877,6 +9010,26 @@ mod tests {
         };
 
         assert!(fallback_comment(&item).contains("特朗普的加密收益举行参议院听证"));
+    }
+
+    #[test]
+    fn consumer_phishing_alerts_do_not_become_focus_or_tech_body() {
+        let item = PublicNewsItem {
+            source: "香港结算".to_string(),
+            title: "发现多个伪冒网站利用虚拟钱包实施诈骗".to_string(),
+            url: "https://example.com/phishing-alert".to_string(),
+            summary: Some("提醒用户谨防伪冒网站盗取个人信息。".to_string()),
+            author: None,
+            published_at: Some("2026-07-11T08:00:00Z".to_string()),
+            score: Some(120),
+            comments: None,
+            ai_score: None,
+            category: Some("web3".to_string()),
+        };
+
+        assert!(is_consumer_phishing_alert_item(&item));
+        assert!(!is_tech_worthy_item(&item));
+        assert!(!is_focus_worthy_item(&item));
     }
 
     #[test]

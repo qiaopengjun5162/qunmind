@@ -1,5 +1,9 @@
 # Progress
 
+- 2026-07-11: **跨来源事件去重** — Robinhood AI Agent 同时出现在中文 PANews 与英文 Cointelegraph 时，确定性日报现在会识别为同一事件，并优先保留可靠中文摘要；补位路径同样避开同故事候选，英文单源快讯则改用可直接读懂的事实摘要，不再输出“建议打开原文核对”。
+
+- 2026-07-11: **日报消费者告警降级** — 实际公开来源稿暴露出仿冒网站与钓鱼提示会抢占焦点、重复填充技术区的问题；确定性筛选现在将这类个人安全提醒排除在焦点和技术正文之外，保留给补充阅读池，正文优先协议安全、工程发布和全球基础设施信号。
+
 - 2026-07-11: **Review-first research memory 参考** — 将 `mrbear1024/ai-content-kb` 纳入学习目录和 research memory 文档，吸收原始材料 / 外部证据 / 已审核发布物 / AI staging 的来源分层与人工审核规则；后续先在 Markdown / PostgreSQL 边界做试点，不引入完整 vault、图数据库或 embedding 运行时。
 
 - 2026-07-11: **DojoAgents Agent 架构参考** — 将 `Alpha-Dojo/DojoAgents` 纳入 `AgentFrameworks` 学习目录，吸收 Agent Loop / Gateway adapter / memory source / lazy Skills 的分层原则；明确不接入投资、量化、交易或 Python runtime，保持 QunMind 微信消息中枢边界。
