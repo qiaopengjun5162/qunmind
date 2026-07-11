@@ -86,6 +86,8 @@
 
 如果后续要建设“历史文章 + 手工精选 + 官方博客 + 公众号正文”的长期知识层，优先把它定义成独立的 **research memory** / 检索增强边界，而不是把 `Khoj` 一类 second-brain 系统整包并进主进程。可以借鉴 `khoj-ai/khoj` 的“资料入库 + 语义检索 + Agent 使用”分层思路，但 `QunMind` 主线仍是微信消息中枢；知识库只应作为日报和投研助手的辅助层，而不是新的主产品形态或硬依赖。
 
+`mrbear1024/ai-content-kb` 为 review-first research memory 提供了补充参考：未来资料层要区分原始所有者材料、外部证据、已审核发布物、可读 wiki 和未审核 AI staging；AI 生成的摘要、关系或索引不能直接覆盖原文或成为对外事实。先在现有 Markdown / PostgreSQL 边界做小规模验证，不要在主进程直接引入 Obsidian 模板、图数据库或 embedding runtime。
+
 X / Twitter 这类一手信息入口也优先走 `PublicNewsSource` 边界。当前落地形态是 `[public_sources] x_rss_*`，消费 RSSHub、Nitter 兼容源或自建 X List RSS / Atom 上游；不要把 X 登录态、反爬、代理池或绕风控逻辑直接塞进 `QunMind` 主进程。需要更强实时性时，优先建设独立采集上游，再把稳定输出接成 RSS/Atom 或后续 connector。
 
 官网 / 官方博客这类“更高层面”的一手来源也应优先走 `PublicNewsSource` 边界。当前推荐形态是 `[public_sources] official_blogs_*`：统一消费 OpenAI、Google Blog、Cloudflare Blog、Rust Blog、GitHub Blog、ECB 一类稳定可访问的 RSS / Atom 上游，把正式发布、研究博客、技术公告以及全球官方政策/宏观信号沉淀成长期来源；不要每次都退回成靠 `manual_items` 临时补几条官方链接。

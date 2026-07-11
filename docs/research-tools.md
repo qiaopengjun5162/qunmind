@@ -111,6 +111,8 @@
 
 `Alpha-Dojo/DojoAgents` 可作为 Agent 架构补充参考：它把通用 Agent Loop、平台 Gateway adapter、记忆 provider 和 Skills 分层。对 QunMind 可借鉴的是“工具循环不硬编码领域规则”“通道 adapter 只负责消息归一化与发送”“记忆不保存密钥且保留事实来源”“Skill 按目录懒加载”。不应接入其投资组合、量化分析、交易建议、截图识别或 Python runtime；这些都不属于微信群 AI 中枢的当前边界。
 
+`mrbear1024/ai-content-kb` 是更贴近 research memory 的 review-first 参考：`raw/` 保存所有者原始材料，`sources/` 保存外部证据，`products/` 保存人工确认的发布物，AI 生成的 wiki / 关系候选必须先进入 staging，审核后才能提升。QunMind 后续构建历史日报、公众号正文和手工精选的检索层时，应吸收这一来源分层和审核边界；不要直接引入完整 Obsidian vault、图数据库或 embedding 运行时，先以现有 PostgreSQL / Markdown 元数据做小规模验证。
+
 ## Project Mapping
 
 项目里当前已经把这套工具目录沉淀在 `src/research/tools.rs`，并补了四条使用路径：

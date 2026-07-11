@@ -217,6 +217,15 @@ pub const LEARNING_RESOURCES: &[LearningResource] = &[
         url: Some("https://aiweb3.school/learning-agent.zh.txt"),
     },
     LearningResource {
+        title: "AI Content Knowledge Base",
+        category: LearningResourceCategory::LearningWorkflow,
+        provider: "mrbear1024",
+        focus: "学习 raw / sources / products / wiki / staging 分层、来源追溯和 review-first 知识沉淀，不把 AI 草稿直接当作事实",
+        format: LearningResourceFormat::Docs,
+        priority: 145,
+        url: Some("https://github.com/mrbear1024/ai-content-kb"),
+    },
+    LearningResource {
         title: "AI × Web3 School Handbook",
         category: LearningResourceCategory::AiWeb3Bridge,
         provider: "AI x Web3 School",

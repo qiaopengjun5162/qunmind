@@ -1,5 +1,7 @@
 # Progress
 
+- 2026-07-11: **Review-first research memory 参考** — 将 `mrbear1024/ai-content-kb` 纳入学习目录和 research memory 文档，吸收原始材料 / 外部证据 / 已审核发布物 / AI staging 的来源分层与人工审核规则；后续先在 Markdown / PostgreSQL 边界做试点，不引入完整 vault、图数据库或 embedding 运行时。
+
 - 2026-07-11: **DojoAgents Agent 架构参考** — 将 `Alpha-Dojo/DojoAgents` 纳入 `AgentFrameworks` 学习目录，吸收 Agent Loop / Gateway adapter / memory source / lazy Skills 的分层原则；明确不接入投资、量化、交易或 Python runtime，保持 QunMind 微信消息中枢边界。
 
 - 2026-07-11: **确定性日报新鲜度闸门** — 公开来源审核稿暴露出 6 月底文章混入当天正文的问题；确定性成稿现在会根据 `published_at` 或 URL 日历路径排除超过 4 天的明确旧材料，只有新鲜候选不足时才回退，避免再让人工逐次清理旧缓存内容。
