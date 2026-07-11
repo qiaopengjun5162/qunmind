@@ -170,7 +170,7 @@ impl DailyReportScheduler {
                     target.daily_quote.clone(),
                 );
 
-                match generator.generate().await {
+                match generator.generate_deterministic().await {
                     Ok(markdown) => markdown,
                     Err(e) => {
                         error!("生成微信日报失败: {}", e);
@@ -1222,9 +1222,7 @@ mod tests {
         scheduler.send_report().await;
 
         let requests = ai.requests.lock().await;
-        assert_eq!(requests.len(), 1);
-        assert!(requests[0][0].content.contains("请总结技术群"));
-        assert!(requests[0][0].content.contains("今天把日报链路对齐了"));
+        assert!(requests.is_empty());
         assert_eq!(
             *store.text_queries.lock().await,
             vec![("group-2".to_string(), 20)]

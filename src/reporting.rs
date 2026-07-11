@@ -654,7 +654,7 @@ async fn generate_manual_public_daily_report(
     )
     .with_recent_used_urls(previous_report_urls(previous_markdown));
 
-    generator.generate().await.map_err(Into::into)
+    generator.generate_deterministic().await.map_err(Into::into)
 }
 
 fn previous_report_urls(previous_markdown: Option<&str>) -> HashSet<String> {
@@ -754,9 +754,10 @@ pub async fn generate_group_report_from_store(
             Arc::new(source::manual::ManualSource::new(&Default::default())),
             daily_quote.to_string(),
         )
-        .with_recent_used_urls(previous_report_urls(previous_markdown))
-        .with_extra_prompt_context(Some(request.prompt.clone()));
-        let markdown = generator.generate_from_curated_items(items).await?;
+        .with_recent_used_urls(previous_report_urls(previous_markdown));
+        let markdown = generator
+            .generate_deterministic_from_curated_items(items)
+            .await?;
         return Ok(GroupReportAttempt::Generated(GroupReportGeneration {
             markdown,
             loaded_message_count,

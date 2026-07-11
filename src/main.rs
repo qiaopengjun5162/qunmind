@@ -934,19 +934,7 @@ mod tests {
                 .contains("原文：https://example.com/postmortem")
         );
         let requests = ai.requests.lock().await;
-        assert_eq!(requests.len(), 1);
-        assert!(requests[0][0].content.contains("请总结群聊"));
-        assert!(requests[0][0].content.contains("今天完成了日报联调"));
-        assert!(
-            requests[0][0]
-                .content
-                .contains("URL: https://example.com/report")
-        );
-        assert!(
-            requests[0][0]
-                .content
-                .contains("URL: https://example.com/postmortem")
-        );
+        assert!(requests.is_empty());
     }
 
     #[tokio::test]

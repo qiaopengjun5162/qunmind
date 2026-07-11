@@ -74,13 +74,7 @@ impl DailyReportGenerator {
     }
 
     pub async fn generate_from_curated_items(&self, items: Vec<PublicNewsItem>) -> Result<String> {
-        if items.is_empty() {
-            return Err(QunMindError::Other(anyhow::anyhow!("无新闻条目可生成日报")));
-        }
-
-        let mut ranked = items;
-        sort_items_for_report(&mut ranked);
-        let ranked = select_report_items(ranked);
+        let ranked = curate_report_items(items)?;
 
         let messages = vec![ChatMessage {
             role: "user".to_string(),
@@ -90,10 +84,33 @@ impl DailyReportGenerator {
         Ok(self.render_from_ai_response(&ranked, &raw))
     }
 
+    pub async fn generate_deterministic(&self) -> Result<String> {
+        let items = self.news_source.fetch_top_items().await?;
+        self.generate_deterministic_from_curated_items(items).await
+    }
+
+    pub async fn generate_deterministic_from_curated_items(
+        &self,
+        items: Vec<PublicNewsItem>,
+    ) -> Result<String> {
+        let ranked = curate_report_items(items)?;
+        let report = enrich_report(ReportJson::default(), &ranked, &self.recent_used_urls);
+        Ok(assemble_markdown(&report, &ranked, &self.daily_quote))
+    }
+
     fn render_from_ai_response(&self, ranked: &[PublicNewsItem], raw: &str) -> String {
         let report = enrich_report(parse_report_json(raw), ranked, &self.recent_used_urls);
         assemble_markdown(&report, ranked, &self.daily_quote)
     }
+}
+
+fn curate_report_items(mut items: Vec<PublicNewsItem>) -> Result<Vec<PublicNewsItem>> {
+    if items.is_empty() {
+        return Err(QunMindError::Other(anyhow::anyhow!("无新闻条目可生成日报")));
+    }
+
+    sort_items_for_report(&mut items);
+    Ok(select_report_items(items))
 }
 
 fn enrich_report(
@@ -4078,6 +4095,60 @@ mod tests {
         );
         let err = generator.generate().await.unwrap_err();
         assert!(err.to_string().contains("无新闻条目"));
+    }
+
+    #[tokio::test]
+    async fn deterministic_generation_never_calls_ai() {
+        let generator = DailyReportGenerator::new(
+            Arc::new(FakeAi::new(vec![])),
+            Arc::new(FakeNewsSource {
+                items: vec![
+                    PublicNewsItem {
+                        source: "OpenAI".to_string(),
+                        title: "OpenAI 发布新的 Agent 工具".to_string(),
+                        url: "https://openai.com/news/agent-tool".to_string(),
+                        summary: Some("官方说明了新工具的适用范围与使用方式。".to_string()),
+                        author: None,
+                        published_at: Some("2026-07-11T08:00:00Z".to_string()),
+                        score: Some(100),
+                        comments: None,
+                        ai_score: None,
+                        category: Some("ai".to_string()),
+                    },
+                    PublicNewsItem {
+                        source: "PANews".to_string(),
+                        title: "以太坊生态发布新的安全研究说明".to_string(),
+                        url: "https://www.panewslab.com/zh/articles/security".to_string(),
+                        summary: Some("材料列出新的安全研究进展和原始核对入口。".to_string()),
+                        author: None,
+                        published_at: Some("2026-07-11T09:00:00Z".to_string()),
+                        score: Some(90),
+                        comments: None,
+                        ai_score: None,
+                        category: Some("web3".to_string()),
+                    },
+                    PublicNewsItem {
+                        source: "Rust Blog".to_string(),
+                        title: "Rust 发布新的工程工具链说明".to_string(),
+                        url: "https://blog.rust-lang.org/toolchain".to_string(),
+                        summary: Some("官方博客介绍工具链变更和升级注意事项。".to_string()),
+                        author: None,
+                        published_at: Some("2026-07-11T10:00:00Z".to_string()),
+                        score: Some(80),
+                        comments: None,
+                        ai_score: None,
+                        category: Some("tech".to_string()),
+                    },
+                ],
+            }),
+            String::new(),
+        );
+
+        let report = generator.generate_deterministic().await.expect("report");
+
+        assert!(report.contains("theme: notebook"));
+        assert!(report.contains("## 继续交流"));
+        assert!(report.contains("原文：https://openai.com/news/agent-tool"));
     }
 
     #[tokio::test]
