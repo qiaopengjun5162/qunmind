@@ -6,8 +6,8 @@ use crate::source::PublicNewsItem;
 const AI_SUBSECTIONS: [&str; 3] = ["多Agent编排", "单Agent应用", "工作方式变革"];
 const MAX_REFERENCE_ITEMS: usize = 15;
 const MAX_SOURCE_LINK_ITEMS: usize = 8;
-const COMPACT_REF_TITLE_CHARS: usize = 18;
-const COMPACT_REF_SOURCE_CHARS: usize = 28;
+const COMPACT_REF_TITLE_CHARS: usize = 12;
+const COMPACT_REF_SOURCE_CHARS: usize = 20;
 const OVERVIEW_FOCUS_PREVIEW_CHARS: usize = 34;
 const OVERVIEW_PRIORITY_PREVIEW_CHARS: usize = 22;
 const REPORT_OUTRO_TITLE: &str = "继续交流";
@@ -419,16 +419,9 @@ fn format_reference_entry(
 ) -> String {
     let title = sanitize(item.title.replace('\n', " ").trim());
     let source_label = display_source_label(item);
-    let score_part = match item.score {
-        Some(score) if score > 0 => format!(" · {score} points"),
-        _ => String::new(),
-    };
     let compact_title = table_cell(&truncate_str(&title, COMPACT_REF_TITLE_CHARS));
     let url = table_cell(&item.url);
-    let source = table_cell(&truncate_str(
-        &format!("{source_label}{score_part}"),
-        COMPACT_REF_SOURCE_CHARS,
-    ));
+    let source = table_cell(&truncate_str(source_label, COMPACT_REF_SOURCE_CHARS));
     match style {
         ReferenceEntryStyle::Cited => format!(
             "- {:02} | {} | {}｜已引 | {}\n",
@@ -600,6 +593,12 @@ fn humanize_focus_text(text: &str) -> String {
         if trimmed.to_lowercase().contains("rustdesk") {
             return "RustDesk 成为 GitHub 最受关注的 Rust 项目".to_string();
         }
+        if trimmed
+            .to_lowercase()
+            .contains("lattice-based signature aggregation")
+        {
+            return "以太坊研究社区提出基于格密码的签名聚合方案".to_string();
+        }
         if trimmed.to_lowercase().contains("post-quantum")
             && trimmed.to_lowercase().contains("ethereum")
             && trimmed.to_lowercase().contains("signature")
@@ -632,6 +631,9 @@ fn strip_focus_artifacts(value: &str) -> String {
 
 fn focus_why_line(text: &str) -> String {
     let lower = text.to_lowercase();
+    if contains_any_text(&lower, &["格密码", "lattice"]) && lower.contains("签名聚合") {
+        return "它把后量子密码的安全假设和以太坊验证成本放在同一个问题里讨论，适合用来判断未来签名验证路径是否有可落地的替代方案。".to_string();
+    }
     if contains_any_text(
         &lower,
         &["方法论", "研究", "写作", "信源", "投资逻辑", "framework"],
@@ -676,6 +678,9 @@ fn focus_why_line(text: &str) -> String {
 
 fn focus_how_to_use_line(text: &str) -> String {
     let lower = text.to_lowercase();
+    if contains_any_text(&lower, &["格密码", "lattice"]) && lower.contains("签名聚合") {
+        return "重点核对方案的签名大小、聚合开销、验证成本和安全假设，再判断它距离协议或应用层采用还有多远。".to_string();
+    }
     if contains_any_text(
         &lower,
         &["方法论", "研究", "写作", "信源", "投资逻辑", "framework"],
@@ -758,6 +763,20 @@ fn fallback_reason_from_title_and_url(title: &str, url: &str) -> String {
         || lower_url.contains("blog.rust-lang.org/")
         || lower_url.contains("github.blog/")
     {
+        if lower_url.contains("expanding-managed-agents-gemini-api") {
+            return "这篇 Google 官方说明聚焦 Gemini API 的托管 Agent、后台任务和远程 MCP，适合直接核对功能范围与接入限制。".to_string();
+        }
+        if lower_url.contains("gpt-5-6") {
+            return "这篇 OpenAI 官方说明用于核对 GPT-5.6 的能力边界、适用场景和实际部署条件。"
+                .to_string();
+        }
+        if lower_url.contains("nyc-ai-summit") {
+            return "这篇 Google 官方文章记录教育机构与业界讨论 AI 课堂应用，适合关注具体合作与治理问题。".to_string();
+        }
+        if lower_url.contains("google-ai-updates-june-2026") {
+            return "这篇 Google 官方汇总梳理近期 AI 产品与研究更新，适合按主题回查具体发布。"
+                .to_string();
+        }
         return format!(
             "{} 是官方发布，建议重点核对这次更新具体改了什么、适用范围到哪里，以及落地门槛高不高。",
             short_title
@@ -899,6 +918,7 @@ pub(super) fn is_low_confidence_fallback_summary(summary: &str) -> bool {
         "读者应优先核对",
         "读者应打开原文核对",
         "适合直接回到一手原文核对",
+        "是官方发布，建议重点核对",
     ]
     .iter()
     .any(|needle| summary.contains(needle))
@@ -1297,6 +1317,19 @@ mod tests {
     }
 
     #[test]
+    fn focus_explains_lattice_signature_aggregation_concretely() {
+        let md = render_focus(
+            "Lattice-based signature aggregation",
+            "https://ethresear.ch/t/lattice-based-signature-aggregation/22282",
+        );
+
+        assert!(md.contains("以太坊研究社区提出基于格密码的签名聚合方案"));
+        assert!(md.contains("后量子密码的安全假设和以太坊验证成本"));
+        assert!(md.contains("签名大小、聚合开销、验证成本和安全假设"));
+        assert!(!md.contains("Lattice-based signature aggregation"));
+    }
+
+    #[test]
     fn section_item_prefers_canonical_official_source_label() {
         let item = ReportSection {
             title: "Opening up 'Zero-Knowledge Proof' technology".to_string(),
@@ -1400,8 +1433,8 @@ mod tests {
 
         let refs = build_refs_block(&report, &[item], 5);
 
-        assert!(refs.contains("Google Blog · 149 points"));
-        assert!(!refs.contains("Hacker News · 149 points"));
+        assert!(refs.contains("Google Blog"));
+        assert!(!refs.contains("Hacker News"));
     }
 
     #[test]
@@ -1559,7 +1592,7 @@ mod tests {
         assert!(refs.contains("## 05. 资料索引"));
         assert!(refs.contains(":::compact-links"));
         assert!(refs.contains("- 01 | used"));
-        assert!(refs.contains("· 10 points"));
+        assert!(!refs.contains("10 points"));
         assert!(refs.contains("｜已引 |"));
         assert!(refs.contains("https://example.com/used"));
         assert!(!refs.contains("> 原文：https://example.com/used"));
@@ -1609,6 +1642,20 @@ mod tests {
         );
         assert!(body.contains("OpenAI 发布首款自研芯片"));
         assert!(!body.contains("OpenAI unveils its first custom chip"));
+    }
+
+    #[test]
+    fn official_read_fallback_explains_gemini_agent_update_in_chinese() {
+        let read = ReportRead {
+            title: "Expanding Managed Agents in Gemini API".to_string(),
+            url: "https://blog.google/innovation-and-ai/technology/developers-tools/expanding-managed-agents-gemini-api/".to_string(),
+            summary: "Expanding Managed Agents 是官方发布，建议重点核对这次更新具体改了什么。".to_string(),
+        };
+
+        let rendered = render_reads_section(&[read], 4);
+
+        assert!(rendered.contains("Gemini API 的托管 Agent、后台任务和远程 MCP"));
+        assert!(!rendered.contains("Expanding Managed Agents 是官方发布"));
     }
 
     #[test]

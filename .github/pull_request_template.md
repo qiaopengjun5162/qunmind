@@ -30,3 +30,4 @@
 - 
 - If this PR changes daily-report readiness or diagnostics semantics, note whether each new condition is a hard blocker or only an empty-group fallback warning.
 - If this PR changes manual daily-report source routing, note whether `report_source` output changed and how `chat_id`-empty / `public_only` behavior is surfaced to operators.
+- If this PR changes daily-report candidate ranking or lint, note source-diversity effects and whether full raw URLs remain directly traceable.

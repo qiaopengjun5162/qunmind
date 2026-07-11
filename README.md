@@ -132,6 +132,7 @@ Correspondingly, it is **not** currently the best fit for:
 - WeChat daily-report titles are fixed as `AI · Web3 最新日报｜YYYY-MM-DD`; the daily angle moves into `digest`, the intro, and the focus block so the latest draft is easier to identify in the draft list.
 - WeChat daily reports render as a review-friendly article layout: intro, "today's three things", a practical focus callout, numbered AI / Web3 / technology-industry-policy / deep-read sections, compact body cards with "worth watching", source evidence, and raw original URLs, plus a small-font `compact-links` source index.
 - The generator now also hardens weak AI output in Rust: malformed JSON is repaired when possible, vague fallback phrases are replaced with more concrete traceability hints, and low-signal Reddit discussion items no longer dominate deep-read or technology body slots by default.
+- Candidate selection also caps the known feed types that otherwise crowd out the rest of the issue, while focus picks require a readable source summary or a clear Chinese title. Raw original URLs remain intact in the compact index; only the surrounding metadata is shortened for mobile reading.
 - The fixed visual direction for this WeChat daily-report line is documented in [docs/wechat-daily-visual-blueprint.md](docs/wechat-daily-visual-blueprint.md). The rule is to stabilize column identity, narrative order, and visual DNA first, while keeping image generation outside the main `QunMind` runtime.
 
 ## Quick Start

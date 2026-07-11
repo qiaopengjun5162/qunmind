@@ -71,7 +71,7 @@ const LOW_CONFIDENCE_PHRASES: [&str; 9] = [
     "建议打开原文核对",
 ];
 const ALLOWED_COMPACT_SECTIONS: [&str; 2] = ["### 正文引用来源", "### 补充阅读池"];
-const MAX_COMPACT_LINK_LINE_CHARS: usize = 160;
+const MAX_COMPACT_LINK_METADATA_CHARS: usize = 96;
 const MAX_SECTION_DOMAIN_SHARE: usize = 5;
 
 pub fn lint_daily_report_markdown(markdown: &str, output: &str) -> DailyReportLintResult {
@@ -481,11 +481,15 @@ fn lint_compact_links(markdown: &str, result: &mut DailyReportLintResult) {
                 format!("资料索引条目格式不够紧凑，建议保持单行索引：`{line}`。"),
             );
         }
-        if line.chars().count() > MAX_COMPACT_LINK_LINE_CHARS {
+        let metadata_len = line
+            .split_once("https://")
+            .map(|(metadata, _)| metadata.chars().count())
+            .unwrap_or_else(|| line.chars().count());
+        if metadata_len > MAX_COMPACT_LINK_METADATA_CHARS {
             result.push(
                 DailyReportLintSeverity::Warn,
                 "compact_links_row_too_long",
-                format!("资料索引单行过长，手机阅读会显得拥挤：`{line}`。"),
+                format!("资料索引链接前的元数据过长，手机阅读会显得拥挤：`{line}`。"),
             );
         }
     }
@@ -505,8 +509,9 @@ fn lint_bad_phrases(markdown: &str, result: &mut DailyReportLintResult) {
 
 fn lint_domain_concentration(markdown: &str, result: &mut DailyReportLintResult) {
     let body = markdown
-        .split("## 资料索引")
-        .next()
+        .find("\n## 资料索引")
+        .or_else(|| markdown.find("\n## 05. 资料索引"))
+        .map(|index| &markdown[..index])
         .unwrap_or(markdown)
         .split("## 继续交流")
         .next()
@@ -851,6 +856,22 @@ Cloudflare 把每个 Worker 的缓存边界做得更细了。
             lint.issues
                 .iter()
                 .any(|issue| issue.code == "compact_links_row_too_long")
+        );
+    }
+
+    #[test]
+    fn lint_excludes_numbered_reference_index_from_body_domain_counts() {
+        let markdown = good_markdown().replace(
+            "- 02 | Leanstral 1.5 | Mistral | 正文已引用，建议核对原文。 | https://mistral.ai/news/leanstral-1-5/",
+            "- 02 | Leanstral 1.5 | Mistral | 正文已引用，建议核对原文。 | https://mistral.ai/news/leanstral-1-5/\n- 03 | Cache notes | Cloudflare Blog | 补充入口 | https://blog.cloudflare.com/cache-notes/\n- 04 | Cache docs | Cloudflare Blog | 补充入口 | https://blog.cloudflare.com/cache-docs/\n- 05 | Cache API | Cloudflare Blog | 补充入口 | https://blog.cloudflare.com/cache-api/\n- 06 | Cache guide | Cloudflare Blog | 补充入口 | https://blog.cloudflare.com/cache-guide/\n- 07 | Cache limits | Cloudflare Blog | 补充入口 | https://blog.cloudflare.com/cache-limits/\n- 08 | Cache rollout | Cloudflare Blog | 补充入口 | https://blog.cloudflare.com/cache-rollout/",
+        );
+        let lint = lint_daily_report_markdown(&markdown, "wechat");
+
+        assert!(
+            !lint
+                .issues
+                .iter()
+                .any(|issue| issue.code == "body_domain_overconcentrated")
         );
     }
 
