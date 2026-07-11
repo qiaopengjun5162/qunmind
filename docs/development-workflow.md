@@ -100,3 +100,5 @@ The skill should include:
 - how to record visual work
 
 Avoid storing one-off task history in the skill; store reusable process knowledge only.
+
+External workflow packs such as `addyosmani/agent-skills` are reference material, not default dependencies. Reuse only the project-compatible practices: source-backed decisions, explicit failure triage, focused regression tests, and evidence-based release checks. Do not install their hooks, slash commands, or cross-model integrations into QunMind without a separate security review and an explicit product need.

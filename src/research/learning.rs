@@ -100,6 +100,15 @@ pub const LEARNING_RESOURCES: &[LearningResource] = &[
         url: None,
     },
     LearningResource {
+        title: "Agent Skills Engineering Workflow",
+        category: LearningResourceCategory::CodingAgents,
+        provider: "Addy Osmani",
+        focus: "参考上下文工程、源码驱动决策、故障恢复和发布前验证的可复用工程流程；不直接安装第三方 hooks、命令或跨模型 CLI",
+        format: LearningResourceFormat::Docs,
+        priority: 75,
+        url: Some("https://github.com/addyosmani/agent-skills"),
+    },
+    LearningResource {
         title: "AI Agent 入门",
         category: LearningResourceCategory::AgentFoundations,
         provider: "General agent intro",
@@ -329,6 +338,7 @@ mod tests {
             "Z.ai API 开发者文档",
             "Z.ai Coding Plan",
             "Claude Code 101",
+            "Agent Skills Engineering Workflow",
             "AI Agent 入门",
             "Microsoft AI Agents for Beginners",
             "OpenAI Agents SDK Intro",
@@ -387,6 +397,7 @@ mod tests {
             .collect::<Vec<_>>();
 
         assert!(titles.contains(&"Microsoft AI Agents for Beginners"));
+        assert!(titles.contains(&"Agent Skills Engineering Workflow"));
         assert!(titles.contains(&"OpenAI Agents SDK Intro"));
         assert!(titles.contains(&"LangGraph Overview"));
         assert!(titles.contains(&"Hermes Agent Docs"));
@@ -413,6 +424,7 @@ mod tests {
     #[test]
     fn finds_resources_with_normalized_titles() {
         let claude = resource("anthropic building with the claude api");
+        let agent_skills = resource("agent skills engineering workflow");
         let zread = resource("Zread AI OpenClaw Hermes");
         let wx_cli_skill = resource("wx-cli 的 AI Agent Skill 来了！让 AI 直接帮你管微信私域");
         let joyai = resource("joy ai vl interaction");
@@ -422,6 +434,14 @@ mod tests {
 
         assert_eq!(claude.provider, "Anthropic");
         assert_eq!(claude.category, LearningResourceCategory::ApiCalling);
+        assert_eq!(
+            agent_skills.category,
+            LearningResourceCategory::CodingAgents
+        );
+        assert_eq!(
+            agent_skills.url,
+            Some("https://github.com/addyosmani/agent-skills")
+        );
         assert_eq!(zread.category, LearningResourceCategory::HermesExecution);
         assert_eq!(
             wx_cli_skill.category,
