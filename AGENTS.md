@@ -97,6 +97,8 @@ Reddit 这类社区讨论来源也优先走 `PublicNewsSource` 边界。当前�
 
 `src/publisher.rs` 是日报发布边界。`QunMind` 负责“生成什么、何时发、目标是否 ready”；平台侧项目或适配器负责“按平台规则怎么发”。当前只落地了 `PublishTarget::WechatDraft`，通过本地 `moonpub` 推公众号草稿。后续即使接抖音、小红书，也优先新增 publisher target 或独立发布子系统，不把平台鉴权、素材渲染和风控逻辑塞回 scheduler。
 
+`yikart/AiToEarn` 可以作为未来独立内容发布服务的 MCP / 平台 provider 分层参考；不要把它的 OAuth、Relay、浏览器自动化、账号凭据、互动自动化或变现工作流并进 `QunMind`。只有多平台分发成为明确交付目标时，才在 `publisher` 边界外单独评估服务级集成。
+
 公众号日报的固定结尾现在属于 `src/daily_report/render.rs` 的生成边界：标准结尾与加群信息必须直接写进生成出的 markdown 尾部，保证 `daily-report --output`、MCP `report_markdown` 和真实发布看到的是同一份正文。不要再把“标准结尾 / 加群信息”交给微信后台模板步骤，也不要让 `moonpub` 模板介入日报主链路。
 
 公众号日报固定结尾的唯一标题是 `继续交流`，正文必须是固定多段标准模板，至少包含公众号「寻月隐君」、后台回复「加群」、信息整理 / 非投资建议提醒、回到「原文」链接核对，以及点赞 / 推荐 / 在看引导。这个标准结尾必须由 `assemble_markdown(...)` 放在全文最后；如果存在 `daily_quote`，也要先渲染 `今日一句`，再渲染 `继续交流`。不要再在 QunMind 生成层与 `moonpub` 模板之间维护两套结尾，也不要把结尾标题随意改回“关注与交流”等临时文案。

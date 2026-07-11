@@ -90,6 +90,22 @@ publisher boundary handles "how this target accepts the content".
 - Do not assume a stable general-purpose public publish API.
 - Treat as manual / semi-automatic / wait-for-official-API by default.
 
+## External Reference: AiToEarn
+
+[`yikart/AiToEarn`](https://github.com/yikart/AiToEarn) is an active MIT-licensed
+TypeScript content-marketing platform. Its useful reference is the separation
+between a content system and a platform-facing publish / account service:
+
+- MCP-facing channel operations
+- per-platform publish providers and readiness checks
+- asynchronous task-status handling around media work
+
+It is not a dependency or an implementation template for `QunMind`. Its OAuth,
+Relay, browser automation, account credentials, engagement automation, and
+monetization workflow belong outside this repository. If multi-platform
+delivery becomes a concrete product goal, evaluate it as a separate publisher
+service that receives reviewed report artifacts from `QunMind`.
+
 ## Near-Term Plan
 
 1. Keep `QunMind` publisher boundary narrow and testable.

@@ -1,5 +1,7 @@
 # Progress
 
+- 2026-07-11: **多平台发布参考收口** — 评估 `yikart/AiToEarn` 后，将其定位为未来独立 publisher service 的 MCP / 平台 provider 分层参考；不把 OAuth、Relay、账号凭据、浏览器互动自动化或内容变现逻辑并入 QunMind 主进程。
+
 - 2026-07-11: **日报确定性成稿** — 公众号手工日报、群消息成稿和定时公开来源回退现在统一直接走 Rust 固定配方，不再为每期调用 AI；素材仍按既有一手来源优先、去重、分类、焦点/深读选择、固定排版和 lint 收口。普通群内文字摘要继续保留 AI 边界。
 
 - 2026-07-11: **日报主题契约闭环** — `daily_report::render` 的固定 frontmatter 现在直接输出 `theme: notebook`，与发布前 lint 的硬约束对齐，避免生成稿遗漏主题后回退到 `moonpub.toml` 全局 `geek` 主题、再次出现黄色或样式漂移；对应配方测试已覆盖。
