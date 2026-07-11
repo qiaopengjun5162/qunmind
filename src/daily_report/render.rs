@@ -93,7 +93,7 @@ fn compute_title_digest(report: &ReportJson, items: &[PublicNewsItem]) -> (Strin
 
 fn render_frontmatter(title: &str, digest: &str, date: &str) -> String {
     format!(
-        "---\ntitle: \"{title}\"\ndigest: \"{digest}\"\ndate: {date}\ntags: [科技, AI, Web3, 开源]\nwechat_author: 寻月隐君\n---\n\n"
+        "---\ntitle: \"{title}\"\ndigest: \"{digest}\"\ndate: {date}\ntags: [科技, AI, Web3, 开源]\nwechat_author: 寻月隐君\ntheme: notebook\n---\n\n"
     )
 }
 
@@ -1084,6 +1084,7 @@ mod tests {
         assert!(md.contains("今日重点"));
         assert!(md.contains(":::intro\n今日重点\n:::"));
         assert!(md.contains(":::divider\nlabel: 今日速览\n:::"));
+        assert!(md.contains("theme: notebook"));
         assert!(md.contains("## 今日三件事"));
         assert!(md.contains(":::summary\n**先看焦点**"));
         assert!(md.contains(":::divider\nlabel: 主线\n:::"));

@@ -1,5 +1,7 @@
 # Progress
 
+- 2026-07-11: **日报主题契约闭环** — `daily_report::render` 的固定 frontmatter 现在直接输出 `theme: notebook`，与发布前 lint 的硬约束对齐，避免生成稿遗漏主题后回退到 `moonpub.toml` 全局 `geek` 主题、再次出现黄色或样式漂移；对应配方测试已覆盖。
+
 ## Snapshot
 
 ### Final Goal
