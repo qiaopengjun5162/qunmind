@@ -1,5 +1,7 @@
 # Progress
 
+- 2026-07-11: **DojoAgents Agent 架构参考** — 将 `Alpha-Dojo/DojoAgents` 纳入 `AgentFrameworks` 学习目录，吸收 Agent Loop / Gateway adapter / memory source / lazy Skills 的分层原则；明确不接入投资、量化、交易或 Python runtime，保持 QunMind 微信消息中枢边界。
+
 - 2026-07-11: **确定性日报新鲜度闸门** — 公开来源审核稿暴露出 6 月底文章混入当天正文的问题；确定性成稿现在会根据 `published_at` 或 URL 日历路径排除超过 4 天的明确旧材料，只有新鲜候选不足时才回退，避免再让人工逐次清理旧缓存内容。
 - 2026-07-11: **确定性摘要去模板化** — 英文快讯缺少可用中文摘要时，Rust fallback 现在必须输出具体中文主题与核对点；Robinhood AI Agent 案例已覆盖测试，避免“这条材料围绕”等系统味文案继续进入导语、正文和收束。
 - 2026-07-11: **政策快讯中文化** — 对标题本身可直接确认的美国加密政策动态，确定性 fallback 直接保留“民主党人要求参议院听证”的事实，不用泛化成“Web3相关主题”，并补回归测试。

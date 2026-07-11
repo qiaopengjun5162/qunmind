@@ -109,6 +109,8 @@
 - 引入过重的独立产品栈作为主进程依赖
 - 让微信消息收发能力依赖知识库在线状态
 
+`Alpha-Dojo/DojoAgents` 可作为 Agent 架构补充参考：它把通用 Agent Loop、平台 Gateway adapter、记忆 provider 和 Skills 分层。对 QunMind 可借鉴的是“工具循环不硬编码领域规则”“通道 adapter 只负责消息归一化与发送”“记忆不保存密钥且保留事实来源”“Skill 按目录懒加载”。不应接入其投资组合、量化分析、交易建议、截图识别或 Python runtime；这些都不属于微信群 AI 中枢的当前边界。
+
 ## Project Mapping
 
 项目里当前已经把这套工具目录沉淀在 `src/research/tools.rs`，并补了四条使用路径：

@@ -136,6 +136,15 @@ pub const LEARNING_RESOURCES: &[LearningResource] = &[
         url: None,
     },
     LearningResource {
+        title: "DojoAgents Architecture",
+        category: LearningResourceCategory::AgentFrameworks,
+        provider: "Alpha Dojo",
+        focus: "学习 Agent Loop、Gateway adapter、记忆来源约束与 Skill 懒加载的分层边界，不引入投资执行能力",
+        format: LearningResourceFormat::Docs,
+        priority: 115,
+        url: Some("https://github.com/Alpha-Dojo/DojoAgents"),
+    },
+    LearningResource {
         title: "Hermes Agent Docs",
         category: LearningResourceCategory::HermesExecution,
         provider: "Hermes",

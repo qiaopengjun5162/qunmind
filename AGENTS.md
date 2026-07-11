@@ -32,6 +32,8 @@
 
 `src/research/learning.rs` 维护 AI / Agent 学习资源目录，覆盖 LLM 基础、API 调用、coding agent、agent 框架、Hermes 执行层、微信 Agent Skill、Formal Methods 和 AI x Web3 参考。新增课程、文档、Prompt、Handbook、定理证明 / 形式化验证材料或微信私域 Agent 参考时先放进该目录，避免把学习资料直接耦合进微信消息处理链路。
 
+`Alpha-Dojo/DojoAgents` 仅作为 Agent 架构参考：可借鉴通用 Agent Loop 与领域 harness 分离、Gateway adapter、记忆来源约束和 Skill 懒加载；不要把其个人投资、量化分析、交易建议、截图识别或 Python runtime 并入 QunMind 主进程。
+
 多模态 / 视频语言交互类能力（例如 JoyAI-VL-Interaction）当前只作为学习与路线图参考，不直接并入 `QunMind` 主进程。优先把它们沉淀到 `research::learning` 和 `docs/multimodal-roadmap.md`，等后续单独 PoC 能稳定产出结构化事件后，再考虑通过 `PublicNewsSource`、`Connector` 或日报素材入口回接主项目。
 
 `src/diagnostic/` 目录维护 wx-cli 诊断和捕获消息重放的纯逻辑，当前拆成 `doctor`、`dry_run`、`formal_test`、`pipeline`、`support`；`main.rs` 只负责 CLI I/O、依赖初始化和命令编排。
