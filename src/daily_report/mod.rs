@@ -7,7 +7,7 @@ mod types;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
-use chrono::{DateTime, NaiveDate, Utc};
+use chrono::{DateTime, Datelike, NaiveDate, Utc};
 
 use crate::ai::{AiClient, ChatMessage};
 use crate::daily_report::types::{ReportJson, ReportRead, ReportSection};
@@ -132,21 +132,29 @@ fn fresh_deterministic_report_items(items: Vec<PublicNewsItem>) -> Vec<PublicNew
 }
 
 fn is_explicitly_stale_report_item(item: &PublicNewsItem) -> bool {
+    let today = Utc::now().date_naive();
+    if let Some(arxiv_date) = arxiv_date_from_url(&item.url)
+        && arxiv_date.year() == today.year()
+        && arxiv_date.month() == today.month()
+    {
+        return false;
+    }
+
     let Some(date) = report_item_date(item) else {
         return false;
     };
 
-    let age_days = Utc::now()
-        .date_naive()
-        .signed_duration_since(date)
-        .num_days();
+    let age_days = today.signed_duration_since(date).num_days();
     age_days > MAX_DETERMINISTIC_ITEM_AGE_DAYS
 }
 
 fn report_item_date(item: &PublicNewsItem) -> Option<NaiveDate> {
-    item.published_at
-        .as_deref()
-        .and_then(parse_report_item_date)
+    arxiv_date_from_url(&item.url)
+        .or_else(|| {
+            item.published_at
+                .as_deref()
+                .and_then(parse_report_item_date)
+        })
         .or_else(|| date_from_report_url(&item.url))
 }
 
@@ -158,6 +166,10 @@ fn parse_report_item_date(value: &str) -> Option<NaiveDate> {
 }
 
 fn date_from_report_url(url: &str) -> Option<NaiveDate> {
+    if let Some(date) = arxiv_date_from_url(url) {
+        return Some(date);
+    }
+
     let parts = url.split('/').collect::<Vec<_>>();
     parts.windows(3).find_map(|parts| {
         let year = parts[0].parse().ok()?;
@@ -165,6 +177,18 @@ fn date_from_report_url(url: &str) -> Option<NaiveDate> {
         let day = parts[2].parse().ok()?;
         NaiveDate::from_ymd_opt(year, month, day)
     })
+}
+
+fn arxiv_date_from_url(url: &str) -> Option<NaiveDate> {
+    let identifier = url.split("arxiv.org/abs/").nth(1)?;
+    let period = identifier.split('/').next()?.split('.').next()?;
+    if period.len() != 4 || !period.chars().all(|ch| ch.is_ascii_digit()) {
+        return None;
+    }
+
+    let year = 2000 + period[..2].parse::<i32>().ok()?;
+    let month = period[2..].parse::<u32>().ok()?;
+    NaiveDate::from_ymd_opt(year, month, 1)
 }
 
 fn enrich_report(
@@ -253,11 +277,13 @@ fn promote_web3_focus(report: &mut ReportJson, items: &[PublicNewsItem]) {
     let Some(primary) = report
         .web3_items
         .iter()
+        .filter(|item| section_is_focus_worthy(item, items))
         .max_by_key(|item| web3_section_priority(item, items))
         .cloned()
         .or_else(|| {
             fallback_web3_items(items)
                 .into_iter()
+                .filter(|item| section_is_focus_worthy(item, items))
                 .max_by_key(|item| web3_section_priority(item, items))
         })
     else {
@@ -286,6 +312,7 @@ fn promote_web3_focus(report: &mut ReportJson, items: &[PublicNewsItem]) {
     report.summary = fallback_web3_summary(report, items);
 
     if let Some(better_focus) = best_focus_candidate(items, &report.focus_url)
+        .filter(|item| !is_low_action_social_quote_item(item))
         && focus_theme_score(better_focus) >= focus_theme_score_item(&primary, items)
     {
         report.focus_text = focus_comment(better_focus);
@@ -300,12 +327,15 @@ fn refresh_focus_candidate(
 ) {
     if should_prioritize_web3(report, items)
         && current_focus_is_web3(report, items)
+        && current_focus_is_focus_worthy(report, items)
         && !focus_text_needs_upgrade(report.focus_text.trim())
     {
         return;
     }
 
     let Some(best_focus) = best_fresh_focus_candidate(items, &report.focus_url, recent_used_urls)
+        .filter(|item| !is_low_action_social_quote_item(item))
+        .or_else(|| best_web3_focus_fallback(items, recent_used_urls))
     else {
         return;
     };
@@ -321,6 +351,25 @@ fn refresh_focus_candidate(
     }
 }
 
+fn best_web3_focus_fallback<'a>(
+    items: &'a [PublicNewsItem],
+    recent_used_urls: &HashSet<String>,
+) -> Option<&'a PublicNewsItem> {
+    let select = |exclude_recent: bool| {
+        items
+            .iter()
+            .filter(|item| is_web3_item(item))
+            .filter(|item| !is_low_action_social_quote_item(item))
+            .filter(|item| !is_consumer_phishing_alert_item(item))
+            .filter(|item| !is_generic_market_wrap_item(item))
+            .filter(|item| !is_market_commentary_item(item))
+            .filter(|item| !exclude_recent || !recent_used_urls.contains(item.url.trim()))
+            .max_by_key(|item| web3_item_priority(item))
+    };
+
+    select(true).or_else(|| select(false))
+}
+
 fn current_focus_is_web3(report: &ReportJson, items: &[PublicNewsItem]) -> bool {
     if report
         .web3_items
@@ -334,6 +383,13 @@ fn current_focus_is_web3(report: &ReportJson, items: &[PublicNewsItem]) -> bool 
         .iter()
         .find(|item| item.url.trim() == report.focus_url.trim())
         .is_some_and(is_web3_item)
+}
+
+fn current_focus_is_focus_worthy(report: &ReportJson, items: &[PublicNewsItem]) -> bool {
+    items
+        .iter()
+        .find(|item| item.url.trim() == report.focus_url.trim())
+        .is_some_and(is_focus_worthy_item)
 }
 
 fn rebalance_sections(report: &mut ReportJson, items: &[PublicNewsItem]) {
@@ -831,6 +887,18 @@ fn fallback_comment(item: &PublicNewsItem) -> String {
         return "Robinhood 表示其 AI Agent 功能将很快支持加密资产用户，意味着这项能力正从现有交易场景延伸到加密交易；首批支持范围和上线节奏仍以官方说明为准。".to_string();
     }
 
+    if is_ethereum_pos_energy_study_item(item) {
+        return "剑桥研究将以太坊列在权益证明能耗强度较低的一档，提示比较链上能耗时需同时关注验证机制、硬件条件和统计口径。".to_string();
+    }
+
+    if is_robinhood_chain_explainer_item(item) {
+        return "Robinhood Chain 被介绍为面向代币化股票的以太坊 Layer 2 网络；重点应放在资产发行、交易结算和用户准入边界。".to_string();
+    }
+
+    if is_buidl_avalanche_growth_item(item) {
+        return "BUIDL 在 Avalanche 链上规模突破 9 亿美元、一周增长 105%，说明代币化基金在多链部署上的增量资金值得跟踪；关键是新增规模来自哪些资产和参与机构。".to_string();
+    }
+
     if contains_useful_chinese_text(item.title.trim()) {
         return format!(
             "{}；建议核对原文中的参与方、时间口径和后续影响。",
@@ -966,6 +1034,20 @@ fn chinese_topic_label(item: &PublicNewsItem) -> String {
     }
     if has_robinhood_ai_agent_story_signal(&haystack) {
         return "Robinhood 计划把 AI Agent 扩展到加密交易者".to_string();
+    }
+    if has_ethereum_pos_energy_study_signal(&haystack) {
+        return "以太坊 PoS 能耗强度研究".to_string();
+    }
+    if haystack.contains("billions of sketches") && haystack.contains("cultural variation") {
+        return "跨文化概念理解的规模化素描研究".to_string();
+    }
+    if haystack.contains("slorr") || haystack.contains("low-rank regularization") {
+        return "训练阶段的低秩正则化方法".to_string();
+    }
+    if haystack.contains("autopilot vqa")
+        || (haystack.contains("dashcam") && haystack.contains("incident"))
+    {
+        return "面向行车事故场景的视觉语言模型评测".to_string();
     }
     if haystack.contains("democrats")
         && haystack.contains("senate")
@@ -1701,6 +1783,50 @@ fn has_robinhood_ai_agent_story_signal(haystack: &str) -> bool {
     haystack.contains("robinhood")
         && contains_any_text(haystack, &["ai agent", "ai agents", "ai代理", "ai 代理"])
         && contains_any_text(haystack, &["crypto", "web3", "加密", "交易"])
+}
+
+fn is_ethereum_pos_energy_study_item(item: &PublicNewsItem) -> bool {
+    let haystack = format!(
+        "{} {} {} {}",
+        item.source,
+        item.title,
+        item.url,
+        item.summary.as_deref().unwrap_or("")
+    )
+    .to_lowercase();
+    has_ethereum_pos_energy_study_signal(&haystack)
+}
+
+fn has_ethereum_pos_energy_study_signal(haystack: &str) -> bool {
+    haystack.contains("ethereum")
+        && contains_any_text(haystack, &["pos", "proof of stake"])
+        && haystack.contains("energy")
+        && haystack.contains("cambridge")
+}
+
+fn is_robinhood_chain_explainer_item(item: &PublicNewsItem) -> bool {
+    let haystack = format!(
+        "{} {} {} {}",
+        item.source,
+        item.title,
+        item.url,
+        item.summary.as_deref().unwrap_or("")
+    )
+    .to_lowercase();
+    haystack.contains("robinhood chain")
+        && contains_any_text(&haystack, &["layer-2", "layer 2", "ethereum"])
+}
+
+fn is_buidl_avalanche_growth_item(item: &PublicNewsItem) -> bool {
+    let haystack = format!(
+        "{} {} {} {}",
+        item.source,
+        item.title,
+        item.url,
+        item.summary.as_deref().unwrap_or("")
+    )
+    .to_lowercase();
+    haystack.contains("buidl") && haystack.contains("avalanche") && haystack.contains("9 亿")
 }
 
 fn normalize_story_text(value: &str) -> String {
@@ -3528,12 +3654,20 @@ fn best_fresh_focus_candidate<'a>(
 
 fn is_focus_worthy_item(item: &PublicNewsItem) -> bool {
     !is_consumer_phishing_alert_item(item)
+        && !is_low_action_social_quote_item(item)
         && !is_generic_market_wrap_item(item)
         && !is_roundup_style_item(item)
         && !is_brief_news_style_item(item)
         && !is_market_commentary_item(item)
         && (is_web3_item(item) || is_ai_item(item) || is_fresh_tech_candidate(item))
         && is_article_like_item(item)
+}
+
+fn section_is_focus_worthy(item: &ReportSection, items: &[PublicNewsItem]) -> bool {
+    items
+        .iter()
+        .find(|source_item| source_item.url == item.url)
+        .is_some_and(is_focus_worthy_item)
 }
 
 fn focus_candidate_has_readable_summary(item: &PublicNewsItem) -> bool {
@@ -3748,6 +3882,10 @@ fn summary_topic(value: &str, max_chars: usize) -> String {
 
 fn section_summary_topic(item: &ReportSection, items: &[PublicNewsItem]) -> String {
     let title = item.title.trim();
+    let lower = format!("{} {}", title, item.comment).to_lowercase();
+    if lower.contains("buidl") && lower.contains("avalanche") {
+        return "BUIDL 在 Avalanche 链上规模突破 9 亿美元".to_string();
+    }
     if title_has_ascii_signal(title) {
         let topic = title
             .split_once(':')
@@ -3823,6 +3961,40 @@ fn is_market_commentary_item(item: &PublicNewsItem) -> bool {
     );
 
     mentions_price_call && mentions_market_assets
+}
+
+fn is_low_action_social_quote_item(item: &PublicNewsItem) -> bool {
+    let haystack = format!(
+        "{} {} {} {}",
+        item.source,
+        item.title,
+        item.url,
+        item.summary.as_deref().unwrap_or("")
+    )
+    .to_lowercase();
+
+    let is_social_quote = contains_any_text(&haystack, &["x平台", "x.com", "发文表示", "发文称"])
+        && contains_any_text(&haystack, &["表示", "认为", "强调", "称"]);
+    let has_concrete_action = contains_any_text(
+        &haystack,
+        &[
+            "launch",
+            "launched",
+            "announce",
+            "announced",
+            "partnership",
+            "上线",
+            "发布",
+            "宣布",
+            "合作",
+            "提案",
+            "升级",
+            "漏洞",
+            "安全事件",
+        ],
+    );
+
+    is_social_quote && !has_concrete_action
 }
 
 fn natural_excerpt(value: &str, max_chars: usize) -> String {
@@ -4324,6 +4496,37 @@ mod tests {
                 .iter()
                 .all(|item| !item.url.contains("/2026/01/01/"))
         );
+    }
+
+    #[test]
+    fn deterministic_candidates_drop_old_arxiv_identifiers() {
+        let today = Utc::now().date_naive();
+        let mut stale = test_item("old arxiv", Some(100));
+        stale.url = "https://arxiv.org/abs/1203.5426".to_string();
+        assert_eq!(
+            arxiv_date_from_url(&stale.url),
+            NaiveDate::from_ymd_opt(2012, 3, 1)
+        );
+        assert!(is_explicitly_stale_report_item(&stale));
+
+        let fresh = (0..3)
+            .map(|index| {
+                let mut item = test_item(&format!("fresh-{index}"), Some(90 - index));
+                item.url = format!(
+                    "https://arxiv.org/abs/{:02}{:02}.{:05}",
+                    today.year() - 2000,
+                    today.month(),
+                    index
+                );
+                item
+            })
+            .collect::<Vec<_>>();
+
+        let selected =
+            fresh_deterministic_report_items(std::iter::once(stale).chain(fresh).collect());
+
+        assert_eq!(selected.len(), 3);
+        assert!(selected.iter().all(|item| !item.url.contains("1203.5426")));
     }
 
     #[tokio::test]
@@ -7306,6 +7509,20 @@ mod tests {
             section_summary_topic(&whir, &[]),
             "EVM Verification of WHIR"
         );
+
+        let buidl = ReportSection {
+            title: "BUIDL 在 Avalanche 链上规模突破 9 亿美元，一周增长 105%".to_string(),
+            url: "https://example.com/buidl".to_string(),
+            comment: "BUIDL 在 Avalanche 链上规模突破 9 亿美元、一周增长 105%。".to_string(),
+            source: "吴说区块链".to_string(),
+            points: 120,
+            subsection: String::new(),
+        };
+
+        assert_eq!(
+            section_summary_topic(&buidl, &[]),
+            "BUIDL 在 Avalanche 链上规模突破 9 亿美元"
+        );
     }
 
     #[test]
@@ -8939,6 +9156,28 @@ mod tests {
     }
 
     #[test]
+    fn fallback_comment_humanizes_ethereum_energy_study() {
+        let item = PublicNewsItem {
+            source: "Cointelegraph".to_string(),
+            title: "Cambridge study puts Ethereum near the lower end of PoS energy intensity"
+                .to_string(),
+            url: "https://cointelegraph.com/news/ethereum-pos-energy-intensity-cambridge-study"
+                .to_string(),
+            summary: None,
+            author: None,
+            published_at: Some("2026-07-12T08:00:00Z".to_string()),
+            score: Some(120),
+            comments: None,
+            ai_score: None,
+            category: Some("web3_media".to_string()),
+        };
+
+        let comment = fallback_comment(&item);
+        assert!(comment.contains("剑桥研究将以太坊列在权益证明能耗强度较低的一档"));
+        assert!(!comment.contains("建议打开原文核对"));
+    }
+
+    #[test]
     fn web3_section_dedup_keeps_the_chinese_robinhood_agent_report() {
         let panews = PublicNewsItem {
             source: "PANews".to_string(),
@@ -9030,6 +9269,106 @@ mod tests {
         assert!(is_consumer_phishing_alert_item(&item));
         assert!(!is_tech_worthy_item(&item));
         assert!(!is_focus_worthy_item(&item));
+    }
+
+    #[test]
+    fn low_action_social_quotes_do_not_become_daily_focus() {
+        let item = PublicNewsItem {
+            source: "PANews".to_string(),
+            title: "Michael Saylor：比特币是不断演化的网络体系".to_string(),
+            url: "https://www.panewslab.com/zh/articles/saylor-quote".to_string(),
+            summary: Some(
+                "Michael Saylor在X平台发文表示，比特币的钱包、节点与矿工各有不同影响力。"
+                    .to_string(),
+            ),
+            author: None,
+            published_at: Some("2026-07-12T08:00:00Z".to_string()),
+            score: Some(120),
+            comments: None,
+            ai_score: None,
+            category: Some("web3_media".to_string()),
+        };
+
+        assert!(is_low_action_social_quote_item(&item));
+        assert!(!is_focus_worthy_item(&item));
+    }
+
+    #[test]
+    fn focus_selection_prefers_structural_event_over_social_quote() {
+        let quote = PublicNewsItem {
+            source: "PANews".to_string(),
+            title: "Michael Saylor：比特币是不断演化的网络体系".to_string(),
+            url: "https://www.panewslab.com/zh/articles/saylor-quote".to_string(),
+            summary: Some("Michael Saylor在X平台发文表示，比特币仍在持续演化。".to_string()),
+            author: None,
+            published_at: Some("2026-07-12T08:00:00Z".to_string()),
+            score: Some(120),
+            comments: None,
+            ai_score: None,
+            category: Some("web3_media".to_string()),
+        };
+        let structural_event = PublicNewsItem {
+            source: "吴说区块链".to_string(),
+            title: "BUIDL 在 Avalanche 链上规模突破 9 亿美元，一周增长 105%".to_string(),
+            url: "https://www.wublock123.com/news/buidl-avalanche-growth".to_string(),
+            summary: Some("BUIDL 在 Avalanche 链上规模突破 9 亿美元，一周增长 105%。".to_string()),
+            author: None,
+            published_at: Some("2026-07-12T08:00:00Z".to_string()),
+            score: Some(120),
+            comments: None,
+            ai_score: None,
+            category: Some("web3_media".to_string()),
+        };
+        let items = vec![quote, structural_event.clone()];
+
+        assert!(is_focus_worthy_item(&structural_event));
+        assert_eq!(
+            best_focus_candidate(&items, "").map(|item| item.url.as_str()),
+            Some(structural_event.url.as_str())
+        );
+        assert_eq!(
+            best_web3_focus_fallback(&items, &HashSet::new()).map(|item| item.url.as_str()),
+            Some(structural_event.url.as_str())
+        );
+    }
+
+    #[test]
+    fn fallback_comment_humanizes_robinhood_chain_explainer() {
+        let item = PublicNewsItem {
+            source: "Decrypt".to_string(),
+            title: "What Is Robinhood Chain? The Ethereum Layer-2 Network".to_string(),
+            url: "https://decrypt.co/resources/what-robinhood-chain-ethereum-layer-2-network"
+                .to_string(),
+            summary: None,
+            author: None,
+            published_at: Some("2026-07-12T08:00:00Z".to_string()),
+            score: Some(120),
+            comments: None,
+            ai_score: None,
+            category: Some("web3_media".to_string()),
+        };
+
+        assert!(fallback_comment(&item).contains("代币化股票的以太坊 Layer 2 网络"));
+    }
+
+    #[test]
+    fn fallback_comment_humanizes_buidl_avalanche_growth() {
+        let item = PublicNewsItem {
+            source: "吴说区块链".to_string(),
+            title: "BUIDL 在 Avalanche 链上规模突破 9 亿美元，一周增长 105%".to_string(),
+            url: "https://www.wublock123.com/news/buidl-avalanche-growth".to_string(),
+            summary: None,
+            author: None,
+            published_at: Some("2026-07-12T08:00:00Z".to_string()),
+            score: Some(120),
+            comments: None,
+            ai_score: None,
+            category: Some("web3_media".to_string()),
+        };
+
+        let comment = fallback_comment(&item);
+        assert!(comment.contains("代币化基金在多链部署上的增量资金值得跟踪"));
+        assert!(!comment.contains("建议核对原文中的参与方"));
     }
 
     #[test]
