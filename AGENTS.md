@@ -125,6 +125,8 @@ Reddit 这类社区讨论来源也优先走 `PublicNewsSource` 边界。当前�
 如果微信公众号发布命中 `errcode=40164 invalid ip`，先区分是 `QunMind` 侧还是 `moonpub` 侧的问题。当前本地 `moonpub` 原版 `src/wechat.rs` 默认用 `ureq` 直连微信 API，不会自动继承 shell 里设置的代理语义；需要显式在 `moonpub` 微信客户端里接入 `HTTP_PROXY` / `HTTPS_PROXY` / `ALL_PROXY` 环境变量，修复后微信侧看到的出口 IP 会改变。若出口 IP 已变化但仍未进白名单，说明剩余阻塞纯粹是公众号后台白名单，而不是代码没走代理。
 如果已经关闭透明代理 / TUN / Warp / Clash / EasyConnect 一类网络接管，并且微信连续两次以上都返回同一个稳定出口 IP 的 `errcode=40164 invalid ip`，就不要再回头怀疑正文、lint、slug、`moonpub push --render` 或代理是否生效。此时应直接把问题归类为“公众号后台 API 白名单未生效、加错位置或尚未保存成功”的外部阻塞；后续排查重点是核对白名单页面、等待生效，或让操作者重新确认添加的就是微信 OpenAPI 看到的那个 IP。
 
+`QUNMIND_PUBLISH_PROXY` 不再只是 `report-network-status` 的诊断输入；设置后，`src/publisher.rs` 必须把它显式转发为所有 `moonpub` 子进程的 `HTTP_PROXY` / `HTTPS_PROXY` / `ALL_PROXY` 及小写同名变量，覆盖手工推送、定时推送和后台辅助命令。未设置时继续继承调用者环境，不要擅自修改 macOS、Mihomo 或 Clash 全局代理配置。
+
 参考 `mcncarl/yichen-skills` 时，只借鉴“私密状态外置、浏览器/平台自动化隔离、结构化诊断先行”的边界，不要把它当成 Mihomo / Clash 的现成实现。Mihomo、Clash Verge、HTTP 代理和微信 OpenAPI 出口 IP 属于本机发布运维诊断，优先沉淀到 `docs/local-publisher-network-diagnostics.md` 这种只读/可脱敏的诊断方案里；不要把 Clash profile、订阅 URL、节点密码、cookies、微信数据库密钥或本机绝对私密路径提交进仓库，也不要让日报生成逻辑直接依赖或修改代理配置。
 
 `src/daily_report/` 当前除了“模型生成正文”之外，还承担一层质量兜底：如果 AI 返回的 JSON 非法、字段过空、板块误分或摘要质量过低，优先在 Rust 侧补齐非空板块、修正 AI/Web3/技术分类、过滤低信号条目，并把链接区分为“正文实际引用的参考来源”和“未写入正文但来自本次素材池的完整素材链接”。后续继续优化日报质量时，优先沿这条“AI 生成 + Rust 兜底收敛”边界演进，不要把容错逻辑散回 CLI、scheduler 或 publisher。

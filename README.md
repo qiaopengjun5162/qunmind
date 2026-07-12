@@ -446,7 +446,7 @@ For local publisher network issues, keep proxy and Mihomo / Clash handling as an
 cargo run -- --config config.toml report-network-status --report-name '微信公众号日报'
 ```
 
-Optional environment variables for this diagnostic are `QUNMIND_PUBLISH_PROXY`, `MIHOMO_CONTROLLER`, and `MIHOMO_SECRET`; the JSON output only reports whether sensitive values are set and redacts credentials from URLs.
+Optional environment variables for this diagnostic are `QUNMIND_PUBLISH_PROXY`, `MIHOMO_CONTROLLER`, and `MIHOMO_SECRET`; the JSON output only reports whether sensitive values are set and redacts credentials from URLs. When `QUNMIND_PUBLISH_PROXY` is set, QunMind forwards it as the standard HTTP(S) proxy variables to every `moonpub` child process, so scheduled and manual pushes use the same deliberate egress path instead of depending on the caller shell environment.
 
 For MCP/agent callers, the same payload now also includes `recommended_tool_calls`. This is the structured counterpart to shell commands: when a target is `ready_for_first_publish`, the status response can now directly point an agent to `report_markdown`, `report_publish`, and `publish_history`; when a recent receipt still says `automation_state = "login_required"`, it can directly point the agent to `report_recover_automation` and `publish_history` instead of forcing it to parse shell text first.
 

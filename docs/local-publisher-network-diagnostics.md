@@ -17,6 +17,13 @@ implementation. The relevant direction for QunMind is:
 For QunMind, this translates into a small diagnostic boundary around the
 `QunMind -> moonpub -> WeChat OpenAPI` path.
 
+`QUNMIND_PUBLISH_PROXY` is the explicit handoff setting for that path. When it
+is set, QunMind forwards the URL to every `moonpub` child process through the
+standard uppercase and lowercase HTTP(S) proxy variables. This keeps manual,
+scheduled, and recovery commands on the same chosen route without modifying
+macOS, Mihomo, or Clash state. When it is unset, QunMind preserves the caller's
+inherited proxy environment.
+
 ## What To Diagnose
 
 When WeChat returns `errcode=40164 invalid ip`, the first question is no longer

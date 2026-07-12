@@ -465,7 +465,7 @@ just report-preview config.toml '微信公众号日报' 'true' 'true'
 cargo run -- --config config.toml report-network-status --report-name '微信公众号日报'
 ```
 
-这条命令默认不修改 Clash / Mihomo profile，也不会输出订阅 URL、节点密码或 controller secret。可选环境变量是 `QUNMIND_PUBLISH_PROXY`、`MIHOMO_CONTROLLER` 和 `MIHOMO_SECRET`；输出里只显示敏感值是否已设置，并对 URL 凭据做脱敏。具体边界见 `docs/local-publisher-network-diagnostics.md`。
+这条命令默认不修改 Clash / Mihomo profile，也不会输出订阅 URL、节点密码或 controller secret。可选环境变量是 `QUNMIND_PUBLISH_PROXY`、`MIHOMO_CONTROLLER` 和 `MIHOMO_SECRET`；输出里只显示敏感值是否已设置，并对 URL 凭据做脱敏。设置 `QUNMIND_PUBLISH_PROXY` 后，QunMind 会把它转发为 `moonpub` 子进程的标准 HTTP(S) 代理变量，让手工和定时推送走同一个明确出口，而不依赖启动 shell 恰好带有代理变量。具体边界见 `docs/local-publisher-network-diagnostics.md`。
 
 对 MCP / Agent 调用方，现在同一个状态结果里还会继续附带 `recommended_tool_calls`。它是 shell 命令提示的结构化版本：例如目标处于 `ready_for_first_publish` 时，Agent 已经可以直接顺着状态结果去调 `report_markdown`、`report_publish` 和 `publish_history`；最近回执仍是 `automation_state = "login_required"` 时，也可以直接去调 `report_recover_automation` 和 `publish_history`，不需要再自己从命令字符串里反推下一步。
 
