@@ -3655,12 +3655,29 @@ fn best_fresh_focus_candidate<'a>(
 fn is_focus_worthy_item(item: &PublicNewsItem) -> bool {
     !is_consumer_phishing_alert_item(item)
         && !is_low_action_social_quote_item(item)
+        && !is_reference_resource_item(item)
         && !is_generic_market_wrap_item(item)
         && !is_roundup_style_item(item)
         && !is_brief_news_style_item(item)
         && !is_market_commentary_item(item)
         && (is_web3_item(item) || is_ai_item(item) || is_fresh_tech_candidate(item))
         && is_article_like_item(item)
+}
+
+fn is_reference_resource_item(item: &PublicNewsItem) -> bool {
+    let title = item.title.to_lowercase();
+    let url = item.url.to_lowercase();
+
+    contains_any_text(
+        &title,
+        &[
+            "资源库",
+            "开发者资源",
+            "developer resource",
+            "developer documentation",
+            "官方开发文档",
+        ],
+    ) || (url.contains("docs.") && title.contains("文档"))
 }
 
 fn section_is_focus_worthy(item: &ReportSection, items: &[PublicNewsItem]) -> bool {
@@ -9291,6 +9308,41 @@ mod tests {
 
         assert!(is_low_action_social_quote_item(&item));
         assert!(!is_focus_worthy_item(&item));
+    }
+
+    #[test]
+    fn reference_resources_do_not_displace_actual_release_from_focus() {
+        let documentation = PublicNewsItem {
+            source: "Starknet Docs".to_string(),
+            title: "Starknet 官方开发文档".to_string(),
+            url: "https://docs.starknet.io/".to_string(),
+            summary: Some("Cairo、账户抽象和合约开发的参考入口。".to_string()),
+            author: None,
+            published_at: None,
+            score: Some(1200),
+            comments: None,
+            ai_score: None,
+            category: Some("manual:web3".to_string()),
+        };
+        let release = PublicNewsItem {
+            source: "Foresight News".to_string(),
+            title: "Starknet v0.14.3 主网升级，区块时间缩短至 1.5 秒".to_string(),
+            url: "https://example.com/starknet-release".to_string(),
+            summary: Some("v0.14.3 已上线主网，区块时间从 2 秒缩短至 1.5 秒。".to_string()),
+            author: None,
+            published_at: Some("2026-07-13T08:00:00Z".to_string()),
+            score: Some(1500),
+            comments: None,
+            ai_score: None,
+            category: Some("manual:web3".to_string()),
+        };
+        let items = vec![documentation, release.clone()];
+
+        assert!(!is_focus_worthy_item(&items[0]));
+        assert_eq!(
+            best_focus_candidate(&items, "").map(|item| item.url.as_str()),
+            Some(release.url.as_str())
+        );
     }
 
     #[test]
