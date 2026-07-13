@@ -8,8 +8,6 @@ const MAX_REFERENCE_ITEMS: usize = 15;
 const MAX_SOURCE_LINK_ITEMS: usize = 8;
 const COMPACT_REF_TITLE_CHARS: usize = 12;
 const COMPACT_REF_SOURCE_CHARS: usize = 20;
-const OVERVIEW_FOCUS_PREVIEW_CHARS: usize = 34;
-const OVERVIEW_PRIORITY_PREVIEW_CHARS: usize = 22;
 const REPORT_OUTRO_TITLE: &str = "继续交流";
 const REPORT_OUTRO_BODY: &str = "这里是公众号「寻月隐君」的 AI · Web3 最新日报。每天筛选公开信息、官方资料和一手链接，帮你快速看到值得继续追踪的技术与行业动态。\n\n想加入读者交流群，可以在公众号后台回复「加群」获取最新方式。二维码或入口如有更新，也以后台回复为准。\n\n本文只做信息整理，不构成投资建议；重要判断请回到文中的「原文」链接继续核对。\n\n如果这份日报对你有帮助，欢迎点赞、推荐给朋友，或者点个「在看」。";
 
@@ -26,7 +24,6 @@ pub(super) fn assemble_markdown(
     if !report.intro.is_empty() {
         md.push_str(&render_intro(&report.intro));
     }
-    md.push_str(&render_overview(report));
     if !report.focus_text.is_empty() {
         md.push_str(&render_focus(&report.focus_text, &report.focus_url));
     }
@@ -58,10 +55,6 @@ pub(super) fn assemble_markdown(
         md.push_str(&render_reads_section(&report.reads, section_index));
         section_index += 1;
     }
-    if let Some(summary) = render_summary(report) {
-        md.push_str(&render_summary_section(&summary));
-    }
-
     md.push_str(&build_refs_block(report, items, section_index));
     if !daily_quote.trim().is_empty() {
         md.push_str(&format!("\n## 今日一句\n\n> {}\n", daily_quote.trim()));
@@ -125,94 +118,12 @@ fn render_focus(text: &str, url: &str) -> String {
     }
 }
 
-fn render_overview(report: &ReportJson) -> String {
-    let mut lines = Vec::new();
-
-    if !report.focus_text.trim().is_empty() {
-        let focus = humanize_focus_text(&report.focus_text);
-        lines.push(format!(
-            "**先看焦点**：{}，原文与解读见下方“今日焦点”。",
-            ensure_sentence_end(&truncate_str(
-                trim_sentence_end(&sanitize(&focus)),
-                OVERVIEW_FOCUS_PREVIEW_CHARS
-            ))
-        ));
-    }
-
-    let priorities = top_priority_lines(report);
-    if !priorities.is_empty() {
-        lines.push(format!("**再看这几条**：{}。", priorities.join("；")));
-    }
-
-    let mut counts = Vec::new();
-    if !report.ai_items.is_empty() {
-        counts.push(format!("AI {} 条", report.ai_items.len()));
-    }
-    if !report.web3_items.is_empty() {
-        counts.push(format!("Web3 {} 条", report.web3_items.len()));
-    }
-    if !report.tech_items.is_empty() {
-        counts.push(format!("技术 {} 条", report.tech_items.len()));
-    }
-    if !report.reads.is_empty() {
-        counts.push(format!("深读 {} 篇", report.reads.len()));
-    }
-    if !counts.is_empty() {
-        lines.push(format!(
-            "**正文怎么读**：{}，每个板块只保留少量高信号条目；没进正文的内容统一放到文末资料索引。",
-            counts.join(" / ")
-        ));
-    }
-
-    if lines.is_empty() {
-        return String::new();
-    }
-
-    lines.push(
-        "**最后看链接区**：文末的“正文引用来源”是核对入口，“补充阅读池”用来留档今天没写进正文但仍值得继续挖的材料。".to_string(),
-    );
-
-    format!(
-        ":::divider\nlabel: 今日速览\n:::\n\n## 今日三件事\n\n:::summary\n{}\n:::\n\n",
-        lines.join("\n\n")
-    )
-}
-
-fn top_priority_lines(report: &ReportJson) -> Vec<String> {
-    let mut lines = Vec::new();
-
-    if let Some(item) = report.ai_items.first() {
-        lines.push(format!("AI 先看 {}", priority_preview_text(item)));
-    }
-    if let Some(item) = report.web3_items.first() {
-        lines.push(format!("Web3 先看 {}", priority_preview_text(item)));
-    }
-    if let Some(item) = report.tech_items.first() {
-        lines.push(format!("产业/政策先看 {}", priority_preview_text(item)));
-    }
-
-    lines
-}
-
-fn priority_preview_text(item: &ReportSection) -> String {
-    let candidate = if !item.comment.trim().is_empty() {
-        trim_sentence_end(&sanitize(item.comment.trim())).to_string()
-    } else {
-        sanitize(item.title.trim())
-    };
-
-    truncate_str(candidate.trim(), OVERVIEW_PRIORITY_PREVIEW_CHARS)
-}
-
 fn render_ai_section(items: &[ReportSection], signals: &[String], section_index: usize) -> String {
     if items.is_empty() && signals.is_empty() {
         return String::new();
     }
 
-    let mut s = format!(
-        "## {:02}. AI 前沿\n\n聚焦模型、Agent、工作流与研究进展，优先保留今天更值得追踪的原始材料。\n\n",
-        section_index
-    );
+    let mut s = format!("## {:02}. AI 前沿\n\n", section_index);
 
     for sub in &AI_SUBSECTIONS {
         let matched: Vec<_> = items
@@ -264,10 +175,7 @@ fn render_web3_section(items: &[ReportSection], section_index: usize) -> String 
         return String::new();
     }
 
-    let mut s = format!(
-        "## {:02}. Web3\n\n这里优先保留真正值得跟进的机构动作、协议变化与监管进展，不把泛行情快讯塞进正文。\n\n",
-        section_index
-    );
+    let mut s = format!("## {:02}. Web3\n\n", section_index);
     for item in items {
         if let Some(rendered) = format_section_item(item, "Web3") {
             s.push_str(&rendered);
@@ -290,10 +198,7 @@ fn render_tech_section(
         return String::new();
     }
 
-    let mut s = format!(
-        "## {:02}. 技术、产业与政策\n\n这里主要回答两个问题：今天有哪些值得继续跟踪的基础设施变化，以及哪些全球官方信号会影响接下来的行业判断。\n\n",
-        section_index
-    );
+    let mut s = format!("## {:02}. 技术、产业与政策\n\n", section_index);
     for rendered in rendered_items {
         s.push_str(&rendered);
     }
@@ -308,10 +213,7 @@ fn render_tech_section(
 }
 
 fn render_reads_section(reads: &[ReportRead], section_index: usize) -> String {
-    let mut s = format!(
-        "## {:02}. 推荐深读\n\n如果你今天只打算额外打开 2 到 3 篇原文，就优先从这里开始。这里只放更像文章、论文或官方说明的材料。\n\n",
-        section_index
-    );
+    let mut s = format!("## {:02}. 推荐深读\n\n", section_index);
     for (index, read) in reads.iter().enumerate() {
         s.push_str(&format!(
             "### 深读 {:02}｜{}\n\n",
@@ -847,46 +749,6 @@ fn compact_read_title(value: &str, max_chars: usize) -> String {
         + "…"
 }
 
-fn render_summary(report: &ReportJson) -> Option<String> {
-    let summary = sanitize(strip_focus_artifacts(report.summary.trim()).trim());
-    if is_useful_chinese_summary(&summary) {
-        return Some(summary);
-    }
-
-    let mut titles = Vec::new();
-    if let Some(item) = report.ai_items.first()
-        && let Some(text) = summary_item_text(item)
-    {
-        titles.push(format!("AI：{text}"));
-    }
-    if let Some(item) = report.web3_items.first()
-        && let Some(text) = summary_item_text(item)
-    {
-        titles.push(format!("Web3：{text}"));
-    }
-    if let Some(item) = report.tech_items.first()
-        && let Some(text) = summary_item_text(item)
-    {
-        titles.push(format!("技术：{text}"));
-    }
-
-    if titles.is_empty() {
-        return None;
-    }
-
-    Some(format!(
-        "本期建议优先阅读{}。如果某条说明偏简洁，请直接结合对应原文链接继续核对。",
-        titles.join("、")
-    ))
-}
-
-fn render_summary_section(summary: &str) -> String {
-    format!(
-        "## 今日收束\n\n:::intro\n{}\n:::\n\n",
-        sanitize(summary.trim())
-    )
-}
-
 fn render_outro_section() -> String {
     format!(
         "\n## {}\n\n:::closing-card label=\"寻月隐君\"\n{}\n:::\n\n",
@@ -936,24 +798,6 @@ fn is_useful_chinese_summary(summary: &str) -> bool {
         .filter(|ch| matches!(*ch, '\u{4e00}'..='\u{9fff}'))
         .count();
     chinese_chars >= 8
-}
-
-fn summary_item_text(item: &ReportSection) -> Option<String> {
-    let comment = sanitize(item.comment.trim());
-    if is_useful_chinese_summary(&comment) {
-        return Some(trim_sentence_end(&comment).to_string());
-    }
-
-    let title = sanitize(item.title.trim());
-    if is_useful_chinese_summary(&title) {
-        return Some(trim_sentence_end(&title).to_string());
-    }
-
-    None
-}
-
-fn trim_sentence_end(value: &str) -> &str {
-    value.trim_end_matches(['。', '！', '？', '!', '?', '.'])
 }
 
 fn has_ascii_ellipsis_fragment(value: &str) -> bool {
@@ -1083,22 +927,20 @@ mod tests {
         );
         assert!(md.contains("今日重点"));
         assert!(md.contains(":::intro\n今日重点\n:::"));
-        assert!(md.contains(":::divider\nlabel: 今日速览\n:::"));
         assert!(md.contains("theme: notebook"));
-        assert!(md.contains("## 今日三件事"));
-        assert!(md.contains(":::summary\n**先看焦点**"));
         assert!(md.contains(":::divider\nlabel: 主线\n:::"));
         assert!(md.contains(":::callout\nlabel: 先读这条"));
         assert!(md.contains("## 今日焦点"));
         assert!(md.contains("## 01. AI 前沿"));
         assert!(md.contains("## 02. Web3"));
         assert!(md.contains("## 03. 技术、产业与政策"));
-        assert!(md.contains("## 今日收束"));
         assert!(md.contains("## 04. 资料索引"));
+        assert!(!md.contains("## 今日三件事"));
+        assert!(!md.contains("## 今日收束"));
     }
 
     #[test]
-    fn overview_lists_focus_counts_and_links() {
+    fn assemble_reaches_focus_without_overview_repetition() {
         let report = ReportJson {
             focus_text: "OpenAI 发布新工具".to_string(),
             focus_url: "https://example.com/focus".to_string(),
@@ -1136,22 +978,9 @@ mod tests {
 
         let md = assemble_markdown(&report, &[], "");
 
-        assert!(md.contains("## 今日三件事"));
-        assert!(md.contains("**先看焦点**"));
-        assert!(!md.contains("1. 先看焦点"));
-        assert!(md.contains(":::divider\nlabel: 今日速览\n:::"));
-        assert!(md.contains(":::summary\n**先看焦点**"));
-        assert!(md.contains("AI 1 条"));
-        assert!(md.contains("Web3 1 条"));
-        assert!(md.contains("技术 1 条"));
-        assert!(md.contains("深读 1 篇"));
-        assert!(md.contains("**再看这几条**"));
-        assert!(md.contains("AI 先看"));
-        assert!(md.contains("Web3 先看"));
-        assert!(md.contains("产业/政策先看"));
-        assert!(md.contains("每个板块只保留少量高信号条目"));
         assert!(md.contains("这条英文来源信息需要结合原文核对关键细节。"));
-        assert!(md.contains("原文与解读见下方“今日焦点”"));
+        assert!(md.contains("## 今日焦点"));
+        assert!(!md.contains("## 今日三件事"));
     }
 
     #[test]
@@ -1348,7 +1177,7 @@ mod tests {
     }
 
     #[test]
-    fn summary_uses_chinese_fallback_for_english_fragment() {
+    fn assemble_does_not_render_a_second_summary_after_body() {
         let report = ReportJson {
             summary: "今天公开素材的主线是 Web3：AMLBot Puts Polymarket Phishi...；Aave Confirms Aavenomics 3.0 ...。".to_string(),
             ai_items: vec![ReportSection {
@@ -1371,17 +1200,11 @@ mod tests {
         };
 
         let md = assemble_markdown(&report, &[], "");
-        let summary_block = md.split("## 今日收束").nth(1).expect("summary block");
 
-        assert!(md.contains("## 今日收束"));
-        assert!(summary_block.contains(":::intro"));
-        assert!(summary_block.contains("本期建议优先阅读"));
-        assert!(summary_block.contains("OpenAI 发布 Codex 编排实践"));
-        assert!(summary_block.contains("以太坊隐私浏览器原型值得追踪"));
-        assert!(!summary_block.contains("Aave Confirms"));
-        assert!(!summary_block.contains("AMLBot Puts Polymarket Phishi..."));
-        assert!(!summary_block.contains("OpenAI Codex orchestration"));
-        assert!(!summary_block.contains("Ethereum privacy browser"));
+        assert!(md.contains("OpenAI 发布 Codex 编排实践"));
+        assert!(md.contains("以太坊隐私浏览器原型值得追踪"));
+        assert!(!md.contains("## 今日收束"));
+        assert!(!md.contains("AMLBot Puts Polymarket Phishi..."));
     }
 
     #[test]

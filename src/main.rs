@@ -920,7 +920,8 @@ mod tests {
         assert_eq!(markdown.source_info.fallback_reason, None);
 
         assert!(markdown.markdown.contains("title: \"AI · Web3 最新日报｜"));
-        assert!(markdown.markdown.contains("今日三件事"));
+        assert!(markdown.markdown.contains("## 今日焦点"));
+        assert!(!markdown.markdown.contains("今日三件事"));
         assert!(markdown.markdown.contains("### 正文引用来源（"));
         assert!(markdown.markdown.contains("### 深读 01"));
         assert!(
