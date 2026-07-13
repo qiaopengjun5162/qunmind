@@ -4635,7 +4635,7 @@ mod tests {
 
         assert!(report.contains("theme: notebook"));
         assert!(report.contains("## 继续交流"));
-        assert!(report.contains("原文：https://openai.com/news/agent-tool"));
+        assert!(report.contains("**原文入口**：https://openai.com/news/agent-tool"));
     }
 
     #[test]
@@ -4852,7 +4852,7 @@ mod tests {
         let web3_section = section_body_by_title(&report, "Web3");
         assert!(!focus_section.contains("What if post-quantum Ethereum"));
         assert!(!web3_section.contains("What if post-quantum Ethereum 近期受到关注"));
-        assert!(report.contains(&format!("原文：{url}")));
+        assert!(report.contains(&format!("**原文入口**：{url}")));
     }
 
     #[tokio::test]
@@ -6748,7 +6748,10 @@ mod tests {
 
         assert!(report.contains("open-source-codex-orchestration-symphony"));
         assert!(report.contains("https://x.com/Easycompany333/status/2069019238283849954"));
-        assert!(report.contains("原文：https://x.com/Easycompany333/status/2069019238283849954"));
+        assert!(
+            report
+                .contains("**原文入口**：https://x.com/Easycompany333/status/2069019238283849954")
+        );
     }
 
     #[tokio::test]
@@ -7420,7 +7423,7 @@ mod tests {
         let report = generator.generate().await.expect("report");
         let tech_section = section_body_by_title(&report, "技术、产业与政策");
 
-        assert!(report.contains("原文：https://example.com/strategy-capital-framework"));
+        assert!(report.contains("**原文入口**：https://example.com/strategy-capital-framework"));
         assert!(!tech_section.contains("https://example.com/strategy-capital-framework"));
     }
 

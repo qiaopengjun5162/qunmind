@@ -1475,8 +1475,8 @@ mod tests {
         assert!(markdown.contains("## 今日焦点"));
         assert!(markdown.contains("### 正文引用来源（"));
         assert!(markdown.contains("### 深读 01"));
-        assert!(markdown.contains("原文：https://example.com/report"));
-        assert!(markdown.contains("原文：https://example.com/postmortem"));
+        assert!(markdown.contains("**原文入口**：https://example.com/report"));
+        assert!(markdown.contains("**原文入口**：https://example.com/postmortem"));
     }
 
     #[test]
@@ -1803,6 +1803,17 @@ mod tests {
         assert!(urls.contains("https://example.com/body"));
         assert!(urls.contains("https://example.com/source"));
         assert!(urls.contains("https://example.com/with-trailing"));
+    }
+
+    #[test]
+    fn previous_report_urls_extracts_emphasized_original_source_urls() {
+        let urls = previous_report_urls(Some(
+            r#"
+> **原文入口**：https://example.com/current
+"#,
+        ));
+
+        assert!(urls.contains("https://example.com/current"));
     }
 
     #[test]

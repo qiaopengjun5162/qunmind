@@ -927,12 +927,12 @@ mod tests {
         assert!(
             markdown
                 .markdown
-                .contains("原文：https://example.com/report")
+                .contains("**原文入口**：https://example.com/report")
         );
         assert!(
             markdown
                 .markdown
-                .contains("原文：https://example.com/postmortem")
+                .contains("**原文入口**：https://example.com/postmortem")
         );
         let requests = ai.requests.lock().await;
         assert!(requests.is_empty());

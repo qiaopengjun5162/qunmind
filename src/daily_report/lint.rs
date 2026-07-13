@@ -58,6 +58,7 @@ impl Default for DailyReportLintResult {
 
 const FIXED_TITLE_PREFIX: &str = "AI · Web3 最新日报｜";
 const FIXED_OUTRO_TITLE: &str = "## 继续交流";
+const ORIGINAL_SOURCE_MARKER: &str = "**原文入口**：https://";
 const FORBIDDEN_PHRASES: [&str; 2] = ["不走本地群消息", "未生成可靠摘要，请直接阅读原文核对"];
 const LOW_CONFIDENCE_PHRASES: [&str; 9] = [
     "这篇材料围绕",
@@ -331,11 +332,11 @@ fn lint_focus_block(markdown: &str, result: &mut DailyReportLintResult) {
             );
         }
     }
-    if !focus.contains("原文：https://") {
+    if !focus.contains(ORIGINAL_SOURCE_MARKER) {
         result.push(
             DailyReportLintSeverity::Error,
             "focus_missing_raw_url",
-            "`今日焦点` 必须直接显示完整 `原文：https://...`。",
+            "`今日焦点` 必须显示加粗的完整 `原文入口：https://...`。",
         );
     }
     if LOW_CONFIDENCE_PHRASES
@@ -370,11 +371,13 @@ fn lint_body_sections(markdown: &str, result: &mut DailyReportLintResult) {
                         format!("`{section_title}` 中有正文条目缺少 `来源依据：`。"),
                     );
                 }
-                if !card.contains("原文：https://") {
+                if !card.contains(ORIGINAL_SOURCE_MARKER) {
                     result.push(
                         DailyReportLintSeverity::Error,
                         "section_missing_raw_url",
-                        format!("`{section_title}` 中有正文条目缺少完整 `原文：https://...`。"),
+                        format!(
+                            "`{section_title}` 中有正文条目缺少加粗的完整 `原文入口：https://...`。"
+                        ),
                     );
                 }
                 if LOW_CONFIDENCE_PHRASES
@@ -410,11 +413,11 @@ fn lint_reads(markdown: &str, result: &mut DailyReportLintResult) {
                 "`推荐深读` 中存在条目缺少 `为什么读：`。",
             );
         }
-        if !block.contains("原文：https://") {
+        if !block.contains(ORIGINAL_SOURCE_MARKER) {
             result.push(
                 DailyReportLintSeverity::Error,
                 "read_missing_raw_url",
-                "`推荐深读` 中存在条目缺少完整 `原文：https://...`。",
+                "`推荐深读` 中存在条目缺少加粗的完整 `原文入口：https://...`。",
             );
         }
         if LOW_CONFIDENCE_PHRASES
@@ -690,7 +693,7 @@ Cloudflare 把每个 Worker 的缓存边界做得更细了。
 
 **核对入口**
 
-原文：https://blog.cloudflare.com/workers-cache/
+**原文入口**：https://blog.cloudflare.com/workers-cache/
 
 ## 01. AI 前沿
 
@@ -698,7 +701,7 @@ Cloudflare 把每个 Worker 的缓存边界做得更细了。
 
 > 值得关注：这次更新把形式化验证和代码推理场景拉得更近了。
 > 来源依据：Mistral · 120 points
-> 原文：https://mistral.ai/news/leanstral-1-5/
+> **原文入口**：https://mistral.ai/news/leanstral-1-5/
 
 ## 02. Web3
 
@@ -706,7 +709,7 @@ Cloudflare 把每个 Worker 的缓存边界做得更细了。
 
 > 值得关注：这不是单纯的代币消息，而是 Web3 技术进入国家级数字身份基础设施的真实案例。
 > 来源依据：吴说区块链 · 90 points
-> 原文：https://www.wublock123.com/news/sign-sierra-leone
+> **原文入口**：https://www.wublock123.com/news/sign-sierra-leone
 
 ## 03. 技术、产业与政策
 
@@ -714,14 +717,14 @@ Cloudflare 把每个 Worker 的缓存边界做得更细了。
 
 > 值得关注：它直接关联到虚拟资产托管责任和赔偿边界。
 > 来源依据：吴说区块链 · 70 points
-> 原文：https://www.wublock123.com/news/korea-custody
+> **原文入口**：https://www.wublock123.com/news/korea-custody
 
 ## 04. 推荐深读
 
 ### 深读 01｜[Workers Cache](https://blog.cloudflare.com/workers-cache/)
 
 > 为什么读：这篇官方文章把缓存模型、适用边界和成本控制讲得很清楚，适合作为边缘接口设计的核对入口。
-> 原文：https://blog.cloudflare.com/workers-cache/
+> **原文入口**：https://blog.cloudflare.com/workers-cache/
 
 ## 05. 资料索引
 
@@ -794,10 +797,26 @@ Cloudflare 把每个 Worker 的缓存边界做得更细了。
     #[test]
     fn lint_rejects_missing_raw_url() {
         let markdown = good_markdown().replace(
-            "原文：https://blog.cloudflare.com/workers-cache/",
-            "原文：/workers-cache",
+            "**原文入口**：https://blog.cloudflare.com/workers-cache/",
+            "**原文入口**：/workers-cache",
         );
         let lint = lint_daily_report_markdown(&markdown, "wechat");
+        assert!(lint.has_errors);
+        assert!(
+            lint.issues
+                .iter()
+                .any(|issue| issue.code == "focus_missing_raw_url")
+        );
+    }
+
+    #[test]
+    fn lint_rejects_unemphasized_original_source_line() {
+        let markdown = good_markdown().replace(
+            "**原文入口**：https://blog.cloudflare.com/workers-cache/",
+            "原文：https://blog.cloudflare.com/workers-cache/",
+        );
+        let lint = lint_daily_report_markdown(&markdown, "wechat");
+
         assert!(lint.has_errors);
         assert!(
             lint.issues
@@ -835,7 +854,7 @@ Cloudflare 把每个 Worker 的缓存边界做得更细了。
     fn lint_rejects_excessive_duplicate_urls() {
         let markdown = good_markdown().replace(
             "## 今日一句\n\n> 保持判断，慢慢积累。\n",
-            "## 今日一句\n\n> 保持判断，慢慢积累。\n\n原文：https://blog.cloudflare.com/workers-cache/\n原文：https://blog.cloudflare.com/workers-cache/\n",
+            "## 今日一句\n\n> 保持判断，慢慢积累。\n\n**原文入口**：https://blog.cloudflare.com/workers-cache/\n**原文入口**：https://blog.cloudflare.com/workers-cache/\n",
         );
         let lint = lint_daily_report_markdown(&markdown, "wechat");
         assert!(

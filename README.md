@@ -70,7 +70,7 @@ flowchart LR
 ## Core Capabilities
 
 - **WeChat-group AI loop**: message intake, persistence, short-term context, persona overrides, and replies
-- **Traceable daily reports**: body items, focus picks, deep reads, and index links all keep visible raw original URLs
+- **Traceable daily reports**: body items, focus picks, and deep reads use a bold `原文入口` label before their visible raw original URLs; the compact index keeps the full URL visible
 - **Public-account publishing path**: local WeChat-ready markdown, fixed cover handling, `moonpub --render`, publish receipts
 - **Diagnostics and replay**: `wx-cli doctor`, `test-plan`, `handle-once`, `report-status`, `publish-history`, and related structured status exits
 
@@ -131,7 +131,7 @@ Correspondingly, it is **not** currently the best fit for:
 - WeChat public-account report drafts use a fixed personal-account cover for the `AI · Web3 最新日报` column, branded as `寻月隐君`; the cover uses a light background with dark title text for better mobile-preview contrast, while `moonpub` still owns final rendering and upload.
 - WeChat daily-report titles are fixed as `AI · Web3 最新日报｜YYYY-MM-DD`, and their frontmatter always pins `theme: notebook`; the daily angle moves into `digest`, the intro, and the focus block so the latest draft is easier to identify in the draft list without falling back to a global theme.
 - Public-account daily reports use a deterministic recipe by default: Rust handles source ranking, deduplication, freshness filtering, sections, focus, deep reads, source index, fixed outro, and lint without a per-issue model call. A candidate needs a readable source, verifiable date, direct topical relevance, and editorial value before it can enter the focus or body; derivative-maintenance notices and incidental crime reports are excluded. Material explicitly older than four days from its publication date or URL date stays out of the body unless fresh credible candidates are insufficient. AI remains for ordinary group-chat summaries or a future explicit deep-rewrite mode.
-- WeChat daily reports render as a review-friendly article layout: a short intro, a practical focus callout, numbered AI / Web3 / technology-industry-policy / deep-read sections, compact body cards with "worth watching", source evidence, and raw original URLs, plus a small-font `compact-links` source index. The layout deliberately omits an extra overview and post-body recap so readers reach substantive content immediately.
+- WeChat daily reports render as a review-friendly article layout: a short intro, a practical focus callout, numbered AI / Web3 / technology-industry-policy / deep-read sections, compact body cards with "worth watching", source evidence, and a bold `原文入口` before each raw original URL, plus a small-font `compact-links` source index. The layout deliberately omits an extra overview and post-body recap so readers reach substantive content immediately.
 - The generator now also hardens weak AI output in Rust: malformed JSON is repaired when possible, vague fallback phrases are replaced with more concrete traceability hints, and low-signal Reddit discussion items no longer dominate deep-read or technology body slots by default.
 - Candidate selection also caps the known feed types that otherwise crowd out the rest of the issue, while focus picks require a readable source summary or a clear Chinese title. Raw original URLs remain intact in the compact index; only the surrounding metadata is shortened for mobile reading.
 - The fixed visual direction for this WeChat daily-report line is documented in [docs/wechat-daily-visual-blueprint.md](docs/wechat-daily-visual-blueprint.md). The rule is to stabilize column identity, narrative order, and visual DNA first, while keeping image generation outside the main `QunMind` runtime.
@@ -482,7 +482,7 @@ Recent report-quality hardening also now lives inside `src/daily_report/` instea
 - obvious misclassification is rebalanced, such as `openai/codex` no longer being pulled into Web3 just because `codex` contains `dex`
 - low-signal comments are filtered or rewritten from source summaries
 - empty section headers are suppressed
-- every rendered focus, section item, deep read, referenced source, and complete-source entry exposes a visible `原文：https://...` URL instead of relying only on Markdown link text
+- every rendered focus, section item, and deep read exposes a bold `原文入口：https://...` URL instead of relying only on Markdown link text; the source index keeps the same full URL in compact form
 - when reliable article text or summaries are unavailable, the report should show the title, source, and full original URL instead of presenting unverifiable claims as system analysis
 - the reference block is split into URLs used by the rendered body and a longer "complete source links" list for the remaining material pool
 - manual reruns now read the current output file plus recent sibling `wechat-report-*.md` / `daily-report-*.md` files and use all visible `https://...` source URLs as freshness hints, so a new output filename does not accidentally repeat yesterday's focus and deep-read links

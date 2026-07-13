@@ -11,6 +11,10 @@ const COMPACT_REF_SOURCE_CHARS: usize = 20;
 const REPORT_OUTRO_TITLE: &str = "继续交流";
 const REPORT_OUTRO_BODY: &str = "这里是公众号「寻月隐君」的 AI · Web3 最新日报。每天筛选公开信息、官方资料和一手链接，帮你快速看到值得继续追踪的技术与行业动态。\n\n想加入读者交流群，可以在公众号后台回复「加群」获取最新方式。二维码或入口如有更新，也以后台回复为准。\n\n本文只做信息整理，不构成投资建议；重要判断请回到文中的「原文」链接继续核对。\n\n如果这份日报对你有帮助，欢迎点赞、推荐给朋友，或者点个「在看」。";
 
+fn original_source_line(url: &str) -> String {
+    format!("**原文入口**：{}", url.trim())
+}
+
 pub(super) fn assemble_markdown(
     report: &ReportJson,
     items: &[PublicNewsItem],
@@ -112,8 +116,12 @@ fn render_focus(text: &str, url: &str) -> String {
     } else {
         let url = url.trim();
         format!(
-            ":::divider\nlabel: 主线\n:::\n\n## 今日焦点\n\n:::callout\nlabel: 先读这条\n\n{}\n:::\n\n**发生了什么**\n\n{}\n\n**为什么有用**\n\n{}\n\n**你可以怎么用**\n\n{}\n\n**核对入口**\n\n原文：{}\n\n",
-            focus_sentence, focus_sentence, why, how, url
+            ":::divider\nlabel: 主线\n:::\n\n## 今日焦点\n\n:::callout\nlabel: 先读这条\n\n{}\n:::\n\n**发生了什么**\n\n{}\n\n**为什么有用**\n\n{}\n\n**你可以怎么用**\n\n{}\n\n**核对入口**\n\n{}\n\n",
+            focus_sentence,
+            focus_sentence,
+            why,
+            how,
+            original_source_line(url)
         )
     }
 }
@@ -228,7 +236,7 @@ fn render_reads_section(reads: &[ReportRead], section_index: usize) -> String {
             s.push_str(&format!("> 为什么读：{}\n", fallback_read_reason(read)));
         }
         if !read.url.trim().is_empty() {
-            s.push_str(&format!("> 原文：{}\n\n", read.url.trim()));
+            s.push_str(&format!("> {}\n\n", original_source_line(&read.url)));
         }
     }
     s
@@ -410,9 +418,13 @@ fn format_section_item(item: &ReportSection, section_label: &str) -> Option<Stri
     };
 
     let meta = if source_part.is_empty() {
-        format!("> 原文：{url}")
+        format!("> {}", original_source_line(url))
     } else {
-        format!("> {}\n> 原文：{}", sanitize(&source_part), url)
+        format!(
+            "> {}\n> {}",
+            sanitize(&source_part),
+            original_source_line(url)
+        )
     };
     let comment = if item.comment.trim().is_empty() {
         fallback_section_reason(&item.title, url)
@@ -997,7 +1009,7 @@ mod tests {
         assert!(body.contains("**为什么有用**"));
         assert!(body.contains("**你可以怎么用**"));
         assert!(body.contains("**核对入口**"));
-        assert!(body.contains("原文：https://example.com/openai-codex"));
+        assert!(body.contains("**原文入口**：https://example.com/openai-codex"));
     }
 
     #[test]
@@ -1016,7 +1028,7 @@ mod tests {
             "> 为什么读：深度文章 建议回到原文补齐背景、关键细节和判断依据，再决定要不要继续跟进。"
         ));
         assert!(!md.contains("未生成可靠摘要，请直接阅读原文核对。"));
-        assert!(md.contains("原文：https://example.com/a"));
+        assert!(md.contains("**原文入口**：https://example.com/a"));
     }
 
     #[test]
@@ -1037,7 +1049,7 @@ mod tests {
         ));
         assert!(!md.contains("Aave confirmed Saturday"));
         assert!(!md.contains("未生成可靠摘要，请直接阅读原文核对。"));
-        assert!(md.contains("原文：https://example.com/a"));
+        assert!(md.contains("**原文入口**：https://example.com/a"));
     }
 
     #[test]
@@ -1082,7 +1094,7 @@ mod tests {
         };
         let md = assemble_markdown(&report, &[], "");
         assert!(md.contains("> 为什么读：Google DeepMind 团队提出了一种新的强化学习框架"));
-        assert!(md.contains("原文：https://example.com/a"));
+        assert!(md.contains("**原文入口**：https://example.com/a"));
         assert!(md.contains("### 深读 01｜"));
     }
 
@@ -1103,13 +1115,13 @@ mod tests {
         assert!(rendered.contains("> 值得关注："));
         assert!(rendered.contains("Chainlink联合50多家银行启动Project Pangea。"));
         assert!(rendered.contains("> 来源依据：The Defiant · 120 points"));
-        assert!(rendered.contains("原文：https://example.com/chainlink"));
+        assert!(rendered.contains("**原文入口**：https://example.com/chainlink"));
         assert!(
             rendered
                 .find("Chainlink联合50多家银行启动Project Pangea。")
                 .unwrap()
                 < rendered
-                    .find("原文：https://example.com/chainlink")
+                    .find("**原文入口**：https://example.com/chainlink")
                     .unwrap()
         );
         assert!(!rendered.contains("（来源："));
@@ -1131,7 +1143,7 @@ mod tests {
         assert!(rendered.contains("AI learns the dark art 适合重点核对能力变化"));
         assert!(!rendered.contains("AI learns the dark art of R..."));
         assert!(!rendered.contains("摘要不够完整"));
-        assert!(rendered.contains("原文：https://example.com/ai-rfic"));
+        assert!(rendered.contains("**原文入口**：https://example.com/ai-rfic"));
     }
 
     #[test]
@@ -1143,7 +1155,7 @@ mod tests {
 
         assert!(md.contains("以太坊研究社区讨论后量子场景下是否仍需要签名机制"));
         assert!(!md.contains("What if post-quantum Ethereum"));
-        assert!(md.contains("原文：https://ethresear.ch/t/what-if-post-quantum-ethereum-doesn-t-need-signatures-at-all/24427"));
+        assert!(md.contains("**原文入口**：https://ethresear.ch/t/what-if-post-quantum-ethereum-doesn-t-need-signatures-at-all/24427"));
     }
 
     #[test]
@@ -1419,7 +1431,7 @@ mod tests {
         assert!(!refs.contains("10 points"));
         assert!(refs.contains("｜已引 |"));
         assert!(refs.contains("https://example.com/used"));
-        assert!(!refs.contains("> 原文：https://example.com/used"));
+        assert!(!refs.contains("> **原文入口**：https://example.com/used"));
         assert!(refs.contains("### 补充阅读池（2）"));
         assert!(refs.contains("只保留少量更值得继续深挖的补充入口"));
         assert!(refs.contains("- 01 | unreferenced"));
