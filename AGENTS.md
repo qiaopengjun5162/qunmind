@@ -155,6 +155,8 @@ Reddit RSS 现在默认只作为补充社区信号，不应进入公众号日报
 
 同日反复生成时，近期链接去重不能降级当前仍有效的已验证 `manual_items`，否则旧试稿里出现过的优质人工精选会被低价值新快讯替换。个人钱包、助记词泄露、Meme 币转账或销毁等单点事件也不是行业主线，默认只留在补充阅读池；只有协议级影响、明确产品变更或可验证的基础设施风险才可进入正文。
 
+视频周报、播客和直播回放属于二级编辑材料：可以作为 `推荐深读`，但不能因为标题含 AI / Web3 关键词抢占焦点或正文卡片；视频中转述的每项事实仍需回到项目官方原文核对。
+
 手工 `daily-report --output <path>` 在回退到 `public_sources` 生成公众号日报时，会优先读取同路径上一次生成的 markdown，并额外读取同目录最近几份 `wechat-report-*.md` / `daily-report-*.md`，提取正文 `原文：https://...` 与 `compact-links` 里的完整 URL 作为“近期已用链接”降权信号。该信号只影响本次焦点、正文板块与推荐深读的选材新鲜度，不会删除“完整素材链接”区里的可追溯来源。优化同一天或跨天连续重跑体验时，优先沿这个轻量降权边界演进，不要急着引入复杂的跨日状态库。
 
 日报生成后的 markdown 现在还有一层 `src/daily_report/lint.rs` 统一校验，属于主链路而不是可选脚本。`daily-report --output`、MCP `report_markdown`、MCP `report_publish` 和后续同类手工出口都应复用同一份 lint 结果：它会校验固定标题、`theme: notebook`、唯一 `## 继续交流`、`####` 禁止项、正文 `来源依据：` / `原文：https://...`、`compact-links` 结构，以及同日 slug 复用风险。命中 warning 允许继续输出 markdown，但要把 `lint` 结构化结果带回 JSON；命中 error 时，真实发布必须被 `publish_blocked_by_lint = true` 阻断，不要再把明显不合规的稿件继续推给 `moonpub`。

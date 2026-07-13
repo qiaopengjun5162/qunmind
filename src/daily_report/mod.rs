@@ -325,7 +325,7 @@ fn refresh_focus_candidate(
     items: &[PublicNewsItem],
     recent_used_urls: &HashSet<String>,
 ) {
-    if let Some(manual_focus) = best_verified_manual_focus(items, recent_used_urls) {
+    if let Some(manual_focus) = best_verified_manual_focus(items) {
         report.focus_text = focus_comment(manual_focus);
         report.focus_url = manual_focus.url.clone();
         return;
@@ -383,22 +383,14 @@ fn best_web3_focus_fallback<'a>(
     select(true).or_else(|| select(false))
 }
 
-fn best_verified_manual_focus<'a>(
-    items: &'a [PublicNewsItem],
-    recent_used_urls: &HashSet<String>,
-) -> Option<&'a PublicNewsItem> {
-    let select = |exclude_recent: bool| {
-        items
-            .iter()
-            .filter(|item| is_manual_category(item))
-            .filter(|item| report_item_date(item).is_some())
-            .filter(|item| is_focus_worthy_item(item))
-            .filter(|item| focus_candidate_has_readable_summary(item))
-            .filter(|item| !exclude_recent || !recent_used_urls.contains(item.url.trim()))
-            .max_by_key(|item| focus_candidate_priority(item))
-    };
-
-    select(true).or_else(|| select(false))
+fn best_verified_manual_focus(items: &[PublicNewsItem]) -> Option<&PublicNewsItem> {
+    items
+        .iter()
+        .filter(|item| is_manual_category(item))
+        .filter(|item| report_item_date(item).is_some())
+        .filter(|item| is_focus_worthy_item(item))
+        .filter(|item| focus_candidate_has_readable_summary(item))
+        .max_by_key(|item| focus_candidate_priority(item))
 }
 
 fn current_focus_is_web3(report: &ReportJson, items: &[PublicNewsItem]) -> bool {
@@ -3439,10 +3431,14 @@ fn is_ai_section_item(item: &ReportSection, source_items: &[PublicNewsItem]) -> 
         .iter()
         .find(|source_item| source_item.url == item.url)
     {
-        return is_ai_item(source_item);
+        return is_ai_item(source_item) && !is_deep_read_only_item(source_item);
     }
 
     has_ai_section_signal(&format!("{} {}", item.title, item.source).to_lowercase())
+}
+
+fn is_deep_read_only_item(item: &PublicNewsItem) -> bool {
+    item.url.contains("bilibili.com/video/")
 }
 
 fn has_ai_section_signal(haystack: &str) -> bool {
@@ -9530,6 +9526,33 @@ mod tests {
     }
 
     #[test]
+    fn videos_are_kept_out_of_ai_body_sections() {
+        let item = PublicNewsItem {
+            source: "Bilibili".to_string(),
+            title: "科技周报：AI 工具链".to_string(),
+            url: "https://www.bilibili.com/video/BV19qNT6ZEmL".to_string(),
+            summary: Some("一则聚焦 AI 工具链的科技周报视频。".to_string()),
+            author: None,
+            published_at: Some("2026-07-12T14:21:28+08:00".to_string()),
+            score: Some(450),
+            comments: None,
+            ai_score: None,
+            category: Some("manual:ai".to_string()),
+        };
+        let section = ReportSection {
+            title: item.title.clone(),
+            url: item.url.clone(),
+            comment: item.summary.clone().unwrap(),
+            source: item.source.clone(),
+            points: 450,
+            subsection: "工作方式变革".to_string(),
+        };
+
+        assert!(is_deep_read_only_item(&item));
+        assert!(!is_ai_section_item(&section, &[item]));
+    }
+
+    #[test]
     fn low_action_social_quotes_do_not_become_daily_focus() {
         let item = PublicNewsItem {
             source: "PANews".to_string(),
@@ -9684,8 +9707,25 @@ mod tests {
             Some(data_event.url.as_str())
         );
         assert_eq!(
-            best_verified_manual_focus(std::slice::from_ref(&data_event), &HashSet::new())
+            best_verified_manual_focus(std::slice::from_ref(&data_event))
                 .map(|item| item.url.as_str()),
+            Some(data_event.url.as_str())
+        );
+
+        let video = PublicNewsItem {
+            source: "Bilibili".to_string(),
+            title: "科技周报：AI 工具链".to_string(),
+            url: "https://www.bilibili.com/video/BV19qNT6ZEmL".to_string(),
+            summary: Some("一则聚焦 AI 工具链的科技周报视频。".to_string()),
+            author: None,
+            published_at: Some("2026-07-12T14:21:28+08:00".to_string()),
+            score: Some(450),
+            comments: None,
+            ai_score: None,
+            category: Some("manual:ai".to_string()),
+        };
+        assert_eq!(
+            best_verified_manual_focus(&[video, data_event.clone()]).map(|item| item.url.as_str()),
             Some(data_event.url.as_str())
         );
     }
