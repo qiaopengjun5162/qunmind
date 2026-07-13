@@ -3656,12 +3656,17 @@ fn is_focus_worthy_item(item: &PublicNewsItem) -> bool {
     !is_consumer_phishing_alert_item(item)
         && !is_low_action_social_quote_item(item)
         && !is_reference_resource_item(item)
+        && !is_undated_manual_item(item)
         && !is_generic_market_wrap_item(item)
         && !is_roundup_style_item(item)
         && !is_brief_news_style_item(item)
         && !is_market_commentary_item(item)
         && (is_web3_item(item) || is_ai_item(item) || is_fresh_tech_candidate(item))
         && is_article_like_item(item)
+}
+
+fn is_undated_manual_item(item: &PublicNewsItem) -> bool {
+    is_manual_category(item) && report_item_date(item).is_none()
 }
 
 fn is_reference_resource_item(item: &PublicNewsItem) -> bool {
@@ -9343,6 +9348,30 @@ mod tests {
             best_focus_candidate(&items, "").map(|item| item.url.as_str()),
             Some(release.url.as_str())
         );
+    }
+
+    #[test]
+    fn undated_manual_items_do_not_become_daily_focus() {
+        let undated = PublicNewsItem {
+            source: "Community weekly note".to_string(),
+            title: "Avalanche 本周生态动态".to_string(),
+            url: "https://example.com/avalanche-weekly".to_string(),
+            summary: Some("用户提供的周报摘要，尚未附上原始发布日期。".to_string()),
+            author: None,
+            published_at: None,
+            score: Some(1500),
+            comments: None,
+            ai_score: None,
+            category: Some("manual:web3".to_string()),
+        };
+        let dated = PublicNewsItem {
+            published_at: Some("2026-07-13T08:00:00Z".to_string()),
+            ..undated.clone()
+        };
+
+        assert!(is_undated_manual_item(&undated));
+        assert!(!is_focus_worthy_item(&undated));
+        assert!(is_focus_worthy_item(&dated));
     }
 
     #[test]
