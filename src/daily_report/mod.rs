@@ -252,7 +252,7 @@ fn enrich_report(
     polish_sections(&mut report, items);
     refresh_focus_candidate(&mut report, items, recent_used_urls);
     deprioritize_recently_used_urls(&mut report, items, recent_used_urls);
-    remove_focus_duplicates_from_sections(&mut report);
+    remove_focus_duplicates_from_sections(&mut report, items);
     backfill_sections_after_focus_removal(&mut report, items, recent_used_urls);
     dedup_and_backfill_reads(&mut report, items, recent_used_urls);
     ensure_minimum_section_items(&mut report, items, recent_used_urls);
@@ -260,10 +260,10 @@ fn enrich_report(
     ensure_minimum_section_items(&mut report, items, recent_used_urls);
     finalize_section_classification(&mut report, items);
     restore_minimum_sections_after_classification(&mut report, items, recent_used_urls);
-    remove_focus_duplicates_from_sections(&mut report);
+    remove_focus_duplicates_from_sections(&mut report, items);
     finalize_section_classification(&mut report, items);
     restore_minimum_sections_after_classification(&mut report, items, recent_used_urls);
-    remove_focus_duplicates_from_sections(&mut report);
+    remove_focus_duplicates_from_sections(&mut report, items);
     ensure_minimum_reads(&mut report, items, recent_used_urls);
 
     report
@@ -325,6 +325,12 @@ fn refresh_focus_candidate(
     items: &[PublicNewsItem],
     recent_used_urls: &HashSet<String>,
 ) {
+    if let Some(manual_focus) = best_verified_manual_focus(items, recent_used_urls) {
+        report.focus_text = focus_comment(manual_focus);
+        report.focus_url = manual_focus.url.clone();
+        return;
+    }
+
     if should_prioritize_web3(report, items)
         && current_focus_is_web3(report, items)
         && current_focus_is_focus_worthy(report, items)
@@ -355,16 +361,41 @@ fn best_web3_focus_fallback<'a>(
     items: &'a [PublicNewsItem],
     recent_used_urls: &HashSet<String>,
 ) -> Option<&'a PublicNewsItem> {
+    let has_readable_web3_candidate = items
+        .iter()
+        .filter(|item| is_web3_body_item(item))
+        .any(focus_candidate_has_readable_summary);
     let select = |exclude_recent: bool| {
         items
             .iter()
-            .filter(|item| is_web3_item(item))
+            .filter(|item| is_web3_body_item(item))
+            .filter(|item| {
+                !has_readable_web3_candidate || focus_candidate_has_readable_summary(item)
+            })
             .filter(|item| !is_low_action_social_quote_item(item))
             .filter(|item| !is_consumer_phishing_alert_item(item))
             .filter(|item| !is_generic_market_wrap_item(item))
             .filter(|item| !is_market_commentary_item(item))
             .filter(|item| !exclude_recent || !recent_used_urls.contains(item.url.trim()))
             .max_by_key(|item| web3_item_priority(item))
+    };
+
+    select(true).or_else(|| select(false))
+}
+
+fn best_verified_manual_focus<'a>(
+    items: &'a [PublicNewsItem],
+    recent_used_urls: &HashSet<String>,
+) -> Option<&'a PublicNewsItem> {
+    let select = |exclude_recent: bool| {
+        items
+            .iter()
+            .filter(|item| is_manual_category(item))
+            .filter(|item| report_item_date(item).is_some())
+            .filter(|item| is_focus_worthy_item(item))
+            .filter(|item| focus_candidate_has_readable_summary(item))
+            .filter(|item| !exclude_recent || !recent_used_urls.contains(item.url.trim()))
+            .max_by_key(|item| focus_candidate_priority(item))
     };
 
     select(true).or_else(|| select(false))
@@ -648,7 +679,7 @@ fn fallback_ai_signals(items: &[PublicNewsItem]) -> Vec<String> {
 fn fallback_web3_items(items: &[PublicNewsItem]) -> Vec<ReportSection> {
     let mut candidates = items
         .iter()
-        .filter(|item| is_web3_item(item))
+        .filter(|item| is_web3_body_item(item))
         .collect::<Vec<_>>();
     candidates.sort_by_key(|item| std::cmp::Reverse(web3_item_priority(item)));
 
@@ -1193,7 +1224,7 @@ fn read_summary_quality_score(summary: &str) -> usize {
 }
 
 fn is_tech_worthy_item(item: &PublicNewsItem) -> bool {
-    if is_consumer_phishing_alert_item(item) {
+    if is_consumer_phishing_alert_item(item) || !is_editorial_body_candidate(item) {
         return false;
     }
 
@@ -1559,7 +1590,7 @@ fn restore_minimum_sections_after_classification(
         &mut report.web3_items,
         items,
         recent_used_urls,
-        is_web3_item,
+        is_web3_body_item,
         MIN_SECTION_ITEMS.min(MAX_WEB3_ITEMS),
         report.focus_url.trim(),
     );
@@ -1927,18 +1958,39 @@ fn backfill_fresh_tech_items(section_items: &mut Vec<ReportSection>, items: &[Pu
     dedup_sections(section_items);
 }
 
-fn remove_focus_duplicates_from_sections(report: &mut ReportJson) {
+fn remove_focus_duplicates_from_sections(report: &mut ReportJson, items: &[PublicNewsItem]) {
     if report.focus_url.trim().is_empty() {
         return;
     }
 
-    drop_focus_duplicate_if_possible(&mut report.ai_items, &report.focus_url);
-    drop_focus_duplicate_if_possible(&mut report.web3_items, &report.focus_url);
-    drop_focus_duplicate_if_possible(&mut report.tech_items, &report.focus_url);
+    let force_remove_last_duplicate = items
+        .iter()
+        .find(|item| item.url.trim() == report.focus_url.trim())
+        .is_some_and(is_manual_category);
+
+    drop_focus_duplicate_if_possible(
+        &mut report.ai_items,
+        &report.focus_url,
+        force_remove_last_duplicate,
+    );
+    drop_focus_duplicate_if_possible(
+        &mut report.web3_items,
+        &report.focus_url,
+        force_remove_last_duplicate,
+    );
+    drop_focus_duplicate_if_possible(
+        &mut report.tech_items,
+        &report.focus_url,
+        force_remove_last_duplicate,
+    );
 }
 
-fn drop_focus_duplicate_if_possible(items: &mut Vec<ReportSection>, focus_url: &str) {
-    if items.len() <= 1 {
+fn drop_focus_duplicate_if_possible(
+    items: &mut Vec<ReportSection>,
+    focus_url: &str,
+    force_remove_last_duplicate: bool,
+) {
+    if items.len() <= 1 && !force_remove_last_duplicate {
         return;
     }
 
@@ -2239,7 +2291,7 @@ fn deprioritize_recently_used_urls(
         &mut report.web3_items,
         items,
         recent_used_urls,
-        is_web3_item,
+        is_web3_body_item,
     );
     backfill_recently_pruned_sections(
         &mut report.tech_items,
@@ -2251,7 +2303,12 @@ fn deprioritize_recently_used_urls(
     report.web3_items.truncate(MAX_WEB3_ITEMS);
     report.tech_items.truncate(MAX_TECH_ITEMS);
 
+    let focus_is_manual = items
+        .iter()
+        .find(|item| item.url.trim() == report.focus_url.trim())
+        .is_some_and(is_manual_category);
     if recent_used_urls.contains(report.focus_url.trim())
+        && !focus_is_manual
         && let Some(replacement) = report
             .web3_items
             .first()
@@ -2350,7 +2407,7 @@ fn backfill_sections_after_focus_removal(
         &mut report.web3_items,
         items,
         recent_used_urls,
-        is_web3_item,
+        is_web3_body_item,
         MAX_WEB3_ITEMS,
         report.focus_url.trim(),
     );
@@ -2381,7 +2438,7 @@ fn ensure_minimum_section_items(
         &mut report.web3_items,
         items,
         recent_used_urls,
-        is_web3_item,
+        is_web3_body_item,
         MIN_SECTION_ITEMS.min(MAX_WEB3_ITEMS),
         report.focus_url.trim(),
     );
@@ -2577,18 +2634,19 @@ fn select_report_items(ranked: Vec<PublicNewsItem>) -> Vec<PublicNewsItem> {
         is_manual_category,
         PROMPT_MANUAL_ITEM_BUDGET,
     );
-    push_ranked_items(
+    push_ranked_items_with_source_limit(
         &ranked,
         &mut selected,
         &mut seen,
         is_ai_item,
         PROMPT_AI_ITEM_BUDGET,
+        PROMPT_MAX_ITEMS_PER_SOURCE,
     );
     push_ranked_items_with_source_limit(
         &ranked,
         &mut selected,
         &mut seen,
-        is_web3_item,
+        is_web3_body_item,
         PROMPT_WEB3_ITEM_BUDGET,
         PROMPT_MAX_ITEMS_PER_SOURCE,
     );
@@ -2666,6 +2724,7 @@ fn push_ranked_items_with_source_limit(
 fn is_prompt_dominant_source(item: &PublicNewsItem) -> bool {
     let source = item.source.to_ascii_lowercase();
     source.contains("ethresear")
+        || source.contains("arxiv")
         || source.contains("google blog")
         || (source.contains("github trending")
             && is_plain_github_repo_url(&item.url)
@@ -2762,6 +2821,11 @@ fn is_fresh_web3_event_item(item: &PublicNewsItem) -> bool {
             "合作",
             "提案",
             "升级",
+            "突破",
+            "增长",
+            "规模",
+            "assets under management",
+            "aum",
         ],
     )
 }
@@ -2781,6 +2845,93 @@ fn is_repeat_prone_recent_body_item(item: &PublicNewsItem) -> bool {
         || is_manual_category(item)
         || is_generic_market_wrap_item(item)
         || is_roundup_style_item(item)
+}
+
+fn is_editorial_body_candidate(item: &PublicNewsItem) -> bool {
+    !is_derivatives_maintenance_item(item)
+        && !is_incidental_web3_crime_item(item)
+        && !is_personal_wallet_incident_item(item)
+}
+
+fn is_web3_body_item(item: &PublicNewsItem) -> bool {
+    is_web3_item(item)
+        && is_editorial_body_candidate(item)
+        && focus_candidate_has_readable_summary(item)
+}
+
+fn is_derivatives_maintenance_item(item: &PublicNewsItem) -> bool {
+    let haystack = format!(
+        "{} {} {}",
+        item.title,
+        item.url,
+        item.summary.as_deref().unwrap_or("")
+    )
+    .to_lowercase();
+
+    contains_any_text(
+        &haystack,
+        &[
+            "永续合约",
+            "perpetual contract",
+            "futures contract",
+            "合约交易对",
+        ],
+    ) && contains_any_text(
+        &haystack,
+        &[
+            "拆分",
+            "split",
+            "调整",
+            "adjustment",
+            "下线",
+            "delist",
+            "暂停",
+            "suspend",
+        ],
+    )
+}
+
+fn is_incidental_web3_crime_item(item: &PublicNewsItem) -> bool {
+    let haystack = format!(
+        "{} {} {}",
+        item.title,
+        item.url,
+        item.summary.as_deref().unwrap_or("")
+    )
+    .to_lowercase();
+
+    contains_any_text(&haystack, &["web3", "加密", "crypto", "外汇", "forex"])
+        && contains_any_text(
+            &haystack,
+            &[
+                "警方", "警察", "查获", "查扣", "豪车", "车牌", "车辆", "arrest", "police",
+                "seized",
+            ],
+        )
+}
+
+fn is_personal_wallet_incident_item(item: &PublicNewsItem) -> bool {
+    let haystack = format!(
+        "{} {} {}",
+        item.title,
+        item.url,
+        item.summary.as_deref().unwrap_or("")
+    )
+    .to_lowercase();
+
+    contains_any_text(&haystack, &["meme 币", "meme coin", "memecoin"])
+        && contains_any_text(
+            &haystack,
+            &[
+                "个人地址",
+                "个人钱包",
+                "burn address",
+                "销毁地址",
+                "助记词",
+                "mnemonic",
+                "直播泄露",
+            ],
+        )
 }
 
 fn is_manual_category(item: &PublicNewsItem) -> bool {
@@ -3062,7 +3213,7 @@ fn is_web3_section_item(item: &ReportSection, source_items: &[PublicNewsItem]) -
     if source_items
         .iter()
         .find(|source_item| source_item.url == item.url)
-        .is_some_and(is_web3_item)
+        .is_some_and(is_web3_body_item)
     {
         return true;
     }
@@ -3653,7 +3804,8 @@ fn best_fresh_focus_candidate<'a>(
 }
 
 fn is_focus_worthy_item(item: &PublicNewsItem) -> bool {
-    !is_consumer_phishing_alert_item(item)
+    is_editorial_body_candidate(item)
+        && !is_consumer_phishing_alert_item(item)
         && !is_low_action_social_quote_item(item)
         && !is_reference_resource_item(item)
         && !is_undated_manual_item(item)
@@ -6675,6 +6827,8 @@ mod tests {
         let web3_section = section_body(&report, "## 02. Web3");
 
         assert!(!ai_section.contains("Pump.fun"));
+        assert!(report.contains("## 今日焦点"));
+        assert!(report.contains("Pump.fun"));
         assert!(web3_section.contains("Pump.fun"));
     }
 
@@ -9019,7 +9173,13 @@ mod tests {
 
         let selected = select_report_items(ranked);
         assert!(selected.len() <= MAX_REPORT_ITEMS);
-        assert!(selected.iter().filter(|item| is_ai_item(item)).count() >= 10);
+        assert_eq!(
+            selected
+                .iter()
+                .filter(|item| item.source == "ArXiv AI")
+                .count(),
+            PROMPT_MAX_ITEMS_PER_SOURCE
+        );
         assert!(
             selected
                 .iter()
@@ -9294,6 +9454,82 @@ mod tests {
     }
 
     #[test]
+    fn derivatives_maintenance_notices_do_not_become_daily_body_candidates() {
+        let item = PublicNewsItem {
+            source: "PANews".to_string(),
+            title: "币安合约将调整 KORUUSDT 永续合约，配合股票拆分".to_string(),
+            url: "https://www.panewslab.com/zh/articles/contract-maintenance".to_string(),
+            summary: Some("KORUUSDT 永续合约将按基础资产拆分计划调整。".to_string()),
+            author: None,
+            published_at: Some("2026-07-13T08:00:00Z".to_string()),
+            score: Some(500),
+            comments: None,
+            ai_score: None,
+            category: Some("web3_media".to_string()),
+        };
+
+        assert!(is_derivatives_maintenance_item(&item));
+        assert!(!is_web3_body_item(&item));
+        assert!(!is_focus_worthy_item(&item));
+    }
+
+    #[test]
+    fn incidental_web3_crime_reports_do_not_become_daily_body_candidates() {
+        let item = PublicNewsItem {
+            source: "PANews".to_string(),
+            title: "南非警方查扣自称 Web3 和外汇交易员驾驶的伪造牌照豪车".to_string(),
+            url: "https://www.panewslab.com/zh/articles/incidental-crime".to_string(),
+            summary: Some("警方夜间行动查扣多辆使用伪造车牌的豪华车辆。".to_string()),
+            author: None,
+            published_at: Some("2026-07-13T08:00:00Z".to_string()),
+            score: Some(500),
+            comments: None,
+            ai_score: None,
+            category: Some("web3_media".to_string()),
+        };
+
+        assert!(is_incidental_web3_crime_item(&item));
+        assert!(!is_web3_body_item(&item));
+        assert!(!is_focus_worthy_item(&item));
+    }
+
+    #[test]
+    fn personal_wallet_meme_incidents_do_not_become_daily_body_candidates() {
+        let item = PublicNewsItem {
+            source: "吴说区块链".to_string(),
+            title: "CZ 将部分 BSC Meme 币转入销毁地址".to_string(),
+            url: "https://www.wublock123.com/news/personal-wallet-meme-burn".to_string(),
+            summary: Some("CZ 将转入其个人地址的部分 Meme 币转入销毁地址。".to_string()),
+            author: None,
+            published_at: Some("2026-07-13T08:00:00Z".to_string()),
+            score: Some(500),
+            comments: None,
+            ai_score: None,
+            category: Some("web3_media".to_string()),
+        };
+
+        assert!(is_personal_wallet_incident_item(&item));
+        assert!(!is_web3_body_item(&item));
+        assert!(!is_focus_worthy_item(&item));
+    }
+
+    #[test]
+    fn focus_duplicate_is_removed_even_when_it_is_the_only_section_item() {
+        let mut items = vec![ReportSection {
+            title: "BUIDL 数据事件".to_string(),
+            url: "https://example.com/buidl".to_string(),
+            comment: "BUIDL 在 Avalanche 上的规模增长。".to_string(),
+            source: "RWA.xyz".to_string(),
+            points: 100,
+            subsection: String::new(),
+        }];
+
+        drop_focus_duplicate_if_possible(&mut items, "https://example.com/buidl", true);
+
+        assert!(items.is_empty());
+    }
+
+    #[test]
     fn low_action_social_quotes_do_not_become_daily_focus() {
         let item = PublicNewsItem {
             source: "PANews".to_string(),
@@ -9410,6 +9646,47 @@ mod tests {
         assert_eq!(
             best_web3_focus_fallback(&items, &HashSet::new()).map(|item| item.url.as_str()),
             Some(structural_event.url.as_str())
+        );
+    }
+
+    #[test]
+    fn web3_focus_fallback_prefers_readable_verified_data_event_over_english_flash() {
+        let data_event = PublicNewsItem {
+            source: "吴说区块链（引 RWA.xyz）".to_string(),
+            title: "BUIDL 在 Avalanche 上管理规模突破 9 亿美元，一周增长约 105%".to_string(),
+            url: "https://www.wublock123.com/news/buidl-avalanche-growth".to_string(),
+            summary: Some(
+                "RWA.xyz 数据显示，BUIDL 在 Avalanche 上的管理规模突破 9 亿美元。".to_string(),
+            ),
+            author: None,
+            published_at: Some("2026-07-12T09:30:56Z".to_string()),
+            score: Some(1300),
+            comments: None,
+            ai_score: None,
+            category: Some("manual:web3".to_string()),
+        };
+        let english_flash = PublicNewsItem {
+            source: "Cointelegraph".to_string(),
+            title: "AI-enabled businesses could add stablecoin volumes".to_string(),
+            url: "https://cointelegraph.com/news/stablecoin-volumes".to_string(),
+            summary: Some("The report discusses possible stablecoin payment adoption.".to_string()),
+            author: None,
+            published_at: Some("2026-07-13T08:00:00Z".to_string()),
+            score: Some(120),
+            comments: None,
+            ai_score: None,
+            category: Some("web3_media".to_string()),
+        };
+
+        assert_eq!(
+            best_web3_focus_fallback(&[english_flash, data_event.clone()], &HashSet::new())
+                .map(|item| item.url.as_str()),
+            Some(data_event.url.as_str())
+        );
+        assert_eq!(
+            best_verified_manual_focus(std::slice::from_ref(&data_event), &HashSet::new())
+                .map(|item| item.url.as_str()),
+            Some(data_event.url.as_str())
         );
     }
 
