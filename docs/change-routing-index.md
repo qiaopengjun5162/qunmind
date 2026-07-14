@@ -25,7 +25,7 @@
 | 改日报来源可见性或 `report_source` 输出 | `README_zh.md`、`AGENTS.md`、本文件 | `src/reporting.rs`、`src/main.rs`、`src/mcp/tools.rs` | `cargo test with_report_source_info_appends_source_payload --lib`、MCP 相关测试 |
 | 改 lint 规则或发布前闸门 | `README_zh.md`、`AGENTS.md` | `src/daily_report/lint.rs`、`src/main.rs`、`src/mcp/tools.rs` | lint 单测、命令级测试、`cargo clippy --all-targets --all-features --tests -- -D warnings` |
 | 改公众号发布链路 | `AGENTS.md`、`docs/multi-platform-publishing.md`、`docs/local-publisher-network-diagnostics.md` | `src/publisher.rs`、`src/reporting.rs`、`src/main.rs` | `just report-status`、相关单测、必要时真实联调 |
-| 改 `moonpub` 相关联调命令 | `README_zh.md`、`AGENTS.md`、`Justfile` | `src/main.rs`、`src/publisher.rs`、`src/reporting.rs` | `just report-status`、`cargo clippy --all-targets --all-features --tests -- -D warnings` |
+| 改 `moonpub` 相关联调命令或 Chrome profile 恢复 | `README_zh.md`、`AGENTS.md`、`docs/local-publisher-network-diagnostics.md`、`Justfile` | `src/main.rs`、`src/publisher.rs`、`src/reporting.rs` | `just report-status`、`just report-preview`、`cargo clippy --all-targets --all-features --tests -- -D warnings` |
 | 改公共来源抓取和去重 | `README_zh.md`、`AGENTS.md` | `src/source/`、`src/daily_report/mod.rs` | 对应 source 测试、`cargo clippy --all-targets --all-features --tests -- -D warnings` |
 | 改 wx-cli 诊断/重放 | `AGENTS.md` | `src/diagnostic/`、`src/channel/wx_cli.rs`、`src/wx_cli_runtime.rs`、`src/wx_cli_commands.rs` | 对应测试、`cargo clippy --all-targets --all-features --tests -- -D warnings` |
 | 改 MCP tool 行为 | `AGENTS.md`、本文件 | `src/mcp/mod.rs`、`src/mcp/tools.rs`、相关共享 helper | 对应 tool 测试、`cargo clippy --all-targets --all-features --tests -- -D warnings` |

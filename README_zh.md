@@ -457,6 +457,8 @@ just report-preview config.toml '微信公众号日报' 'true' 'true'
 
 这里第二个 `true` 表示 `temporary_profile = true`，会让 `moonpub configure` / `test-yulan` 使用隔离的一次性浏览器 profile；默认仍复用持久 profile，是为了保留公众号后台登录态、减少每次扫码。注意：当前 `moonpub push --render` 本体仍需要在 `moonpub` 仓库继续补 `--temporary-profile` 支持，否则真实推草稿后的自动配置步骤仍会复用它自己的持久 profile。
 
+如果草稿已经推送成功，但 `report-preview` / `test-yulan` 报 Chrome websocket 启动超时，不要重新生成日报，也不要先切换无痕 profile。优先检查 `~/.config/moonpub/chrome-profile` 是否同时存在 `SingletonLock` 和 `DevToolsActivePort`，确认是否有遗留的 MoonPub 自动化 Chrome 正占用该 profile；只关闭确认无用的遗留进程后，再用原持久 profile 重试预览。这个问题属于本机浏览器进程冲突，与 OpenAPI token、IP 白名单和正文内容无关。
+
 现在 `report-status` 也会在 CLI JSON 和 MCP 输出里直接给出 `recommended_commands`。这意味着状态页不再只告诉你“下一步大概是什么”，而是尽量直接列出你接下来最该执行的命令，减少临近交付时再靠人工把状态词翻译回 shell 命令。
 
 如果遇到微信公众号 OpenAPI 的 `errcode=40164 invalid ip`，不要把它和日报内容生成混在一起排查。QunMind 现在提供只读本机网络诊断入口，用来查看发布目标、代理环境变量、本地代理端口和 Mihomo / Clash 控制器配置状态：

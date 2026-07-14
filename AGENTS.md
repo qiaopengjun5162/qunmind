@@ -122,6 +122,8 @@ Reddit 这类社区讨论来源也优先走 `PublicNewsSource` 边界。当前�
 
 如果用户明确要求“无痕浏览器”或“隔离浏览器”，要区分两件事：`report-login`、`report-configure`、`report-recover-automation` 和 `report-preview` 已支持 `--temporary-profile`，会把参数透传给 `moonpub login/configure/test-yulan`，使用一次性隔离 profile；但默认不启用，因为复用持久 profile 才能保留公众号后台登录态。当前 `moonpub push --render` 的 post-push 自动化仍需要 `moonpub` 本体支持 `push --temporary-profile` 后，QunMind 发布主链路才能完全隔离 profile。不要再把“复用登录态的持久 profile”描述成无痕模式。
 
+若草稿已成功推送，而 `report-preview` / `test-yulan` 报 Chrome websocket 启动超时，优先检查 MoonPub 持久 profile 是否被遗留自动化 Chrome 占用：`~/.config/moonpub/chrome-profile/SingletonLock` 和 `DevToolsActivePort` 同时存在是强信号。先确认并关闭该 profile 对应的遗留 Chrome 进程，再复用持久 profile 重试；不要删除 profile、改用 `--temporary-profile`，也不要重新生成已审核日报。这个问题与 OpenAPI token、白名单、正文和登录态无关，处理后必须把“预览发送成功”与“草稿推送成功”分开确认。
+
 如果微信公众号发布命中 `errcode=40164 invalid ip`，先区分是 `QunMind` 侧还是 `moonpub` 侧的问题。当前本地 `moonpub` 原版 `src/wechat.rs` 默认用 `ureq` 直连微信 API，不会自动继承 shell 里设置的代理语义；需要显式在 `moonpub` 微信客户端里接入 `HTTP_PROXY` / `HTTPS_PROXY` / `ALL_PROXY` 环境变量，修复后微信侧看到的出口 IP 会改变。若出口 IP 已变化但仍未进白名单，说明剩余阻塞纯粹是公众号后台白名单，而不是代码没走代理。
 如果已经关闭透明代理 / TUN / Warp / Clash / EasyConnect 一类网络接管，并且微信连续两次以上都返回同一个稳定出口 IP 的 `errcode=40164 invalid ip`，就不要再回头怀疑正文、lint、slug、`moonpub push --render` 或代理是否生效。此时应直接把问题归类为“公众号后台 API 白名单未生效、加错位置或尚未保存成功”的外部阻塞；后续排查重点是核对白名单页面、等待生效，或让操作者重新确认添加的就是微信 OpenAPI 看到的那个 IP。
 

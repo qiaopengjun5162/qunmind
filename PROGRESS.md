@@ -1,5 +1,7 @@
 # Progress
 
+- 2026-07-14: **手机预览遗留 profile 排障规则固化** — 7 月 14 日草稿已成功推送但 `report-preview` 报 Chrome websocket 超时，根因是遗留 MoonPub 自动化 Chrome 占用持久 profile，而不是白名单、OpenAPI token、正文或登录态失效。已确认并关闭该进程后，复用原持久 profile 的 `test-yulan --headed` 返回“预览发送成功”。这条规则已写入 `AGENTS.md`、中英文 README、本机发布诊断和改动索引：先查 `SingletonLock` / `DevToolsActivePort`，只关闭确认的遗留进程，不删除 profile、不切无痕、不重新生成已审核稿。
+
 - 2026-07-14: **跨日报人工精选去重修正** — 真实生成暴露出高分 `manual_items` 在焦点路径绕过了昨天已用链接的降权，导致 BUIDL 连续两天成为焦点；现在人工精选仍优先，但已用 URL 不再允许重复抢占焦点。同时将“巨鲸浮亏 / 割肉”等单一个人仓位快讯排除在正文与焦点外，避免日报被市场八卦填充；资料索引也不再为凑数回填低价值素材。验证者收入重定向等具体研究议题会生成事件相关的价值与核对点，不再误触发泛化的“研究方法论”文案。
 
 - 2026-07-14: **今日公开来源稿已复核** — `/tmp/wechat-report-2026-07-14-publish-ready-v5.md` 通过 lint，无 warning；当前稿不重复 7 月 13 日 BUIDL 焦点，也不含个人仓位快讯。首次推送时微信 OpenAPI 返回 `errcode=40164 invalid ip`，本次直连出口为 `117.35.172.5`；待该 IP 在公众号白名单生效后，直接推送该唯一文件名，不重新生成。

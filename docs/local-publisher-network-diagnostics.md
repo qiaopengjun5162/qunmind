@@ -52,6 +52,29 @@ If a draft push succeeds but the follow-up says `login timeout: QR code not
 scanned within 120s`, the OpenAPI token was valid. The failed part is the browser
 session for WeChat backend preview/configuration, not the API draft creation.
 
+## Persistent Browser Profile Recovery
+
+`moonpub` deliberately reuses its persistent Chrome profile by default so the
+WeChat backend login can survive across publishes. That profile can be left
+locked when an earlier automation Chrome exits abnormally. The characteristic
+failure is a successful draft push followed by `report-preview` / `test-yulan`
+failing to resolve Chrome's websocket URL.
+
+When that happens, inspect the profile state before changing any report input:
+
+1. Check whether `~/.config/moonpub/chrome-profile/SingletonLock` and
+   `DevToolsActivePort` exist.
+2. Confirm the PID referenced by `SingletonLock` is a MoonPub automation
+   Chrome process using that exact `--user-data-dir`.
+3. Stop only that stale process, then retry `report-preview --headed` with the
+   persistent profile.
+
+Do not delete the profile, switch to `--temporary-profile`, or regenerate an
+already reviewed markdown file as a first response. Those actions either lose
+the usable WeChat backend session or create a different draft; neither repairs
+the lock conflict. A successful preview must be confirmed separately from the
+OpenAPI draft-push receipt.
+
 ## Mihomo / Clash Boundary
 
 The current CLI helper is `report-network-status`. It is best-effort and
