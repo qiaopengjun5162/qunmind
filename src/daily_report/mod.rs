@@ -325,7 +325,7 @@ fn refresh_focus_candidate(
     items: &[PublicNewsItem],
     recent_used_urls: &HashSet<String>,
 ) {
-    if let Some(manual_focus) = best_verified_manual_focus(items) {
+    if let Some(manual_focus) = best_verified_manual_focus(items, recent_used_urls) {
         report.focus_text = focus_comment(manual_focus);
         report.focus_url = manual_focus.url.clone();
         return;
@@ -383,10 +383,14 @@ fn best_web3_focus_fallback<'a>(
     select(true).or_else(|| select(false))
 }
 
-fn best_verified_manual_focus(items: &[PublicNewsItem]) -> Option<&PublicNewsItem> {
+fn best_verified_manual_focus<'a>(
+    items: &'a [PublicNewsItem],
+    recent_used_urls: &HashSet<String>,
+) -> Option<&'a PublicNewsItem> {
     items
         .iter()
         .filter(|item| is_manual_category(item))
+        .filter(|item| !recent_used_urls.contains(item.url.trim()))
         .filter(|item| report_item_date(item).is_some())
         .filter(|item| is_focus_worthy_item(item))
         .filter(|item| focus_candidate_has_readable_summary(item))
@@ -2318,6 +2322,16 @@ fn drop_recent_duplicates_if_possible(
     recent_used_urls: &HashSet<String>,
 ) {
     if items.len() <= 1 {
+        items.retain(|item| {
+            let Some(source_item) = source_items
+                .iter()
+                .find(|source| source.url.trim() == item.url.trim())
+            else {
+                return true;
+            };
+            !recent_used_urls.contains(item.url.trim())
+                || !is_repeat_prone_recent_body_item(source_item)
+        });
         return;
     }
 
@@ -2843,6 +2857,7 @@ fn is_editorial_body_candidate(item: &PublicNewsItem) -> bool {
     !is_derivatives_maintenance_item(item)
         && !is_incidental_web3_crime_item(item)
         && !is_personal_wallet_incident_item(item)
+        && !is_personal_market_position_item(item)
 }
 
 fn is_web3_body_item(item: &PublicNewsItem) -> bool {
@@ -2923,6 +2938,22 @@ fn is_personal_wallet_incident_item(item: &PublicNewsItem) -> bool {
                 "mnemonic",
                 "直播泄露",
             ],
+        )
+}
+
+fn is_personal_market_position_item(item: &PublicNewsItem) -> bool {
+    let haystack = format!(
+        "{} {} {}",
+        item.title,
+        item.url,
+        item.summary.as_deref().unwrap_or("")
+    )
+    .to_lowercase();
+
+    contains_any_text(&haystack, &["巨鲸", "whale"])
+        && contains_any_text(
+            &haystack,
+            &["浮亏", "割肉", "账面亏损", "unrealized loss", "capitulat"],
         )
 }
 
@@ -3036,6 +3067,7 @@ fn is_roundup_style_item(item: &PublicNewsItem) -> bool {
             "roundup",
             "morning briefing",
             "weekly recap",
+            "asia express",
             "this week in rust",
             "this week in",
             "what happened in crypto today",
@@ -4482,6 +4514,8 @@ mod tests {
 
     #[tokio::test]
     async fn generate_sorts_by_score_and_emits_refs() {
+        let mut low_score = test_item("low score", Some(10));
+        low_score.summary = Some("这是一条有明确背景、适合继续核对的中文材料。".to_string());
         let json = r#"{
             "intro":"测试intro",
             "focus_text":"测试焦点",
@@ -4512,10 +4546,7 @@ mod tests {
         let generator = DailyReportGenerator::new(
             Arc::new(FakeAi::new(vec![json.to_string()])),
             Arc::new(FakeNewsSource {
-                items: vec![
-                    test_item("low score", Some(10)),
-                    test_item("high score", Some(100)),
-                ],
+                items: vec![low_score, test_item("high score", Some(100))],
             }),
             String::new(),
         );
@@ -6164,6 +6195,38 @@ mod tests {
             .collect::<Vec<_>>();
         assert!(!urls.contains(&"https://paragraph.com/@jason-chen/GtQDLkp2k1Rb15VAOhgx"));
         assert!(urls.contains(&"https://ethresear.ch/t/post-quantum-ethereum/1"));
+    }
+
+    #[test]
+    fn deprioritize_recently_used_urls_removes_a_lone_manual_item() {
+        let manual = PublicNewsItem {
+            source: "Manual source".to_string(),
+            title: "昨天已经使用的人工精选".to_string(),
+            url: "https://example.com/recent-manual".to_string(),
+            summary: Some("这条人工精选不应连续两天填充正文。".to_string()),
+            author: None,
+            published_at: Some("2026-07-13T08:00:00Z".to_string()),
+            score: Some(1000),
+            comments: None,
+            ai_score: None,
+            category: Some("manual:web3".to_string()),
+        };
+        let mut report = ReportJson {
+            web3_items: vec![ReportSection {
+                title: manual.title.clone(),
+                url: manual.url.clone(),
+                comment: manual.summary.clone().unwrap(),
+                source: manual.source.clone(),
+                points: 1000,
+                subsection: String::new(),
+            }],
+            ..Default::default()
+        };
+        let recent_used_urls = HashSet::from([manual.url.clone()]);
+
+        deprioritize_recently_used_urls(&mut report, &[manual], &recent_used_urls);
+
+        assert!(report.web3_items.is_empty());
     }
 
     #[test]
@@ -9513,6 +9576,26 @@ mod tests {
     }
 
     #[test]
+    fn personal_whale_loss_updates_do_not_become_daily_body_candidates() {
+        let item = PublicNewsItem {
+            source: "PANews".to_string(),
+            title: "某巨鲸持有 ETH 四年已浮亏 2380 万美元，疑似正割肉离场".to_string(),
+            url: "https://www.panewslab.com/zh/articles/whale-loss".to_string(),
+            summary: Some("某巨鲸的单笔 ETH 仓位出现浮亏，市场猜测其正在割肉。".to_string()),
+            author: None,
+            published_at: Some("2026-07-14T08:00:00Z".to_string()),
+            score: Some(120),
+            comments: None,
+            ai_score: None,
+            category: Some("web3_media".to_string()),
+        };
+
+        assert!(is_personal_market_position_item(&item));
+        assert!(!is_web3_body_item(&item));
+        assert!(!is_focus_worthy_item(&item));
+    }
+
+    #[test]
     fn focus_duplicate_is_removed_even_when_it_is_the_only_section_item() {
         let mut items = vec![ReportSection {
             title: "BUIDL 数据事件".to_string(),
@@ -9710,7 +9793,7 @@ mod tests {
             Some(data_event.url.as_str())
         );
         assert_eq!(
-            best_verified_manual_focus(std::slice::from_ref(&data_event))
+            best_verified_manual_focus(std::slice::from_ref(&data_event), &HashSet::new())
                 .map(|item| item.url.as_str()),
             Some(data_event.url.as_str())
         );
@@ -9728,8 +9811,16 @@ mod tests {
             category: Some("manual:ai".to_string()),
         };
         assert_eq!(
-            best_verified_manual_focus(&[video, data_event.clone()]).map(|item| item.url.as_str()),
+            best_verified_manual_focus(&[video, data_event.clone()], &HashSet::new())
+                .map(|item| item.url.as_str()),
             Some(data_event.url.as_str())
+        );
+        assert!(
+            best_verified_manual_focus(
+                std::slice::from_ref(&data_event),
+                &HashSet::from([data_event.url.clone()])
+            )
+            .is_none()
         );
     }
 

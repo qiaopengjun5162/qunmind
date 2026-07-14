@@ -292,6 +292,7 @@ fn build_refs_block(report: &ReportJson, items: &[PublicNewsItem], section_index
         for item in items
             .iter()
             .filter(|item| !referenced_urls.contains(&normalize_story_url(&item.url)))
+            .filter(|item| is_curated_source_link_candidate(item))
             .filter(|item| seen_normalized_urls.insert(normalize_story_url(&item.url)))
         {
             if unreferenced.len() >= MAX_SOURCE_LINK_ITEMS {
@@ -354,6 +355,10 @@ fn table_cell(value: &str) -> String {
 }
 
 fn is_curated_source_link_candidate(item: &PublicNewsItem) -> bool {
+    if is_low_value_supplemental_item(item) {
+        return false;
+    }
+
     let source = item.source.to_lowercase();
     let url = item.url.to_lowercase();
     let has_reliable_summary = item.summary.as_deref().is_some_and(|summary| {
@@ -375,6 +380,33 @@ fn is_curated_source_link_candidate(item: &PublicNewsItem) -> bool {
         || source.contains("ethresear")
         || source.contains("arxiv")
         || has_reliable_summary
+}
+
+fn is_low_value_supplemental_item(item: &PublicNewsItem) -> bool {
+    let haystack = format!(
+        "{} {} {}",
+        item.title,
+        item.url,
+        item.summary.as_deref().unwrap_or("")
+    )
+    .to_lowercase();
+
+    (contains_any_text(&haystack, &["巨鲸", "whale"])
+        && contains_any_text(
+            &haystack,
+            &["浮亏", "割肉", "账面亏损", "unrealized loss", "capitulat"],
+        ))
+        || (contains_any_text(&haystack, &["警方", "警员", "police"])
+            && contains_any_text(
+                &haystack,
+                &[
+                    "豪车",
+                    "奥迪",
+                    "加密老板",
+                    "crypto boss",
+                    "cross-border exchange",
+                ],
+            ))
 }
 
 fn normalize_story_url(url: &str) -> String {
@@ -545,6 +577,12 @@ fn strip_focus_artifacts(value: &str) -> String {
 
 fn focus_why_line(text: &str) -> String {
     let lower = text.to_lowercase();
+    if contains_any_text(
+        &lower,
+        &["验证者收入重定向", "validator redirected revenue"],
+    ) {
+        return "它直接涉及以太坊验证者的收入分配与激励结构，值得用来判断新机制会怎样改变参与者行为及网络安全边界。".to_string();
+    }
     if contains_any_text(&lower, &["格密码", "lattice"]) && lower.contains("签名聚合") {
         return "它把后量子密码的安全假设和以太坊验证成本放在同一个问题里讨论，适合用来判断未来签名验证路径是否有可落地的替代方案。".to_string();
     }
@@ -592,6 +630,12 @@ fn focus_why_line(text: &str) -> String {
 
 fn focus_how_to_use_line(text: &str) -> String {
     let lower = text.to_lowercase();
+    if contains_any_text(
+        &lower,
+        &["验证者收入重定向", "validator redirected revenue"],
+    ) {
+        return "重点核对收益来自哪里、由谁重定向、参与门槛和安全假设，再与现有验证者激励机制对照阅读。".to_string();
+    }
     if contains_any_text(&lower, &["格密码", "lattice"]) && lower.contains("签名聚合") {
         return "重点核对方案的签名大小、聚合开销、验证成本和安全假设，再判断它距离协议或应用层采用还有多远。".to_string();
     }
@@ -1159,6 +1203,17 @@ mod tests {
     }
 
     #[test]
+    fn focus_explains_validator_revenue_redirection_concretely() {
+        let md = render_focus(
+            "以太坊研究社区正在讨论验证者收入重定向机制。",
+            "https://ethresear.ch/t/validator-redirected-revenue/25248",
+        );
+
+        assert!(md.contains("验证者的收入分配与激励结构"));
+        assert!(md.contains("收益来自哪里、由谁重定向、参与门槛和安全假设"));
+    }
+
+    #[test]
     fn focus_explains_lattice_signature_aggregation_concretely() {
         let md = render_focus(
             "Lattice-based signature aggregation",
@@ -1406,11 +1461,15 @@ mod tests {
 
     #[test]
     fn refs_block_includes_unreferenced_source_links() {
-        let items = vec![
+        let mut items = vec![
             make_item("used", Some(10)),
             make_item("unreferenced", Some(9)),
             make_item("another", Some(8)),
         ];
+        for item in &mut items[1..] {
+            item.source = "OpenAI".to_string();
+            item.url = format!("https://openai.com/index/{}", item.title);
+        }
         let report = ReportJson {
             tech_items: vec![ReportSection {
                 title: items[0].title.clone(),
@@ -1435,12 +1494,30 @@ mod tests {
         assert!(refs.contains("### 补充阅读池（2）"));
         assert!(refs.contains("只保留少量更值得继续深挖的补充入口"));
         assert!(refs.contains("- 01 | unreferenced"));
-        assert!(refs.contains("https://example.com/unreferenced"));
+        assert!(refs.contains("https://openai.com/index/unreferenced"));
         assert!(refs.contains("- 02 | another"));
-        assert!(refs.contains("https://example.com/another"));
+        assert!(refs.contains("https://openai.com/index/another"));
         let source_links = refs.split("### 补充阅读池").nth(1).unwrap_or_default();
         assert!(!source_links.contains("说明："));
         assert!(!source_links.contains("已引"));
+    }
+
+    #[test]
+    fn supplemental_index_excludes_low_value_personal_market_updates() {
+        let item = PublicNewsItem {
+            source: "PANews".to_string(),
+            title: "某巨鲸持有 ETH 四年已浮亏，疑似正割肉离场".to_string(),
+            url: "https://www.panewslab.com/zh/articles/whale-loss".to_string(),
+            summary: Some("某巨鲸单笔仓位出现浮亏。".to_string()),
+            author: None,
+            published_at: None,
+            score: Some(100),
+            comments: None,
+            ai_score: None,
+            category: Some("web3_media".to_string()),
+        };
+
+        assert!(!is_curated_source_link_candidate(&item));
     }
 
     #[test]
