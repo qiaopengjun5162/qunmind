@@ -1,5 +1,7 @@
 # Progress
 
+- 2026-08-11: **移植 wx-cli 的隐私边界与可追溯实践** — 评审 `ftvrpph4yc-eng/wx-cli` 的日报生产工作流后，把其中与 Rust 日报引擎相关的工程实践移植进来（不是照搬 `.mjs`）：(1) 新增 `src/daily_report/pii.rs` 隐私扫描，移植手机/邮箱/身份证/车牌/精确门牌硬规则（Error，阻断发布）与银行卡号软规则（Warn，避免 Web3 大整数误伤），并跳过 URL/代码块；接入 `lint.rs`，所有日报生成与发布前自动生效。(2) 新增 `src/daily_report/run_trace.rs`，按 wx-cli `run.schema.json` 把一次日报生成收敛为结构化 `run_trace`（步骤状态 collect/content/lint/publish、privacy_flags、human_review_required）。(3) 新增 `src/daily_report/reference_map.rs`，把「正文引用来源」`compact-links` 解析成结构化 `reference_map`（title/url/domain/cited），对应 wx-cli `quote-map.schema.json`（我们的溯源单位是来源 URL 而非群成员发言）。`run_trace` 与 `reference_map` 经 `reporting.rs` 的 `with_run_trace` / `with_reference_map` 挂到 `daily-report` 与 MCP `report_markdown` / `report_publish` 的回执 JSON。全部带单元测试，530 个 lib 测试通过、clippy 零警告。
+
 - 2026-07-14: **手机预览遗留 profile 排障规则固化** — 7 月 14 日草稿已成功推送但 `report-preview` 报 Chrome websocket 超时，根因是遗留 MoonPub 自动化 Chrome 占用持久 profile，而不是白名单、OpenAPI token、正文或登录态失效。已确认并关闭该进程后，复用原持久 profile 的 `test-yulan --headed` 返回“预览发送成功”。这条规则已写入 `AGENTS.md`、中英文 README、本机发布诊断和改动索引：先查 `SingletonLock` / `DevToolsActivePort`，只关闭确认的遗留进程，不删除 profile、不切无痕、不重新生成已审核稿。
 
 - 2026-07-14: **跨日报人工精选去重修正** — 真实生成暴露出高分 `manual_items` 在焦点路径绕过了昨天已用链接的降权，导致 BUIDL 连续两天成为焦点；现在人工精选仍优先，但已用 URL 不再允许重复抢占焦点。同时将“巨鲸浮亏 / 割肉”等单一个人仓位快讯排除在正文与焦点外，避免日报被市场八卦填充；资料索引也不再为凑数回填低价值素材。验证者收入重定向等具体研究议题会生成事件相关的价值与核对点，不再误触发泛化的“研究方法论”文案。

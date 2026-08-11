@@ -61,6 +61,8 @@
 
 `qunmind daily-report` 不再只是一条“随便生成一份 markdown”的孤立命令；如果传 `--report-name`，应尽量复用已配置日报目标的 `daily_quote` / `output` / 发布参数，作为手工联调正式日报目标的入口。涉及这条手工链路的行为变更时，同步检查 README / PROGRESS 对“如何手工跑一次日报”的描述是否一致。
 
+`src/daily_report/pii.rs` 是日报内容隐私边界：手机/邮箱/身份证/车牌/精确门牌命中按 Error（阻断发布），银行卡号按 Warn（Web3 大整数易误伤）。`lint.rs` 已自动调用，所有日报生成与发布前都会扫描；新的强 PII 规则先确认不与现有新闻素材/群消息误伤再放开为 Error。`src/daily_report/run_trace.rs` 与 `src/daily_report/reference_map.rs` 分别把一次日报生成收敛为结构化 `run_trace`（步骤状态 + privacy_flags + human_review_required）和 `reference_map`（正文引用来源 title/url/domain/cited）；两者经 `reporting.rs` 的 `with_run_trace` / `with_reference_map` 挂到 `daily-report` 与 MCP `report_markdown` / `report_publish` 的回执 JSON，强化 AGENTS.md 要求的可追溯约束。新增日报校验维度时优先沿这三个纯函数模块扩展，不要在 `main.rs` / `src/mcp/tools.rs` 内联重复逻辑。
+
 手工 `daily-report --report-name ... --publish` 一旦发布成功，应尽量沿用与 scheduler 相同的发布回执落库边界，让 `report-status` / `publish-history` 立刻看到最新结果；如果回执保存失败，也要把“外部发布成功但内部状态保存失败”明确暴露出来，不要把两者混成同一个失败语义。
 
 如果只配置了一个 `schedule.daily_reports` 目标，手工 `daily-report` 应优先自动复用它，而不是退回成脱离正式目标配置的空白 markdown 模式；只有在存在多个日报目标时，才要求显式传 `--report-name`，避免手工联调和正式目标配置脱节。

@@ -4,6 +4,8 @@ use crate::ai::openai::OpenAiClient;
 use crate::config::{AiProvider, Config};
 use crate::daily_report::DailyReportGenerator;
 use crate::daily_report::lint::DailyReportLintResult;
+use crate::daily_report::reference_map::ReferenceMap;
+use crate::daily_report::run_trace::RunTrace;
 use crate::error::QunMindError;
 use crate::publisher::{PublishReceipt, PublishTarget};
 use crate::source;
@@ -524,6 +526,23 @@ pub fn with_report_source_info(
 ) -> serde_json::Value {
     json["report_source"] = serde_json::to_value(source_info).expect("serialize report source");
     json
+}
+
+/// 把结构化 run/trace 报告挂到回执 JSON（移植自 wx-cli run.schema.json）。
+pub fn with_run_trace(mut json: serde_json::Value, trace: &RunTrace) -> serde_json::Value {
+    json["run_trace"] = serde_json::to_value(trace).expect("serialize run trace");
+    json
+}
+
+/// 把结构化引用溯源挂到回执 JSON（移植自 wx-cli quote-map.schema.json）。
+pub fn with_reference_map(mut json: serde_json::Value, map: &ReferenceMap) -> serde_json::Value {
+    json["reference_map"] = serde_json::to_value(map).expect("serialize reference map");
+    json
+}
+
+/// 当前本地日期，用作 run/trace 与 reference_map 的日期字段。
+pub fn today_naive_date() -> String {
+    chrono::Local::now().date_naive().to_string()
 }
 
 pub async fn generate_manual_daily_report_markdown(

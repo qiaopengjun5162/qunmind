@@ -9,6 +9,8 @@ use qunmind::config::{ChannelKind, Config};
 use qunmind::daily_report::lint::{
     lint_context_for_output, lint_daily_report_markdown_with_context,
 };
+use qunmind::daily_report::reference_map::build_reference_map;
+use qunmind::daily_report::run_trace::{RunTrace, RunTraceOptions};
 use qunmind::error::QunMindError;
 use qunmind::network_diagnostic::{NetworkDiagnosticOptions, report_network_status_json};
 use qunmind::publisher::{
@@ -21,7 +23,7 @@ use qunmind::reporting::{
     generate_manual_daily_report_markdown_with_options, manual_daily_report_publish_target,
     manual_publish_response_json, persist_manual_publish_receipt, publish_receipt_automation_state,
     publish_receipt_json, report_status_json, resolve_manual_daily_report_target, with_lint_result,
-    with_report_source_info,
+    with_report_source_info, with_reference_map, with_run_trace, today_naive_date,
 };
 use qunmind::scheduler::daily_report::DailyReportScheduler;
 use qunmind::source::wechat_rss::{fetch_named_wechat_account_articles, find_wechat_account};
@@ -181,62 +183,70 @@ async fn run_diagnostic_command(
                 ),
                 None => None,
             };
+            let published = publish_receipt.is_some();
+            let base_json = match (&publish_receipt, &publish_persistence) {
+                (Some(receipt), Some(persistence)) => with_lint_result(
+                    manual_publish_response_json(
+                        &report_target.name,
+                        &output,
+                        persistence,
+                        receipt,
+                    ),
+                    &lint,
+                    false,
+                ),
+                (None, _) => with_lint_result(
+                    serde_json::json!({
+                        "ok": true,
+                        "report_name": report_target.name,
+                        "output_path": output.display().to_string(),
+                        "published": false,
+                    }),
+                    &lint,
+                    publish && lint.has_errors,
+                ),
+                (Some(receipt), None) => with_lint_result(
+                    serde_json::json!({
+                        "ok": true,
+                        "report_name": report_target.name,
+                        "output_path": output.display().to_string(),
+                        "published": true,
+                        "publish_receipt_saved": false,
+                        "publish_receipt_save_error": "manual publish persistence result missing",
+                        "publish_receipt": {
+                            "target": receipt.target,
+                            "destination": receipt.destination,
+                            "published_at": receipt.published_at,
+                            "summary": receipt.summary,
+                            "raw_output": receipt.raw_output,
+                            "warnings": receipt.warnings,
+                            "automation_state": publish_receipt_automation_state(&receipt.warnings),
+                        },
+                    }),
+                    &lint,
+                    false,
+                ),
+            };
+            let date = today_naive_date();
+            let run_trace = RunTrace::from_daily_report(
+                &date,
+                &generation.source_info,
+                &lint,
+                RunTraceOptions {
+                    published,
+                    publish_error: None,
+                    pipeline_version: Some(env!("CARGO_PKG_VERSION").to_string()),
+                },
+            );
             println!(
                 "{}",
-                serde_json::to_string_pretty(&match (publish_receipt, publish_persistence) {
-                    (Some(receipt), Some(persistence)) => {
-                        with_report_source_info(
-                            with_lint_result(
-                                manual_publish_response_json(
-                                    &report_target.name,
-                                    &output,
-                                    &persistence,
-                                    &receipt,
-                                ),
-                                &lint,
-                                false,
-                            ),
-                            &generation.source_info,
-                        )
-                    }
-                    (None, _) => with_report_source_info(
-                        with_lint_result(
-                            serde_json::json!({
-                                "ok": true,
-                                "report_name": report_target.name,
-                                "output_path": output.display().to_string(),
-                                "published": false,
-                            }),
-                            &lint,
-                            publish && lint.has_errors
-                        ),
-                        &generation.source_info,
+                serde_json::to_string_pretty(&with_reference_map(
+                    with_run_trace(
+                        with_report_source_info(base_json, &generation.source_info),
+                        &run_trace,
                     ),
-                    (Some(receipt), None) => with_report_source_info(
-                        with_lint_result(
-                            serde_json::json!({
-                                "ok": true,
-                                "report_name": report_target.name,
-                                "output_path": output.display().to_string(),
-                                "published": true,
-                                "publish_receipt_saved": false,
-                                "publish_receipt_save_error": "manual publish persistence result missing",
-                                "publish_receipt": {
-                                    "target": receipt.target,
-                                    "destination": receipt.destination,
-                                    "published_at": receipt.published_at,
-                                    "summary": receipt.summary,
-                                    "raw_output": receipt.raw_output,
-                                    "warnings": receipt.warnings,
-                                    "automation_state": publish_receipt_automation_state(&receipt.warnings),
-                                },
-                            }),
-                            &lint,
-                            false
-                        ),
-                        &generation.source_info,
-                    ),
-                })?
+                    &build_reference_map(&output_markdown, Some(&date)),
+                ))?
             );
             Ok(())
         }

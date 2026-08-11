@@ -97,6 +97,7 @@ pub fn lint_daily_report_markdown_with_context(
     lint_bad_phrases(markdown, &mut result);
     lint_domain_concentration(markdown, &mut result);
     lint_duplicate_urls(markdown, &mut result);
+    lint_pii(markdown, &mut result);
     if let Some(context) = context {
         lint_slug_reuse_risk(context, &mut result);
         lint_recent_overlap(markdown, context, &mut result);
@@ -644,6 +645,27 @@ fn extract_https_urls(text: &str) -> Vec<String> {
         .find_iter(text)
         .map(|match_| match_.as_str().to_string())
         .collect()
+}
+
+/// 隐私边界扫描：命中强 PII 直接报 Error（阻断发布），银行卡号报 Warn。
+/// 规则移植自 wx-cli `scripts/validation/check-roast-boundaries.mjs` 的硬规则段。
+fn lint_pii(markdown: &str, result: &mut DailyReportLintResult) {
+    for finding in crate::daily_report::pii::scan_pii(markdown) {
+        let severity = match finding.severity() {
+            crate::daily_report::pii::PiiSeverity::Error => DailyReportLintSeverity::Error,
+            crate::daily_report::pii::PiiSeverity::Warn => DailyReportLintSeverity::Warn,
+        };
+        result.push(
+            severity,
+            finding.code(),
+            format!(
+                "检测到疑似{}「{}」，建议脱敏为「{}」后再发布",
+                finding.label(),
+                finding.matched,
+                finding.redacted
+            ),
+        );
+    }
 }
 
 fn url_domain(url: &str) -> Option<String> {

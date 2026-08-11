@@ -1,7 +1,10 @@
 pub mod lint;
 mod parser;
+pub mod pii;
 mod prompt;
+pub mod reference_map;
 mod render;
+pub mod run_trace;
 mod types;
 
 use std::collections::{HashMap, HashSet};
@@ -2858,6 +2861,12 @@ fn is_editorial_body_candidate(item: &PublicNewsItem) -> bool {
         && !is_incidental_web3_crime_item(item)
         && !is_personal_wallet_incident_item(item)
         && !is_personal_market_position_item(item)
+        && !is_stock_subscription_result_item(item)
+        && !is_market_commentary_item(item)
+}
+
+fn is_stock_subscription_result_item(item: &PublicNewsItem) -> bool {
+    contains_any_text(&item.title, &["中签号", "中签结果", "网下配售结果"])
 }
 
 fn is_web3_body_item(item: &PublicNewsItem) -> bool {
@@ -3463,7 +3472,9 @@ fn is_ai_section_item(item: &ReportSection, source_items: &[PublicNewsItem]) -> 
         .iter()
         .find(|source_item| source_item.url == item.url)
     {
-        return is_ai_item(source_item) && !is_deep_read_only_item(source_item);
+        return is_ai_item(source_item)
+            && !is_deep_read_only_item(source_item)
+            && !is_reddit_item(source_item);
     }
 
     has_ai_section_signal(&format!("{} {}", item.title, item.source).to_lowercase())
@@ -3833,6 +3844,9 @@ fn best_fresh_focus_candidate<'a>(
 
 fn is_focus_worthy_item(item: &PublicNewsItem) -> bool {
     is_editorial_body_candidate(item)
+        && !is_deep_read_only_item(item)
+        && !is_reddit_item(item)
+        && !is_low_signal_reddit_discussion_item(item)
         && !is_consumer_phishing_alert_item(item)
         && !is_low_action_social_quote_item(item)
         && !is_reference_resource_item(item)
@@ -4142,6 +4156,9 @@ fn is_market_commentary_item(item: &PublicNewsItem) -> bool {
             "分析师",
             "目标价",
             "预期",
+            "预计",
+            "有望",
+            "可能升至",
             "下调",
             "上调",
             "评级",
@@ -9636,6 +9653,61 @@ mod tests {
 
         assert!(is_deep_read_only_item(&item));
         assert!(!is_ai_section_item(&section, &[item]));
+    }
+
+    #[test]
+    fn videos_do_not_become_daily_focus() {
+        let item = PublicNewsItem {
+            source: "Bilibili".to_string(),
+            title: "科技周报：AI 工具链".to_string(),
+            url: "https://www.bilibili.com/video/BV19qNT6ZEmL".to_string(),
+            summary: Some("一则聚焦 AI 工具链的科技周报视频。".to_string()),
+            author: None,
+            published_at: Some("2026-07-12T14:21:28+08:00".to_string()),
+            score: Some(450),
+            comments: None,
+            ai_score: None,
+            category: Some("manual:ai".to_string()),
+        };
+
+        assert!(!is_focus_worthy_item(&item));
+    }
+
+    #[test]
+    fn reddit_urls_do_not_become_daily_focus() {
+        let item = PublicNewsItem {
+            source: "Hacker News".to_string(),
+            title: "AI discussion".to_string(),
+            url: "https://old.reddit.com/r/math/comments/example".to_string(),
+            summary: Some("AI 讨论。".to_string()),
+            author: None,
+            published_at: Some("2026-07-19T08:00:00Z".to_string()),
+            score: Some(100),
+            comments: None,
+            ai_score: None,
+            category: Some("hacker_news".to_string()),
+        };
+
+        assert!(!is_focus_worthy_item(&item));
+    }
+
+    #[test]
+    fn stock_subscription_results_do_not_enter_editorial_body() {
+        let item = PublicNewsItem {
+            source: "PANews".to_string(),
+            title: "长鑫科技中签号出炉".to_string(),
+            url: "https://www.panewslab.com/zh/articles/example".to_string(),
+            summary: Some("首次公开发行中签结果公布。".to_string()),
+            author: None,
+            published_at: Some("2026-07-19T08:00:00Z".to_string()),
+            score: Some(120),
+            comments: None,
+            ai_score: None,
+            category: Some("web3_media".to_string()),
+        };
+
+        assert!(!is_editorial_body_candidate(&item));
+        assert!(!is_focus_worthy_item(&item));
     }
 
     #[test]

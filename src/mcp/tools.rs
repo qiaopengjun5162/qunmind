@@ -3,6 +3,8 @@ use std::path::PathBuf;
 use crate::channel::wx_cli::{WxCliChannel, write_wx_cli_capture_file};
 use crate::config::Config;
 use crate::daily_report::lint::{lint_context_for_output, lint_daily_report_markdown_with_context};
+use crate::daily_report::reference_map::build_reference_map;
+use crate::daily_report::run_trace::{RunTrace, RunTraceOptions};
 use crate::diagnostic;
 use crate::publisher::{
     configure_wechat_backend, login_wechat_backend, prepare_report_output_markdown,
@@ -13,8 +15,8 @@ use crate::reporting::{
     effective_publish_history_name, effective_report_status_target,
     generate_manual_daily_report_markdown_with_options, manual_daily_report_publish_target,
     manual_publish_response_json, persist_manual_publish_receipt, publish_receipt_json,
-    report_status_json, resolve_manual_daily_report_target, with_lint_result,
-    with_report_source_info,
+    report_status_json, resolve_manual_daily_report_target, today_naive_date, with_lint_result,
+    with_reference_map, with_report_source_info, with_run_trace,
 };
 use crate::source::wechat_rss::{fetch_named_wechat_account_articles, find_wechat_account};
 use crate::storage::MessageStore;
@@ -660,18 +662,35 @@ async fn tool_report_markdown(config: &Config, args: &serde_json::Value) -> anyh
     std::fs::write(&output_path, &output_markdown)
         .map_err(|err| anyhow::anyhow!("写入日报文件失败: {}", err))?;
 
-    Ok(serde_json::to_string_pretty(&with_report_source_info(
-        with_lint_result(
-            serde_json::json!({
-                "ok": true,
-                "report_name": report_target.name,
-                "output_path": output_path.display().to_string(),
-                "published": false,
-            }),
-            &lint,
-            false,
-        ),
+    let date = today_naive_date();
+    let run_trace = RunTrace::from_daily_report(
+        &date,
         &generation.source_info,
+        &lint,
+        RunTraceOptions {
+            published: false,
+            publish_error: None,
+            pipeline_version: Some(env!("CARGO_PKG_VERSION").to_string()),
+        },
+    );
+    Ok(serde_json::to_string_pretty(&with_reference_map(
+        with_run_trace(
+            with_report_source_info(
+                with_lint_result(
+                    serde_json::json!({
+                        "ok": true,
+                        "report_name": report_target.name,
+                        "output_path": output_path.display().to_string(),
+                        "published": false,
+                    }),
+                    &lint,
+                    false,
+                ),
+                &generation.source_info,
+            ),
+            &run_trace,
+        ),
+        &build_reference_map(&output_markdown, Some(&date)),
     ))?)
 }
 
@@ -724,19 +743,37 @@ async fn tool_report_publish(config: &Config, args: &serde_json::Value) -> anyho
     );
     std::fs::write(&output_path, &output_markdown)
         .map_err(|err| anyhow::anyhow!("写入日报文件失败: {}", err))?;
+    let date = today_naive_date();
+    let reference_map = build_reference_map(&output_markdown, Some(&date));
     if lint.has_errors {
-        return Ok(serde_json::to_string_pretty(&with_report_source_info(
-            with_lint_result(
-                serde_json::json!({
-                    "ok": true,
-                    "report_name": report_target.name,
-                    "output_path": output_path.display().to_string(),
-                    "published": false,
-                }),
-                &lint,
-                true,
-            ),
+        let run_trace = RunTrace::from_daily_report(
+            &date,
             &generation.source_info,
+            &lint,
+            RunTraceOptions {
+                published: false,
+                publish_error: None,
+                pipeline_version: Some(env!("CARGO_PKG_VERSION").to_string()),
+            },
+        );
+        return Ok(serde_json::to_string_pretty(&with_reference_map(
+            with_run_trace(
+                with_report_source_info(
+                    with_lint_result(
+                        serde_json::json!({
+                            "ok": true,
+                            "report_name": report_target.name,
+                            "output_path": output_path.display().to_string(),
+                            "published": false,
+                        }),
+                        &lint,
+                        true,
+                    ),
+                    &generation.source_info,
+                ),
+                &run_trace,
+            ),
+            &reference_map,
         ))?);
     }
 
@@ -746,18 +783,34 @@ async fn tool_report_publish(config: &Config, args: &serde_json::Value) -> anyho
         persist_manual_publish_receipt(Ok(message_store), &report_target.name, &publish_receipt)
             .await;
 
-    let response = with_report_source_info(
-        with_lint_result(
-            manual_publish_response_json(
-                &report_target.name,
-                &output_path,
-                &publish_persistence,
-                &publish_receipt,
-            ),
-            &lint,
-            false,
-        ),
+    let run_trace = RunTrace::from_daily_report(
+        &date,
         &generation.source_info,
+        &lint,
+        RunTraceOptions {
+            published: true,
+            publish_error: None,
+            pipeline_version: Some(env!("CARGO_PKG_VERSION").to_string()),
+        },
+    );
+    let response = with_reference_map(
+        with_run_trace(
+            with_report_source_info(
+                with_lint_result(
+                    manual_publish_response_json(
+                        &report_target.name,
+                        &output_path,
+                        &publish_persistence,
+                        &publish_receipt,
+                    ),
+                    &lint,
+                    false,
+                ),
+                &generation.source_info,
+            ),
+            &run_trace,
+        ),
+        &reference_map,
     );
 
     Ok(serde_json::to_string_pretty(&response)?)
