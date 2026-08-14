@@ -100,6 +100,15 @@ pub const LEARNING_RESOURCES: &[LearningResource] = &[
         url: None,
     },
     LearningResource {
+        title: "Agent Skills Engineering Workflow",
+        category: LearningResourceCategory::CodingAgents,
+        provider: "Addy Osmani",
+        focus: "参考上下文工程、源码驱动决策、故障恢复和发布前验证的可复用工程流程；不直接安装第三方 hooks、命令或跨模型 CLI",
+        format: LearningResourceFormat::Docs,
+        priority: 75,
+        url: Some("https://github.com/addyosmani/agent-skills"),
+    },
+    LearningResource {
         title: "AI Agent 入门",
         category: LearningResourceCategory::AgentFoundations,
         provider: "General agent intro",
@@ -134,6 +143,15 @@ pub const LEARNING_RESOURCES: &[LearningResource] = &[
         format: LearningResourceFormat::Docs,
         priority: 110,
         url: None,
+    },
+    LearningResource {
+        title: "DojoAgents Architecture",
+        category: LearningResourceCategory::AgentFrameworks,
+        provider: "Alpha Dojo",
+        focus: "学习 Agent Loop、Gateway adapter、记忆来源约束与 Skill 懒加载的分层边界，不引入投资执行能力",
+        format: LearningResourceFormat::Docs,
+        priority: 115,
+        url: Some("https://github.com/Alpha-Dojo/DojoAgents"),
     },
     LearningResource {
         title: "Hermes Agent Docs",
@@ -208,6 +226,15 @@ pub const LEARNING_RESOURCES: &[LearningResource] = &[
         url: Some("https://aiweb3.school/learning-agent.zh.txt"),
     },
     LearningResource {
+        title: "AI Content Knowledge Base",
+        category: LearningResourceCategory::LearningWorkflow,
+        provider: "mrbear1024",
+        focus: "学习 raw / sources / products / wiki / staging 分层、来源追溯和 review-first 知识沉淀，不把 AI 草稿直接当作事实",
+        format: LearningResourceFormat::Docs,
+        priority: 145,
+        url: Some("https://github.com/mrbear1024/ai-content-kb"),
+    },
+    LearningResource {
         title: "AI × Web3 School Handbook",
         category: LearningResourceCategory::AiWeb3Bridge,
         provider: "AI x Web3 School",
@@ -215,6 +242,15 @@ pub const LEARNING_RESOURCES: &[LearningResource] = &[
         format: LearningResourceFormat::Handbook,
         priority: 150,
         url: Some("https://aiweb3.school/zh/handbook/"),
+    },
+    LearningResource {
+        title: "ClawFeed — AI 新闻摘要聚合",
+        category: LearningResourceCategory::AgentFrameworks,
+        provider: "kevinho",
+        focus: "Self-hosted 多源（Twitter/RSS/HN/Reddit/GitHub Trending）AI 聚合 + 结构化日报，与 QunMind 日报引擎同类思路的参考产品；只借鉴成稿与架构边界，不并入主进程、不消费其私有订阅源",
+        format: LearningResourceFormat::Docs,
+        priority: 152,
+        url: Some("https://github.com/kevinho/clawfeed"),
     },
 ];
 
@@ -311,6 +347,7 @@ mod tests {
             "Z.ai API 开发者文档",
             "Z.ai Coding Plan",
             "Claude Code 101",
+            "Agent Skills Engineering Workflow",
             "AI Agent 入门",
             "Microsoft AI Agents for Beginners",
             "OpenAI Agents SDK Intro",
@@ -369,6 +406,7 @@ mod tests {
             .collect::<Vec<_>>();
 
         assert!(titles.contains(&"Microsoft AI Agents for Beginners"));
+        assert!(titles.contains(&"Agent Skills Engineering Workflow"));
         assert!(titles.contains(&"OpenAI Agents SDK Intro"));
         assert!(titles.contains(&"LangGraph Overview"));
         assert!(titles.contains(&"Hermes Agent Docs"));
@@ -395,6 +433,7 @@ mod tests {
     #[test]
     fn finds_resources_with_normalized_titles() {
         let claude = resource("anthropic building with the claude api");
+        let agent_skills = resource("agent skills engineering workflow");
         let zread = resource("Zread AI OpenClaw Hermes");
         let wx_cli_skill = resource("wx-cli 的 AI Agent Skill 来了！让 AI 直接帮你管微信私域");
         let joyai = resource("joy ai vl interaction");
@@ -404,6 +443,14 @@ mod tests {
 
         assert_eq!(claude.provider, "Anthropic");
         assert_eq!(claude.category, LearningResourceCategory::ApiCalling);
+        assert_eq!(
+            agent_skills.category,
+            LearningResourceCategory::CodingAgents
+        );
+        assert_eq!(
+            agent_skills.url,
+            Some("https://github.com/addyosmani/agent-skills")
+        );
         assert_eq!(zread.category, LearningResourceCategory::HermesExecution);
         assert_eq!(
             wx_cli_skill.category,

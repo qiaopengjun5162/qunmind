@@ -6,6 +6,11 @@ use qunmind::channel::wecom::WeComChannel;
 use qunmind::channel::wx_cli::WxCliChannel;
 use qunmind::cli::{Args, CliCommand};
 use qunmind::config::{ChannelKind, Config};
+use qunmind::daily_report::lint::{
+    lint_context_for_output, lint_daily_report_markdown_with_context,
+};
+use qunmind::daily_report::reference_map::build_reference_map;
+use qunmind::daily_report::run_trace::{RunTrace, RunTraceOptions};
 use qunmind::error::QunMindError;
 use qunmind::network_diagnostic::{NetworkDiagnosticOptions, report_network_status_json};
 use qunmind::publisher::{
@@ -13,19 +18,21 @@ use qunmind::publisher::{
     preview_wechat_backend, publish_markdown, wechat_login_recovery_hint,
 };
 use qunmind::reporting::{
-    build_ai_client, build_message_store, build_public_news_source, effective_publish_history_name,
-    effective_report_status_target, generate_manual_daily_report_markdown,
-    manual_daily_report_publish_target, manual_publish_response_json,
-    persist_manual_publish_receipt, publish_receipt_automation_state, publish_receipt_json,
-    report_status_json, resolve_manual_daily_report_target,
+    build_ai_client, build_message_store, build_noop_message_store, build_public_news_source,
+    effective_publish_history_name, effective_report_status_target,
+    generate_manual_daily_report_markdown_with_options, manual_daily_report_publish_target,
+    manual_publish_response_json, persist_manual_publish_receipt, publish_receipt_automation_state,
+    publish_receipt_json, report_status_json, resolve_manual_daily_report_target, with_lint_result,
+    with_report_source_info, with_reference_map, with_run_trace, today_naive_date,
 };
 use qunmind::scheduler::daily_report::DailyReportScheduler;
 use qunmind::source::wechat_rss::{fetch_named_wechat_account_articles, find_wechat_account};
 use qunmind::wechat_article_helper::{
-    run_wechat_article_url_helper, wechat_article_url_response_json,
+    run_wechat_article_url_helper, wechat_article_url_doctor_json, wechat_article_url_failure_json,
+    wechat_article_url_response_json,
 };
 use qunmind::wx_cli_commands::run_wx_cli_command;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::Arc;
 use tracing::{error, info};
 use tracing_subscriber::EnvFilter;
@@ -33,7 +40,7 @@ use tracing_subscriber::EnvFilter;
 #[cfg(test)]
 use qunmind::ai;
 #[cfg(test)]
-use qunmind::reporting::ManualDailyReportTarget;
+use qunmind::reporting::{ManualDailyReportSourceMode, ManualDailyReportTarget};
 #[cfg(test)]
 use qunmind::source::PublicNewsSource;
 #[cfg(test)]
@@ -111,59 +118,6 @@ fn build_channel(config: &Config) -> anyhow::Result<Arc<dyn Channel>> {
     })
 }
 
-fn previous_markdown_context_for_output(output: &Path) -> Option<String> {
-    let mut chunks = Vec::new();
-
-    if let Ok(markdown) = std::fs::read_to_string(output)
-        && !markdown.trim().is_empty()
-    {
-        chunks.push(markdown);
-    }
-
-    let parent = output.parent().unwrap_or_else(|| Path::new("."));
-    let mut candidates = recent_report_markdown_candidates(parent, output);
-    candidates.sort_by_key(|path| {
-        std::fs::metadata(path)
-            .and_then(|metadata| metadata.modified())
-            .ok()
-    });
-    candidates.reverse();
-
-    for path in candidates.into_iter().take(5) {
-        if let Ok(markdown) = std::fs::read_to_string(&path)
-            && !markdown.trim().is_empty()
-        {
-            chunks.push(markdown);
-        }
-    }
-
-    if chunks.is_empty() {
-        None
-    } else {
-        Some(chunks.join("\n\n"))
-    }
-}
-
-fn recent_report_markdown_candidates(dir: &Path, output: &Path) -> Vec<PathBuf> {
-    let Ok(entries) = std::fs::read_dir(dir) else {
-        return Vec::new();
-    };
-
-    entries
-        .flatten()
-        .map(|entry| entry.path())
-        .filter(|path| path != output)
-        .filter(|path| path.extension().and_then(|ext| ext.to_str()) == Some("md"))
-        .filter(|path| {
-            path.file_name()
-                .and_then(|name| name.to_str())
-                .is_some_and(|name| {
-                    name.starts_with("wechat-report-") || name.starts_with("daily-report-")
-                })
-        })
-        .collect()
-}
-
 async fn run_diagnostic_command(
     command: CliCommand,
     config: &Config,
@@ -180,28 +134,45 @@ async fn run_diagnostic_command(
             report_name,
             hours: _,
             publish,
+            public_only,
         } => {
             let ai_client = build_ai_client(config)?;
             let report_target = resolve_manual_daily_report_target(config, &report_name)?;
-            let message_store = build_message_store(config).await?;
+            let message_store = if public_only {
+                build_noop_message_store()
+            } else {
+                build_message_store(config).await?
+            };
             let public_news_source = build_public_news_source(config)?;
-            let previous_markdown = previous_markdown_context_for_output(&output);
-            let markdown = generate_manual_daily_report_markdown(
+            let lint_context = lint_context_for_output(&output);
+            let previous_markdown = lint_context.previous_markdown.as_deref();
+            let generation = generate_manual_daily_report_markdown_with_options(
                 config,
                 &report_target,
                 Arc::clone(&ai_client),
                 Arc::clone(&message_store),
                 public_news_source,
-                previous_markdown.as_deref(),
+                previous_markdown,
+                public_only,
             )
             .await?;
+            let markdown = generation.markdown;
             let output_markdown =
                 prepare_report_output_markdown(&markdown, &report_target.output, &output)?;
+            let lint = lint_daily_report_markdown_with_context(
+                &output_markdown,
+                &report_target.output,
+                Some(&lint_context),
+            );
             std::fs::write(&output, &output_markdown)
                 .with_context(|| format!("写入日报文件失败: {}", output.display()))?;
             let publish_receipt = if publish {
-                let target = manual_daily_report_publish_target(&report_target)?;
-                Some(publish_markdown(&markdown, &target)?)
+                if lint.has_errors {
+                    None
+                } else {
+                    let target = manual_daily_report_publish_target(&report_target)?;
+                    Some(publish_markdown(&markdown, &target)?)
+                }
             } else {
                 None
             };
@@ -212,22 +183,30 @@ async fn run_diagnostic_command(
                 ),
                 None => None,
             };
-            println!(
-                "{}",
-                serde_json::to_string_pretty(&match (publish_receipt, publish_persistence) {
-                    (Some(receipt), Some(persistence)) => manual_publish_response_json(
+            let published = publish_receipt.is_some();
+            let base_json = match (&publish_receipt, &publish_persistence) {
+                (Some(receipt), Some(persistence)) => with_lint_result(
+                    manual_publish_response_json(
                         &report_target.name,
                         &output,
-                        &persistence,
-                        &receipt,
+                        persistence,
+                        receipt,
                     ),
-                    (None, _) => serde_json::json!({
+                    &lint,
+                    false,
+                ),
+                (None, _) => with_lint_result(
+                    serde_json::json!({
                         "ok": true,
                         "report_name": report_target.name,
                         "output_path": output.display().to_string(),
                         "published": false,
                     }),
-                    (Some(receipt), None) => serde_json::json!({
+                    &lint,
+                    publish && lint.has_errors,
+                ),
+                (Some(receipt), None) => with_lint_result(
+                    serde_json::json!({
                         "ok": true,
                         "report_name": report_target.name,
                         "output_path": output.display().to_string(),
@@ -244,7 +223,30 @@ async fn run_diagnostic_command(
                             "automation_state": publish_receipt_automation_state(&receipt.warnings),
                         },
                     }),
-                })?
+                    &lint,
+                    false,
+                ),
+            };
+            let date = today_naive_date();
+            let run_trace = RunTrace::from_daily_report(
+                &date,
+                &generation.source_info,
+                &lint,
+                RunTraceOptions {
+                    published,
+                    publish_error: None,
+                    pipeline_version: Some(env!("CARGO_PKG_VERSION").to_string()),
+                },
+            );
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&with_reference_map(
+                    with_run_trace(
+                        with_report_source_info(base_json, &generation.source_info),
+                        &run_trace,
+                    ),
+                    &build_reference_map(&output_markdown, Some(&date)),
+                ))?
             );
             Ok(())
         }
@@ -497,11 +499,25 @@ async fn run_diagnostic_command(
             Ok(())
         }
         CliCommand::WechatArticleUrl { url, output_dir } => {
-            let result =
-                run_wechat_article_url_helper(&config.public_sources, &url, output_dir.as_deref())?;
+            let json = match run_wechat_article_url_helper(
+                &config.public_sources,
+                &url,
+                output_dir.as_deref(),
+            ) {
+                Ok(result) => wechat_article_url_response_json(&result),
+                Err(failure) => wechat_article_url_failure_json(failure.as_ref()),
+            };
+            println!("{}", serde_json::to_string_pretty(&json)?);
+            Ok(())
+        }
+        CliCommand::WechatArticleUrlDoctor { url, output_dir } => {
             println!(
                 "{}",
-                serde_json::to_string_pretty(&wechat_article_url_response_json(&result))?
+                serde_json::to_string_pretty(&wechat_article_url_doctor_json(
+                    &config.public_sources,
+                    url.as_deref(),
+                    output_dir.as_deref(),
+                ))?
             );
             Ok(())
         }
@@ -893,38 +909,43 @@ mod tests {
             "manual daily report target",
         );
         let markdown = must(
-            generate_manual_daily_report_markdown(
+            generate_manual_daily_report_markdown_with_options(
                 &config,
                 &report_target,
                 ai.clone(),
                 store,
                 None,
                 None,
+                false,
             )
             .await,
             "manual daily report markdown",
         );
+        assert_eq!(
+            markdown.source_info.mode,
+            ManualDailyReportSourceMode::GroupMessages
+        );
+        assert_eq!(markdown.source_info.loaded_message_count, 1);
+        assert_eq!(markdown.source_info.loaded_link_count, 2);
+        assert_eq!(markdown.source_info.fallback_reason, None);
 
-        assert!(markdown.contains("title: \"AI · Web3 最新日报｜"));
-        assert!(markdown.contains("今日三件事"));
-        assert!(markdown.contains("### 正文引用来源（"));
-        assert!(markdown.contains("### 深读 01"));
-        assert!(markdown.contains("原文：https://example.com/report"));
-        assert!(markdown.contains("原文：https://example.com/postmortem"));
+        assert!(markdown.markdown.contains("title: \"AI · Web3 最新日报｜"));
+        assert!(markdown.markdown.contains("## 今日焦点"));
+        assert!(!markdown.markdown.contains("今日三件事"));
+        assert!(markdown.markdown.contains("### 正文引用来源（"));
+        assert!(markdown.markdown.contains("### 深读 01"));
+        assert!(
+            markdown
+                .markdown
+                .contains("**原文入口**：https://example.com/report")
+        );
+        assert!(
+            markdown
+                .markdown
+                .contains("**原文入口**：https://example.com/postmortem")
+        );
         let requests = ai.requests.lock().await;
-        assert_eq!(requests.len(), 1);
-        assert!(requests[0][0].content.contains("请总结群聊"));
-        assert!(requests[0][0].content.contains("今天完成了日报联调"));
-        assert!(
-            requests[0][0]
-                .content
-                .contains("URL: https://example.com/report")
-        );
-        assert!(
-            requests[0][0]
-                .content
-                .contains("URL: https://example.com/postmortem")
-        );
+        assert!(requests.is_empty());
     }
 
     #[tokio::test]
@@ -969,20 +990,172 @@ mod tests {
             "manual daily report target",
         );
         let markdown = must(
-            generate_manual_daily_report_markdown(
+            generate_manual_daily_report_markdown_with_options(
                 &config,
                 &report_target,
                 ai.clone(),
                 store,
                 Some(source),
                 None,
+                false,
             )
             .await,
             "manual public daily report markdown",
         );
+        assert_eq!(
+            markdown.source_info.mode,
+            ManualDailyReportSourceMode::PublicSources
+        );
+        assert_eq!(markdown.source_info.loaded_message_count, 0);
+        assert_eq!(markdown.source_info.loaded_link_count, 0);
+        assert_eq!(
+            markdown.source_info.fallback_reason_code.as_deref(),
+            Some("no_group_material_in_lookback_window")
+        );
 
-        assert!(markdown.contains("title: \"AI · Web3 最新日报｜"));
-        assert!(markdown.contains("Rust release"));
+        assert!(markdown.markdown.contains("title: \"AI · Web3 最新日报｜"));
+        assert!(markdown.markdown.contains("Rust release"));
+    }
+
+    #[tokio::test]
+    async fn manual_daily_report_public_only_skips_group_loading() {
+        let config = config_from(
+            r#"
+            [ai]
+            provider = "hermes"
+
+            [[schedule.daily_reports]]
+            chat_id = "group-1"
+            name = "技术群日报"
+            output = "chat"
+            "#,
+        );
+        let ai = Arc::new(ManualReportAi::new(
+            r#"{"title_hint":"公开来源日报","intro":"今天有公开技术动态","focus_text":"","focus_url":"","ai_items":[],"ai_signals":[],"web3_items":[],"tech_items":[],"tech_timeline":[],"reads":[],"summary":"总结"}"#,
+        ));
+        let store = Arc::new(RecordingPublishReceiptStoreWithMessages {
+            messages: vec![StoredMessage {
+                message_id: "m1".to_string(),
+                channel: "wx_cli".to_string(),
+                chat_id: "group-1".to_string(),
+                from: "alice".to_string(),
+                is_group: true,
+                msg_type: MsgType::Text,
+                text: Some("今天完成了日报联调".to_string()),
+                received_at: chrono::Utc::now(),
+            }],
+            links: vec![StoredLink {
+                message_id: "m1".to_string(),
+                channel: "wx_cli".to_string(),
+                chat_id: "group-1".to_string(),
+                from: "alice".to_string(),
+                url: "https://example.com/report".to_string(),
+                normalized_url: "https://example.com/report".to_string(),
+                title: Some("日报链接".to_string()),
+                received_at: chrono::Utc::now(),
+            }],
+            receipts: Mutex::new(Vec::new()),
+        });
+        let source = Arc::new(ManualReportNewsSource {
+            items: vec![PublicNewsItem {
+                source: "Hacker News".to_string(),
+                title: "Rust release".to_string(),
+                url: "https://example.com/rust".to_string(),
+                summary: Some("Rust release summary".to_string()),
+                author: Some("alice".to_string()),
+                published_at: Some("2026-06-24T00:00:00+00:00".to_string()),
+                score: Some(100),
+                comments: Some(20),
+                ai_score: None,
+                category: None,
+            }],
+        });
+
+        let report_target = must(
+            resolve_manual_daily_report_target(&config, ""),
+            "manual daily report target",
+        );
+        let markdown = must(
+            generate_manual_daily_report_markdown_with_options(
+                &config,
+                &report_target,
+                ai,
+                store,
+                Some(source),
+                None,
+                true,
+            )
+            .await,
+            "manual public-only daily report markdown",
+        );
+
+        assert_eq!(
+            markdown.source_info.mode,
+            ManualDailyReportSourceMode::PublicSources
+        );
+        assert!(markdown.source_info.public_only);
+        assert_eq!(markdown.source_info.loaded_message_count, 0);
+        assert_eq!(markdown.source_info.loaded_link_count, 0);
+        assert_eq!(
+            markdown.source_info.fallback_reason_code.as_deref(),
+            Some("forced_public_only")
+        );
+        assert!(markdown.markdown.contains("Rust release"));
+    }
+
+    #[tokio::test]
+    async fn manual_daily_report_public_only_does_not_require_database_store() {
+        let config = config_from(
+            r#"
+            [ai]
+            provider = "hermes"
+
+            [[schedule.daily_reports]]
+            name = "微信公众号日报"
+            output = "wechat"
+            "#,
+        );
+        let source = Arc::new(ManualReportNewsSource {
+            items: vec![PublicNewsItem {
+                source: "OpenAI".to_string(),
+                title: "GPT update".to_string(),
+                url: "https://example.com/gpt".to_string(),
+                summary: Some("OpenAI update".to_string()),
+                author: Some("openai".to_string()),
+                published_at: Some("2026-07-10T00:00:00+00:00".to_string()),
+                score: Some(100),
+                comments: Some(20),
+                ai_score: None,
+                category: None,
+            }],
+        });
+        let ai = Arc::new(ManualReportAi::new(
+            r#"{"title_hint":"公开来源日报","intro":"今天有新的公开资料","focus_text":"","focus_url":"","ai_items":[],"ai_signals":[],"web3_items":[],"tech_items":[],"tech_timeline":[],"reads":[],"summary":"总结"}"#,
+        ));
+        let report_target = must(
+            resolve_manual_daily_report_target(&config, ""),
+            "manual daily report target",
+        );
+
+        let generation = must(
+            generate_manual_daily_report_markdown_with_options(
+                &config,
+                &report_target,
+                ai,
+                qunmind::reporting::build_noop_message_store(),
+                Some(source),
+                None,
+                true,
+            )
+            .await,
+            "public-only generation without db store",
+        );
+
+        assert_eq!(
+            generation.source_info.mode,
+            ManualDailyReportSourceMode::PublicSources
+        );
+        assert!(generation.markdown.contains("GPT update"));
     }
 
     #[test]
@@ -997,9 +1170,34 @@ mod tests {
         std::fs::write(&previous_path, "> 原文：https://example.com/yesterday\n")
             .expect("write previous report");
 
-        let context = previous_markdown_context_for_output(&output_path).expect("context");
+        let context =
+            qunmind::daily_report::lint::previous_markdown_context_for_output(&output_path)
+                .expect("context");
 
         assert!(context.contains("https://example.com/yesterday"));
+        std::fs::remove_dir_all(&dir).expect("remove temp dir");
+    }
+
+    #[test]
+    fn lint_context_previous_markdown_skips_same_day_variants() {
+        let dir = std::env::temp_dir().join(format!(
+            "qunmind-previous-markdown-same-day-{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&dir).expect("create temp dir");
+        let older_path = dir.join("wechat-report-2026-07-09.md");
+        let same_day_path = dir.join("wechat-report-2026-07-10-public-only-v2.md");
+        let output_path = dir.join("wechat-report-2026-07-10-public-only-v3.md");
+        std::fs::write(&older_path, "> 原文：https://example.com/yesterday\n")
+            .expect("write older report");
+        std::fs::write(&same_day_path, "> 原文：https://example.com/same-day\n")
+            .expect("write same-day report");
+
+        let context = qunmind::daily_report::lint::lint_context_for_output(&output_path);
+        let previous = context.previous_markdown.expect("previous context");
+
+        assert!(previous.contains("https://example.com/yesterday"));
+        assert!(!previous.contains("https://example.com/same-day"));
         std::fs::remove_dir_all(&dir).expect("remove temp dir");
     }
 

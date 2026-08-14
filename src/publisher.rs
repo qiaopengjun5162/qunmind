@@ -102,7 +102,7 @@ pub fn login_wechat_backend(
         ));
     }
 
-    let mut command = Command::new(moonpub_bin);
+    let mut command = moonpub_command(moonpub_bin);
     command.args(["--articles", articles_dir, "login"]);
     if temporary_profile {
         command.arg("--temporary-profile");
@@ -142,7 +142,7 @@ pub fn configure_wechat_backend(
         ));
     }
 
-    let mut command = Command::new(moonpub_bin);
+    let mut command = moonpub_command(moonpub_bin);
     command.args(["--articles", articles_dir, "configure"]);
     if headed {
         command.arg("--headed");
@@ -181,7 +181,7 @@ pub fn preview_wechat_backend(
         ));
     }
 
-    let mut command = Command::new(moonpub_bin);
+    let mut command = moonpub_command(moonpub_bin);
     command.args(["--articles", articles_dir, "test-yulan"]);
     if headed {
         command.arg("--headed");
@@ -238,7 +238,8 @@ fn publish_to_wechat_draft(
         "calling publisher target for wechat draft report"
     );
 
-    let output = Command::new(moonpub_bin)
+    let mut command = moonpub_command(moonpub_bin);
+    let output = command
         .args([
             "--articles",
             articles_dir,
@@ -275,6 +276,36 @@ fn publish_to_wechat_draft(
         raw_output: stdout,
         warnings,
     })
+}
+
+fn moonpub_command(moonpub_bin: &str) -> Command {
+    let mut command = Command::new(moonpub_bin);
+    apply_publish_proxy(&mut command, configured_publish_proxy().as_deref());
+    command
+}
+
+fn configured_publish_proxy() -> Option<String> {
+    std::env::var("QUNMIND_PUBLISH_PROXY")
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+}
+
+fn apply_publish_proxy(command: &mut Command, proxy_url: Option<&str>) {
+    let Some(proxy_url) = proxy_url else {
+        return;
+    };
+
+    for key in [
+        "HTTP_PROXY",
+        "HTTPS_PROXY",
+        "ALL_PROXY",
+        "http_proxy",
+        "https_proxy",
+        "all_proxy",
+    ] {
+        command.env(key, proxy_url);
+    }
 }
 
 fn extract_publish_warnings(raw_output: &str) -> Vec<String> {
@@ -450,6 +481,35 @@ mod tests {
                 .to_string()
                 .contains("启动 moonpub test-yulan")
         );
+    }
+
+    #[test]
+    fn configured_proxy_is_forwarded_to_moonpub_child_process() {
+        let mut command = Command::new("moonpub");
+        apply_publish_proxy(&mut command, Some("http://127.0.0.1:7890"));
+        let envs = command
+            .get_envs()
+            .filter_map(|(key, value)| Some((key.to_str()?, value?.to_str()?)))
+            .collect::<std::collections::HashMap<_, _>>();
+
+        for key in [
+            "HTTP_PROXY",
+            "HTTPS_PROXY",
+            "ALL_PROXY",
+            "http_proxy",
+            "https_proxy",
+            "all_proxy",
+        ] {
+            assert_eq!(envs.get(key), Some(&"http://127.0.0.1:7890"));
+        }
+    }
+
+    #[test]
+    fn absent_configured_proxy_preserves_inherited_environment() {
+        let mut command = Command::new("moonpub");
+        apply_publish_proxy(&mut command, None);
+
+        assert!(command.get_envs().next().is_none());
     }
 
     #[test]

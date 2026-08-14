@@ -17,6 +17,13 @@ implementation. The relevant direction for QunMind is:
 For QunMind, this translates into a small diagnostic boundary around the
 `QunMind -> moonpub -> WeChat OpenAPI` path.
 
+`QUNMIND_PUBLISH_PROXY` is the explicit handoff setting for that path. When it
+is set, QunMind forwards the URL to every `moonpub` child process through the
+standard uppercase and lowercase HTTP(S) proxy variables. This keeps manual,
+scheduled, and recovery commands on the same chosen route without modifying
+macOS, Mihomo, or Clash state. When it is unset, QunMind preserves the caller's
+inherited proxy environment.
+
 ## What To Diagnose
 
 When WeChat returns `errcode=40164 invalid ip`, the first question is no longer
@@ -44,6 +51,29 @@ Also keep the two WeChat tokens separate:
 If a draft push succeeds but the follow-up says `login timeout: QR code not
 scanned within 120s`, the OpenAPI token was valid. The failed part is the browser
 session for WeChat backend preview/configuration, not the API draft creation.
+
+## Persistent Browser Profile Recovery
+
+`moonpub` deliberately reuses its persistent Chrome profile by default so the
+WeChat backend login can survive across publishes. That profile can be left
+locked when an earlier automation Chrome exits abnormally. The characteristic
+failure is a successful draft push followed by `report-preview` / `test-yulan`
+failing to resolve Chrome's websocket URL.
+
+When that happens, inspect the profile state before changing any report input:
+
+1. Check whether `~/.config/moonpub/chrome-profile/SingletonLock` and
+   `DevToolsActivePort` exist.
+2. Confirm the PID referenced by `SingletonLock` is a MoonPub automation
+   Chrome process using that exact `--user-data-dir`.
+3. Stop only that stale process, then retry `report-preview --headed` with the
+   persistent profile.
+
+Do not delete the profile, switch to `--temporary-profile`, or regenerate an
+already reviewed markdown file as a first response. Those actions either lose
+the usable WeChat backend session or create a different draft; neither repairs
+the lock conflict. A successful preview must be confirmed separately from the
+OpenAPI draft-push receipt.
 
 ## Mihomo / Clash Boundary
 
@@ -109,3 +139,16 @@ than a fast-but-floating anycast exit. If `api.weixin.qq.com` routes through a
 Cloudflare preferred route and WeChat keeps reporting different `104.28.*.*`
 addresses, adding one IP at a time will be fragile. Prefer selecting a fixed
 ordinary node, then verify the WeChat-reported IP before pushing the draft again.
+
+If the operator disables transparent proxy / TUN style tools and WeChat starts
+reporting the same direct exit IP on repeated attempts, the diagnosis changes.
+At that point the main question is no longer "is the publisher path still using
+the wrong route?" but "has that exact IP really been added to the WeChat
+OpenAPI allowlist, and has the backend accepted the change yet?"
+
+On `2026-07-08`, the path moved from floating `104.28.*.*` exits to a stable
+direct IP `117.22.121.195` after closing Warp, Clash Verge, and EasyConnect.
+Repeated `errcode=40164 invalid ip` responses with that same IP confirmed that
+the remaining blocker was the WeChat-side allowlist state, not markdown
+generation, lint, `moonpub`, or proxy drift. Treat this as the default playbook
+for future repeats of the same pattern.

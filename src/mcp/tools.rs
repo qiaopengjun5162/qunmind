@@ -2,23 +2,28 @@ use std::path::PathBuf;
 
 use crate::channel::wx_cli::{WxCliChannel, write_wx_cli_capture_file};
 use crate::config::Config;
+use crate::daily_report::lint::{lint_context_for_output, lint_daily_report_markdown_with_context};
+use crate::daily_report::reference_map::build_reference_map;
+use crate::daily_report::run_trace::{RunTrace, RunTraceOptions};
 use crate::diagnostic;
 use crate::publisher::{
     configure_wechat_backend, login_wechat_backend, prepare_report_output_markdown,
     preview_wechat_backend, publish_markdown, wechat_login_recovery_hint,
 };
 use crate::reporting::{
-    build_ai_client, build_message_store, build_public_news_source, effective_publish_history_name,
-    effective_report_status_target, generate_manual_daily_report_markdown,
-    manual_daily_report_publish_target, manual_publish_response_json,
-    persist_manual_publish_receipt, publish_receipt_json, report_status_json,
-    resolve_manual_daily_report_target,
+    build_ai_client, build_message_store, build_noop_message_store, build_public_news_source,
+    effective_publish_history_name, effective_report_status_target,
+    generate_manual_daily_report_markdown_with_options, manual_daily_report_publish_target,
+    manual_publish_response_json, persist_manual_publish_receipt, publish_receipt_json,
+    report_status_json, resolve_manual_daily_report_target, today_naive_date, with_lint_result,
+    with_reference_map, with_report_source_info, with_run_trace,
 };
 use crate::source::wechat_rss::{fetch_named_wechat_account_articles, find_wechat_account};
 use crate::storage::MessageStore;
 use crate::storage::postgres::PostgresMessageStore;
 use crate::wechat_article_helper::{
-    run_wechat_article_url_helper, wechat_article_url_response_json,
+    run_wechat_article_url_helper, wechat_article_url_doctor_json, wechat_article_url_failure_json,
+    wechat_article_url_response_json,
 };
 use crate::wx_cli_runtime;
 
@@ -165,6 +170,10 @@ pub fn list_tools() -> Vec<Tool> {
                     "output": {
                         "type": "string",
                         "description": "Path to write the generated markdown file."
+                    },
+                    "public_only": {
+                        "type": "boolean",
+                        "description": "If true, only use public_sources and skip local group-message loading."
                     }
                 },
                 "required": ["output"]
@@ -183,6 +192,10 @@ pub fn list_tools() -> Vec<Tool> {
                     "output": {
                         "type": "string",
                         "description": "Path to write the generated markdown file before publish."
+                    },
+                    "public_only": {
+                        "type": "boolean",
+                        "description": "If true, only use public_sources and skip local group-message loading."
                     },
                     "confirm_publish": {
                         "type": "boolean",
@@ -226,6 +239,24 @@ pub fn list_tools() -> Vec<Tool> {
                     }
                 },
                 "required": ["url"]
+            }),
+        },
+        Tool {
+            name: "wechat_article_url_doctor".into(),
+            description: "Read-only preflight for the configured WeChat single-article helper. It checks helper path, output-dir readiness, helper kind detection, and argument preview without executing the helper.".into(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "url": {
+                        "type": "string",
+                        "description": "Optional WeChat public-account article URL for shape validation."
+                    },
+                    "output_dir": {
+                        "type": "string",
+                        "description": "Optional output directory override for doctor preview."
+                    }
+                },
+                "required": []
             }),
         },
         Tool {
@@ -390,6 +421,7 @@ pub async fn call_tool(
         "report_publish" => tool_report_publish(config, arguments).await,
         "wechat_articles" => tool_wechat_articles(config, arguments).await,
         "wechat_article_url" => tool_wechat_article_url(config, arguments),
+        "wechat_article_url_doctor" => tool_wechat_article_url_doctor(config, arguments),
         "wxcli_doctor" => tool_doctor(config, arguments),
         "wxcli_capture" => tool_capture(config, config_path, arguments).await,
         "wxcli_test_plan" => tool_test_plan(config, config_path, arguments),
@@ -595,31 +627,71 @@ async fn tool_report_markdown(config: &Config, args: &serde_json::Value) -> anyh
         .unwrap_or("");
     let output = required_string(args, "output")?;
     let output_path = PathBuf::from(&output);
+    let public_only = args
+        .get("public_only")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
 
     let ai_client = build_ai_client(config)?;
     let report_target = resolve_manual_daily_report_target(config, report_name)?;
-    let message_store = build_message_store(config).await?;
+    let message_store = if public_only {
+        build_noop_message_store()
+    } else {
+        build_message_store(config).await?
+    };
     let public_news_source = build_public_news_source(config)?;
-    let markdown = generate_manual_daily_report_markdown(
+    let lint_context = lint_context_for_output(&output_path);
+    let generation = generate_manual_daily_report_markdown_with_options(
         config,
         &report_target,
         ai_client,
         message_store,
         public_news_source,
-        None,
+        lint_context.previous_markdown.as_deref(),
+        public_only,
     )
     .await?;
+    let markdown = generation.markdown;
     let output_markdown =
         prepare_report_output_markdown(&markdown, &report_target.output, &output_path)?;
+    let lint = lint_daily_report_markdown_with_context(
+        &output_markdown,
+        &report_target.output,
+        Some(&lint_context),
+    );
     std::fs::write(&output_path, &output_markdown)
         .map_err(|err| anyhow::anyhow!("写入日报文件失败: {}", err))?;
 
-    Ok(serde_json::to_string_pretty(&serde_json::json!({
-        "ok": true,
-        "report_name": report_target.name,
-        "output_path": output_path.display().to_string(),
-        "published": false,
-    }))?)
+    let date = today_naive_date();
+    let run_trace = RunTrace::from_daily_report(
+        &date,
+        &generation.source_info,
+        &lint,
+        RunTraceOptions {
+            published: false,
+            publish_error: None,
+            pipeline_version: Some(env!("CARGO_PKG_VERSION").to_string()),
+        },
+    );
+    Ok(serde_json::to_string_pretty(&with_reference_map(
+        with_run_trace(
+            with_report_source_info(
+                with_lint_result(
+                    serde_json::json!({
+                        "ok": true,
+                        "report_name": report_target.name,
+                        "output_path": output_path.display().to_string(),
+                        "published": false,
+                    }),
+                    &lint,
+                    false,
+                ),
+                &generation.source_info,
+            ),
+            &run_trace,
+        ),
+        &build_reference_map(&output_markdown, Some(&date)),
+    ))?)
 }
 
 async fn tool_report_publish(config: &Config, args: &serde_json::Value) -> anyhow::Result<String> {
@@ -637,24 +709,73 @@ async fn tool_report_publish(config: &Config, args: &serde_json::Value) -> anyho
         .unwrap_or("");
     let output = required_string(args, "output")?;
     let output_path = PathBuf::from(&output);
+    let public_only = args
+        .get("public_only")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
 
     let ai_client = build_ai_client(config)?;
     let report_target = resolve_manual_daily_report_target(config, report_name)?;
-    let message_store = build_message_store(config).await?;
+    let message_store = if public_only {
+        build_noop_message_store()
+    } else {
+        build_message_store(config).await?
+    };
     let public_news_source = build_public_news_source(config)?;
-    let markdown = generate_manual_daily_report_markdown(
+    let lint_context = lint_context_for_output(&output_path);
+    let generation = generate_manual_daily_report_markdown_with_options(
         config,
         &report_target,
         ai_client,
         message_store.clone(),
         public_news_source,
-        None,
+        lint_context.previous_markdown.as_deref(),
+        public_only,
     )
     .await?;
+    let markdown = generation.markdown;
     let output_markdown =
         prepare_report_output_markdown(&markdown, &report_target.output, &output_path)?;
+    let lint = lint_daily_report_markdown_with_context(
+        &output_markdown,
+        &report_target.output,
+        Some(&lint_context),
+    );
     std::fs::write(&output_path, &output_markdown)
         .map_err(|err| anyhow::anyhow!("写入日报文件失败: {}", err))?;
+    let date = today_naive_date();
+    let reference_map = build_reference_map(&output_markdown, Some(&date));
+    if lint.has_errors {
+        let run_trace = RunTrace::from_daily_report(
+            &date,
+            &generation.source_info,
+            &lint,
+            RunTraceOptions {
+                published: false,
+                publish_error: None,
+                pipeline_version: Some(env!("CARGO_PKG_VERSION").to_string()),
+            },
+        );
+        return Ok(serde_json::to_string_pretty(&with_reference_map(
+            with_run_trace(
+                with_report_source_info(
+                    with_lint_result(
+                        serde_json::json!({
+                            "ok": true,
+                            "report_name": report_target.name,
+                            "output_path": output_path.display().to_string(),
+                            "published": false,
+                        }),
+                        &lint,
+                        true,
+                    ),
+                    &generation.source_info,
+                ),
+                &run_trace,
+            ),
+            &reference_map,
+        ))?);
+    }
 
     let target = manual_daily_report_publish_target(&report_target)?;
     let publish_receipt = publish_markdown(&markdown, &target)?;
@@ -662,14 +783,37 @@ async fn tool_report_publish(config: &Config, args: &serde_json::Value) -> anyho
         persist_manual_publish_receipt(Ok(message_store), &report_target.name, &publish_receipt)
             .await;
 
-    Ok(serde_json::to_string_pretty(
-        &manual_publish_response_json(
-            &report_target.name,
-            &output_path,
-            &publish_persistence,
-            &publish_receipt,
+    let run_trace = RunTrace::from_daily_report(
+        &date,
+        &generation.source_info,
+        &lint,
+        RunTraceOptions {
+            published: true,
+            publish_error: None,
+            pipeline_version: Some(env!("CARGO_PKG_VERSION").to_string()),
+        },
+    );
+    let response = with_reference_map(
+        with_run_trace(
+            with_report_source_info(
+                with_lint_result(
+                    manual_publish_response_json(
+                        &report_target.name,
+                        &output_path,
+                        &publish_persistence,
+                        &publish_receipt,
+                    ),
+                    &lint,
+                    false,
+                ),
+                &generation.source_info,
+            ),
+            &run_trace,
         ),
-    )?)
+        &reference_map,
+    );
+
+    Ok(serde_json::to_string_pretty(&response)?)
 }
 
 async fn tool_wechat_articles(config: &Config, args: &serde_json::Value) -> anyhow::Result<String> {
@@ -720,10 +864,25 @@ fn tool_wechat_article_url(config: &Config, args: &serde_json::Value) -> anyhow:
         .get("output_dir")
         .and_then(|value| value.as_str())
         .map(PathBuf::from);
-    let result =
-        run_wechat_article_url_helper(&config.public_sources, &url, output_dir.as_deref())?;
+    let json =
+        match run_wechat_article_url_helper(&config.public_sources, &url, output_dir.as_deref()) {
+            Ok(result) => wechat_article_url_response_json(&result),
+            Err(failure) => wechat_article_url_failure_json(failure.as_ref()),
+        };
+    Ok(serde_json::to_string_pretty(&json)?)
+}
+
+fn tool_wechat_article_url_doctor(
+    config: &Config,
+    args: &serde_json::Value,
+) -> anyhow::Result<String> {
+    let url = args.get("url").and_then(|value| value.as_str());
+    let output_dir = args
+        .get("output_dir")
+        .and_then(|value| value.as_str())
+        .map(PathBuf::from);
     Ok(serde_json::to_string_pretty(
-        &wechat_article_url_response_json(&result),
+        &wechat_article_url_doctor_json(&config.public_sources, url, output_dir.as_deref()),
     )?)
 }
 
@@ -932,9 +1091,9 @@ mod tests {
     }
 
     #[test]
-    fn list_tools_returns_seventeen_tools() {
+    fn list_tools_returns_eighteen_tools() {
         let tools = list_tools();
-        assert_eq!(tools.len(), 17);
+        assert_eq!(tools.len(), 18);
         let names: Vec<&str> = tools.iter().map(|t| t.name.as_str()).collect();
         assert!(names.contains(&"publish_history"));
         assert!(names.contains(&"report_status"));
@@ -946,6 +1105,7 @@ mod tests {
         assert!(names.contains(&"report_publish"));
         assert!(names.contains(&"wechat_articles"));
         assert!(names.contains(&"wechat_article_url"));
+        assert!(names.contains(&"wechat_article_url_doctor"));
         assert!(names.contains(&"wxcli_doctor"));
         assert!(names.contains(&"wxcli_capture"));
         assert!(names.contains(&"wxcli_test_plan"));
@@ -1129,19 +1289,84 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn tool_wechat_article_url_errors_before_execution_when_helper_not_configured() {
+    async fn tool_wechat_article_url_returns_structured_failure_when_helper_not_configured() {
         let config = config_from("");
 
-        let err = call_tool(
+        let output = call_tool(
             &config,
             std::path::Path::new("test-config.toml"),
             "wechat_article_url",
             &serde_json::json!({"url": "https://mp.weixin.qq.com/s/example"}),
         )
         .await
-        .unwrap_err();
+        .unwrap();
 
-        assert!(err.to_string().contains("wechat_article_helper_bin"));
+        let json: serde_json::Value = serde_json::from_str(&output).unwrap();
+        assert_eq!(json["ok"], false);
+        assert_eq!(json["failure_stage"], "config_validation");
+        assert!(
+            json["message"]
+                .as_str()
+                .unwrap()
+                .contains("wechat_article_helper_bin")
+        );
+        assert_eq!(json["doctor"]["doctor"], true);
+    }
+
+    #[tokio::test]
+    async fn tool_wechat_article_url_doctor_reports_missing_helper_without_throwing() {
+        let config = config_from("");
+
+        let output = call_tool(
+            &config,
+            std::path::Path::new("test-config.toml"),
+            "wechat_article_url_doctor",
+            &serde_json::json!({"url": "https://mp.weixin.qq.com/s/example"}),
+        )
+        .await
+        .unwrap();
+
+        let json: serde_json::Value = serde_json::from_str(&output).unwrap();
+        assert_eq!(json["doctor"], true);
+        assert_eq!(json["ok"], false);
+        assert_eq!(json["helper"]["configured"], false);
+        assert!(
+            json["blockers"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|value| value == "helper_bin_missing")
+        );
+    }
+
+    #[tokio::test]
+    async fn tool_wechat_article_url_doctor_marks_invalid_url_as_blocker() {
+        let config = config_from(
+            r#"
+            [public_sources]
+            wechat_article_helper_bin = "/bin/echo"
+            wechat_article_helper_output_dir = "/tmp/qunmind-wechat-helper"
+            "#,
+        );
+
+        let output = call_tool(
+            &config,
+            std::path::Path::new("test-config.toml"),
+            "wechat_article_url_doctor",
+            &serde_json::json!({"url": "https://example.com/not-wechat"}),
+        )
+        .await
+        .unwrap();
+
+        let json: serde_json::Value = serde_json::from_str(&output).unwrap();
+        assert_eq!(json["ok"], false);
+        assert!(
+            json["blockers"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|value| value == "url_invalid")
+        );
     }
 
     #[tokio::test]
@@ -1390,6 +1615,43 @@ mod tests {
         .unwrap_err();
 
         assert!(err.to_string().contains("report_name"));
+    }
+
+    #[test]
+    fn with_lint_result_preserves_mcp_payload_shape() {
+        let payload = serde_json::json!({
+            "ok": true,
+            "report_name": "微信公众号日报",
+            "published": false
+        });
+        let lint = crate::daily_report::lint::DailyReportLintResult {
+            issues: vec![crate::daily_report::lint::DailyReportLintIssue {
+                severity: crate::daily_report::lint::DailyReportLintSeverity::Warn,
+                code: "recent_source_overlap_high".to_string(),
+                message: "overlap".to_string(),
+            }],
+            has_errors: false,
+        };
+
+        let json = crate::reporting::with_lint_result(payload, &lint, false);
+
+        assert_eq!(json["published"], false);
+        assert_eq!(json["publish_blocked_by_lint"], false);
+        assert_eq!(
+            json["lint"]["issues"][0]["code"],
+            "recent_source_overlap_high"
+        );
+    }
+
+    #[test]
+    fn report_markdown_tool_schema_mentions_public_only() {
+        let tools = list_tools();
+        let report_markdown = tools
+            .iter()
+            .find(|tool| tool.name == "report_markdown")
+            .expect("report_markdown tool");
+
+        assert!(report_markdown.input_schema["properties"]["public_only"].is_object());
     }
 
     #[tokio::test]

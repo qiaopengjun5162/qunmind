@@ -47,3 +47,10 @@ Use this log whenever work includes drawing, image generation, diagram creation,
 - source: `/Users/qiaopengjun/Library/Mobile Documents/com~apple~CloudDocs/ObsidianMain/Context/assets/qrcode-group.png`
 - output files: `/Users/qiaopengjun/Code/Rust/moonpub-data/qrcode.png`
 - notes: copied the latest group QR code into the active `moonpub-data` path referenced by `moonpub.toml`; SHA256 `46ac3dd7142f6707ee4ec0ab2b2b9364bdc8ac8eb6e9bed98d964ce843c85608`
+
+## 2026-07-10
+
+- purpose: consolidate the WeChat daily-report visual direction into a reusable blueprint instead of repeatedly re-deciding cover and layout strategy in chat
+- source: `helloianneo/ian-handdrawn-ppt` methodology plus current `QunMind` WeChat daily-report cover/layout constraints
+- output files: `docs/wechat-daily-visual-blueprint.md`
+- notes: no new image asset generated in this step; the outcome is a stable visual-playbook document that keeps image generation outside the main report pipeline

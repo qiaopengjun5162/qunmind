@@ -36,6 +36,7 @@ QUNMIND_TEST_DATABASE_URL="postgres://postgres:postgres@localhost:5432/qunmind_t
 - Create a `codex-<short-topic>` branch for each focused change.
 - Keep changes small enough to review in one pull request.
 - Update `README.md`, `README_zh.md`, `PROGRESS.md`, and `AGENTS.md` when architecture or workflow changes.
+- If the change affects project positioning, onboarding paths, or "where to look first", also sync `docs/README.md` and `docs/change-routing-index.md` so future contributors do not have to reconstruct the same guidance from chat history.
 - Update related docs in the same branch whenever project state, roadmap, commands, or constraints changed.
 - If the change includes generated images, diagrams, or other visual operations, append a record to `docs/visual-operations.md`.
 - Add or update tests for behavior changes.
@@ -44,7 +45,9 @@ QUNMIND_TEST_DATABASE_URL="postgres://postgres:postgres@localhost:5432/qunmind_t
 - Keep third-party network smoke tests out of the default CI path; if a source test depends on live RSS/HTTP availability, mark it ignored and run it explicitly during manual verification instead of making `cargo nextest run --all-features` flaky.
 - When changing the WeChat public-account RSS report flow, keep the operator-facing rehearsal path (`just db-create` -> `just report-status` -> `just report-login` / `just report-configure` when automation reuse is needed -> `just report-markdown` -> `just report-publish` -> `just report-history`) consistent across examples and docs.
 - When changing `src/daily_report/` quality behavior, keep the fallback/enrichment rules covered by tests and document whether the change affects report structure, section selection, or reference-link rendering.
+- When changing report candidate ranking, keep known dominant feeds from crowding out independent sources, and never treat a generated fallback recommendation as evidence that the original article has a reliable summary.
 - When changing WeChat report rendering behavior, keep CLI, MCP, and publisher aligned on the same markdown handoff semantics; if cover generation stays inside `moonpub`, do not document a separate local cover-preparation step in QunMind.
+- When changing manual daily-report source selection, keep the operator-visible `report_source` payload aligned across CLI and MCP. If a target has no `chat_id`, or a run is intentionally public-only, the output must say so explicitly instead of implying that local group messages were read.
 - Keep `.github/CODEOWNERS` aligned with the real review boundary when adding new top-level areas or changing who should review workflow / release / documentation changes.
 - If docs mention `just report-status`, `just report-login`, `just report-configure`, `just report-markdown`, `just report-publish`, or `just report-history`, keep the examples aligned with the real positional-argument form used by this repository, for example `just report-status config.toml '微信公众号日报'`.
 - If a report recovery workflow is available in CLI, keep the equivalent MCP tool surface aligned as well; report-target selection, single-target auto-reuse, and `output = "wechat"` guards should not drift between the two entry points.
