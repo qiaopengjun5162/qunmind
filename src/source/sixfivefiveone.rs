@@ -184,7 +184,9 @@ fn parse_news_item(item: &Value, category: &str) -> Option<PublicNewsItem> {
     })
 }
 
-/// 6551 标题含 HTML 标签（<b>/<br/>/<span>）与实体编码，先解码再剥离标签。
+/// 6551 标题含 HTML 标签（<b>/<br/>/<span>）、实体编码，以及 twitter 源
+/// 内嵌的换行 / 分隔符行（————————————）/ 日期行。先解码实体、剥离标签，
+/// 再逐行丢弃空行与纯分隔符行，剩余行用单空格连接并压缩空白，避免脏标题进日报。
 fn clean_text(value: &str) -> String {
     let decoded = value
         .replace("&amp;", "&")
@@ -192,17 +194,30 @@ fn clean_text(value: &str) -> String {
         .replace("&gt;", ">")
         .replace("&quot;", "\"")
         .replace("&#39;", "'");
-    let mut result = String::with_capacity(decoded.len());
+    let mut stripped = String::with_capacity(decoded.len());
     let mut in_tag = false;
     for ch in decoded.chars() {
         match ch {
             '<' => in_tag = true,
             '>' => in_tag = false,
-            _ if !in_tag => result.push(ch),
+            _ if !in_tag => stripped.push(ch),
             _ => {}
         }
     }
-    result.trim().to_string()
+
+    let joined = stripped
+        .lines()
+        .map(str::trim)
+        .filter(|line| {
+            !line.is_empty()
+                && !line.chars().all(|c| {
+                    matches!(c, '─' | '—' | '|' | '-' | '=' | '*' | '·')
+                })
+        })
+        .collect::<Vec<_>>()
+        .join(" ");
+
+    joined.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
 #[cfg(test)]
@@ -276,7 +291,64 @@ mod tests {
     fn strips_html_tags_from_title() {
         assert_eq!(
             clean_text("<b>OpenAI</b> revenue <br/> tops $40B"),
-            "OpenAI revenue  tops $40B"
+            "OpenAI revenue tops $40B"
         );
     }
+
+    #[test]
+    fn collapses_multiline_tweet_title_and_drops_separators() {
+        let raw = "UPBIT LISTING:[거래] 스토리지(STORJ) 거래지원 종료 안내 (9/14 15:00)\n\
+                   UPBIT LISTING:【交易】STORJ交易支持终止通知（9月14日 15:00）\n\
+                   \n\
+                   ————————————\n\
+                   2026-08-14 15:00:15";
+        let cleaned = clean_text(raw);
+        assert!(!cleaned.contains('─'), "separator line must be dropped");
+        assert!(!cleaned.contains('\n'), "newlines must be collapsed");
+        assert_eq!(
+            cleaned,
+            "UPBIT LISTING:[거래] 스토리지(STORJ) 거래지원 종료 안내 (9/14 15:00) \
+             UPBIT LISTING:【交易】STORJ交易支持终止通知（9月14日 15:00） 2026-08-14 15:00:15"
+        );
+    }
+
+    /// 端到端验证：真实调用 ai.6551.io 免费 API，确认 REST 源能拉到并归一化条目。
+    /// 默认忽略，避免 CI 命中外网；手动验证时 `cargo test --lib -- --ignored sixfivefiveone`。
+    #[tokio::test]
+    #[ignore = "hits live ai.6551.io; run with --ignored"]
+    async fn live_fetch_returns_normalized_items() {
+        let config = PublicSourcesConfig {
+            news6551_enabled: true,
+            news6551_base_url: default_base_url(),
+            news6551_categories: vec!["web3/defi".into(), "ai/models".into()],
+            news6551_max_items: 8,
+            news6551_timeout_secs: 20,
+            ..Default::default()
+        };
+        let source = News6551Source::new(&config).expect("build source");
+        let items = source.fetch_top_items().await.expect("live fetch");
+
+        assert!(
+            !items.is_empty(),
+            "live 6551 fetch returned 0 items (categories may be unready)"
+        );
+        println!(
+            "live 6551 fetched {} items from {} categories",
+            items.len(),
+            config.news6551_categories.len()
+        );
+        for (i, item) in items.iter().take(3).enumerate() {
+            println!(
+                "[{i}] [{}] {} | {} | score={:?}",
+                item.source, item.title, item.url, item.score
+            );
+            assert!(!item.url.is_empty(), "url must not be empty after filtering");
+            assert!(!item.title.contains('<'), "title HTML must be stripped");
+        }
+    }
+}
+
+#[cfg(test)]
+fn default_base_url() -> String {
+    "https://ai.6551.io".to_string()
 }
