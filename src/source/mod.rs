@@ -12,12 +12,14 @@ pub mod manual;
 pub mod official_blogs;
 pub mod reddit_rss;
 pub mod registry;
+pub mod sixfivefiveone;
 pub mod slerf_blog;
 pub mod web3_media;
 pub mod wechat_rss;
 pub mod x_rss;
 
 use async_trait::async_trait;
+use futures::stream::{FuturesUnordered, StreamExt};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tracing::warn;
@@ -72,9 +74,16 @@ impl PublicNewsSource for CompositePublicNewsSource {
     async fn fetch_top_items(&self) -> Result<Vec<PublicNewsItem>> {
         let mut items = Vec::new();
         let mut seen = HashMap::new();
+        let mut fetched_by_source = vec![Vec::new(); self.sources.len()];
+        let mut pending = FuturesUnordered::new();
 
         for (index, source) in self.sources.iter().enumerate() {
-            let fetched = match source.fetch_top_items().await {
+            let source = Arc::clone(source);
+            pending.push(async move { (index, source.fetch_top_items().await) });
+        }
+
+        while let Some((index, fetched)) = pending.next().await {
+            let fetched = match fetched {
                 Ok(items) => items,
                 Err(err) => {
                     warn!(source_index = index, error = %err, "public news source failed");
@@ -82,6 +91,10 @@ impl PublicNewsSource for CompositePublicNewsSource {
                 }
             };
 
+            fetched_by_source[index] = fetched;
+        }
+
+        for fetched in fetched_by_source {
             for item in fetched {
                 // Public material is only a fallback for quiet groups, so keep it aligned with the project focus.
                 if !matches_topics(&item, &self.topic_keywords) {
@@ -139,6 +152,7 @@ fn is_curated_source_url(url: &str) -> bool {
         || url.contains("github.blog/")
         || url.contains("ecb.europa.eu/")
         || url.contains("reddit.com/r/")
+        || url.contains("ai.6551.io")
 }
 
 fn is_manual_item(item: &PublicNewsItem) -> bool {
@@ -486,6 +500,19 @@ mod tests {
         }
     }
 
+    struct DelayedSource {
+        items: Vec<PublicNewsItem>,
+        delay_ms: u64,
+    }
+
+    #[async_trait]
+    impl PublicNewsSource for DelayedSource {
+        async fn fetch_top_items(&self) -> Result<Vec<PublicNewsItem>> {
+            tokio::time::sleep(std::time::Duration::from_millis(self.delay_ms)).await;
+            Ok(self.items.clone())
+        }
+    }
+
     #[tokio::test]
     async fn composite_keeps_items_from_healthy_sources_when_one_source_fails() {
         let composite = CompositePublicNewsSource::new(
@@ -517,5 +544,54 @@ mod tests {
 
         assert_eq!(items.len(), 1);
         assert_eq!(items[0].title, "AI agent runtime");
+    }
+
+    #[tokio::test]
+    async fn composite_fetches_sources_concurrently_without_reordering_preference() {
+        let composite = CompositePublicNewsSource::new(
+            vec![
+                Arc::new(DelayedSource {
+                    delay_ms: 80,
+                    items: vec![PublicNewsItem {
+                        source: "slow".to_string(),
+                        title: "AI compiler update".to_string(),
+                        url: "https://example.com/slow".to_string(),
+                        summary: Some("slow".to_string()),
+                        author: None,
+                        published_at: None,
+                        score: Some(10),
+                        comments: None,
+                        ai_score: None,
+                        category: None,
+                    }],
+                }),
+                Arc::new(DelayedSource {
+                    delay_ms: 5,
+                    items: vec![PublicNewsItem {
+                        source: "fast".to_string(),
+                        title: "Web3 security release".to_string(),
+                        url: "https://example.com/fast".to_string(),
+                        summary: Some("fast".to_string()),
+                        author: None,
+                        published_at: None,
+                        score: Some(8),
+                        comments: None,
+                        ai_score: None,
+                        category: Some("web3".to_string()),
+                    }],
+                }),
+            ],
+            vec!["ai".to_string(), "web3".to_string()],
+            10,
+        );
+
+        let started = std::time::Instant::now();
+        let items = composite.fetch_top_items().await.expect("items");
+        let elapsed = started.elapsed();
+
+        assert_eq!(items.len(), 2);
+        assert_eq!(items[0].url, "https://example.com/slow");
+        assert_eq!(items[1].url, "https://example.com/fast");
+        assert!(elapsed < std::time::Duration::from_millis(140));
     }
 }

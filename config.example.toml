@@ -138,6 +138,15 @@ web3_media_urls = [
   "https://www.panewslab.com/rss.xml?lang=zh&type=NEWS",
   "https://www.wublock123.com/feed",
 ]
+
+# 6551 (ai.6551.io) 免费加密 / AI 新闻聚合 API（第三方 REST JSON，非 RSS/Atom）。
+# 默认关闭；开启后按 categories 聚焦 web3/ai，作为 crypto/AI 素材的可选补充，不压过 RSS 一手源。
+# 内容多源聚合、质量参差，空 link 与 HTML 标题已在源内清洗过滤；categories 用 "category/subcategory" 格式。
+news6551_enabled = false
+news6551_base_url = "https://ai.6551.io"
+news6551_categories = ["web3/defi", "web3/regulation", "web3/meme", "ai/models", "ai/crypto_ai"]
+news6551_max_items = 10
+news6551_timeout_secs = 15
 wechat_rss_enabled = true
 wechat_rss_max_items = 10
 wechat_rss_timeout_secs = 10

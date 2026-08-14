@@ -3,6 +3,9 @@ use crate::ai::hermes::HermesClient;
 use crate::ai::openai::OpenAiClient;
 use crate::config::{AiProvider, Config};
 use crate::daily_report::DailyReportGenerator;
+use crate::daily_report::lint::DailyReportLintResult;
+use crate::daily_report::reference_map::ReferenceMap;
+use crate::daily_report::run_trace::RunTrace;
 use crate::error::QunMindError;
 use crate::publisher::{PublishReceipt, PublishTarget};
 use crate::source;
@@ -13,6 +16,30 @@ use std::collections::HashSet;
 use std::path::Path;
 use std::sync::Arc;
 use tracing::error;
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ManualDailyReportSourceMode {
+    GroupMessages,
+    PublicSources,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct ManualDailyReportSourceInfo {
+    pub mode: ManualDailyReportSourceMode,
+    pub public_only: bool,
+    pub requested_chat_id: String,
+    pub loaded_message_count: usize,
+    pub loaded_link_count: usize,
+    pub fallback_reason_code: Option<String>,
+    pub fallback_reason: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ManualDailyReportGeneration {
+    pub markdown: String,
+    pub source_info: ManualDailyReportSourceInfo,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ReportStatusTarget {
@@ -319,6 +346,10 @@ pub async fn build_message_store(config: &Config) -> anyhow::Result<Arc<dyn Mess
     ))
 }
 
+pub fn build_noop_message_store() -> Arc<dyn MessageStore> {
+    Arc::new(NoopMessageStore)
+}
+
 pub fn build_ai_client(config: &Config) -> anyhow::Result<Arc<dyn AiClient>> {
     Ok(match config.ai.provider {
         AiProvider::OpenAi => {
@@ -338,6 +369,35 @@ pub fn build_public_news_source(
     config: &Config,
 ) -> anyhow::Result<Option<Arc<dyn PublicNewsSource>>> {
     source::registry::build(&config.public_sources).map_err(Into::into)
+}
+
+struct NoopMessageStore;
+
+#[async_trait::async_trait]
+impl MessageStore for NoopMessageStore {
+    async fn save(&self, _message: crate::storage::NewMessage) -> crate::error::Result<()> {
+        Ok(())
+    }
+
+    async fn text_messages(
+        &self,
+        _chat_id: &str,
+        _since: chrono::DateTime<chrono::Utc>,
+        _until: chrono::DateTime<chrono::Utc>,
+        _limit: i64,
+    ) -> crate::error::Result<Vec<StoredMessage>> {
+        Ok(Vec::new())
+    }
+
+    async fn recent_links(
+        &self,
+        _chat_id: &str,
+        _since: chrono::DateTime<chrono::Utc>,
+        _until: chrono::DateTime<chrono::Utc>,
+        _limit: i64,
+    ) -> crate::error::Result<Vec<StoredLink>> {
+        Ok(Vec::new())
+    }
 }
 
 pub fn manual_daily_report_publish_target(
@@ -450,6 +510,41 @@ pub fn manual_publish_response_json(
     })
 }
 
+pub fn with_lint_result(
+    mut json: serde_json::Value,
+    lint: &DailyReportLintResult,
+    publish_blocked_by_lint: bool,
+) -> serde_json::Value {
+    json["lint"] = serde_json::to_value(lint).expect("serialize lint result");
+    json["publish_blocked_by_lint"] = serde_json::Value::Bool(publish_blocked_by_lint);
+    json
+}
+
+pub fn with_report_source_info(
+    mut json: serde_json::Value,
+    source_info: &ManualDailyReportSourceInfo,
+) -> serde_json::Value {
+    json["report_source"] = serde_json::to_value(source_info).expect("serialize report source");
+    json
+}
+
+/// 把结构化 run/trace 报告挂到回执 JSON（移植自 wx-cli run.schema.json）。
+pub fn with_run_trace(mut json: serde_json::Value, trace: &RunTrace) -> serde_json::Value {
+    json["run_trace"] = serde_json::to_value(trace).expect("serialize run trace");
+    json
+}
+
+/// 把结构化引用溯源挂到回执 JSON（移植自 wx-cli quote-map.schema.json）。
+pub fn with_reference_map(mut json: serde_json::Value, map: &ReferenceMap) -> serde_json::Value {
+    json["reference_map"] = serde_json::to_value(map).expect("serialize reference map");
+    json
+}
+
+/// 当前本地日期，用作 run/trace 与 reference_map 的日期字段。
+pub fn today_naive_date() -> String {
+    chrono::Local::now().date_naive().to_string()
+}
+
 pub async fn generate_manual_daily_report_markdown(
     _config: &Config,
     report_target: &ManualDailyReportTarget,
@@ -457,37 +552,112 @@ pub async fn generate_manual_daily_report_markdown(
     message_store: Arc<dyn MessageStore>,
     public_news_source: Option<Arc<dyn PublicNewsSource>>,
     previous_markdown: Option<&str>,
-) -> anyhow::Result<String> {
-    let ai_client_for_fallback = Arc::clone(&ai_client);
-    if let Some(markdown) = generate_group_report_from_store(
+) -> anyhow::Result<ManualDailyReportGeneration> {
+    generate_manual_daily_report_markdown_with_options(
+        _config,
+        report_target,
         ai_client,
         message_store,
-        &ReportContentRequest {
-            chat_id: report_target.chat_id.clone(),
-            prompt: report_target.prompt.clone(),
-            lookback_hours: report_target.lookback_hours,
-            max_messages: report_target.max_messages,
-            max_links: report_target.max_links,
-        },
-        &report_target.daily_quote,
+        public_news_source,
         previous_markdown,
+        false,
     )
-    .await?
-    {
-        return Ok(markdown);
+    .await
+}
+
+pub async fn generate_manual_daily_report_markdown_with_options(
+    _config: &Config,
+    report_target: &ManualDailyReportTarget,
+    ai_client: Arc<dyn AiClient>,
+    message_store: Arc<dyn MessageStore>,
+    public_news_source: Option<Arc<dyn PublicNewsSource>>,
+    previous_markdown: Option<&str>,
+    public_only: bool,
+) -> anyhow::Result<ManualDailyReportGeneration> {
+    let requested_chat_id = report_target.chat_id.clone();
+    let ai_client_for_fallback = Arc::clone(&ai_client);
+    if !public_only {
+        match generate_group_report_from_store(
+            ai_client,
+            message_store,
+            &ReportContentRequest {
+                chat_id: requested_chat_id.clone(),
+                prompt: report_target.prompt.clone(),
+                lookback_hours: report_target.lookback_hours,
+                max_messages: report_target.max_messages,
+                max_links: report_target.max_links,
+            },
+            &report_target.daily_quote,
+            previous_markdown,
+        )
+        .await?
+        {
+            GroupReportAttempt::Generated(result) => {
+                return Ok(ManualDailyReportGeneration {
+                    markdown: result.markdown,
+                    source_info: ManualDailyReportSourceInfo {
+                        mode: ManualDailyReportSourceMode::GroupMessages,
+                        public_only,
+                        requested_chat_id,
+                        loaded_message_count: result.loaded_message_count,
+                        loaded_link_count: result.loaded_link_count,
+                        fallback_reason_code: None,
+                        fallback_reason: None,
+                    },
+                });
+            }
+            GroupReportAttempt::Empty(fallback) => {
+                let public_news_source = public_news_source.ok_or_else(|| {
+                    QunMindError::Config("daily-report 需要启用至少一个 public_sources".to_string())
+                })?;
+                let markdown = generate_manual_public_daily_report(
+                    report_target,
+                    ai_client_for_fallback,
+                    public_news_source,
+                    previous_markdown,
+                )
+                .await?;
+                return Ok(ManualDailyReportGeneration {
+                    markdown,
+                    source_info: ManualDailyReportSourceInfo {
+                        mode: ManualDailyReportSourceMode::PublicSources,
+                        public_only,
+                        requested_chat_id,
+                        loaded_message_count: fallback.loaded_message_count,
+                        loaded_link_count: fallback.loaded_link_count,
+                        fallback_reason_code: Some(fallback.reason_code),
+                        fallback_reason: Some(fallback.reason),
+                    },
+                });
+            }
+        }
     }
 
     let public_news_source = public_news_source.ok_or_else(|| {
         QunMindError::Config("daily-report 需要启用至少一个 public_sources".to_string())
     })?;
 
-    generate_manual_public_daily_report(
+    let markdown = generate_manual_public_daily_report(
         report_target,
         ai_client_for_fallback,
         public_news_source,
         previous_markdown,
     )
-    .await
+    .await?;
+
+    Ok(ManualDailyReportGeneration {
+        markdown,
+        source_info: ManualDailyReportSourceInfo {
+            mode: ManualDailyReportSourceMode::PublicSources,
+            public_only,
+            requested_chat_id,
+            loaded_message_count: 0,
+            loaded_link_count: 0,
+            fallback_reason_code: public_only.then(|| "forced_public_only".to_string()),
+            fallback_reason: public_only
+                .then(|| "本次按 public_only 显式只使用公开来源生成日报。".to_string()),
+        },
+    })
 }
 
 async fn generate_manual_public_daily_report(
@@ -503,7 +673,7 @@ async fn generate_manual_public_daily_report(
     )
     .with_recent_used_urls(previous_report_urls(previous_markdown));
 
-    generator.generate().await.map_err(Into::into)
+    generator.generate_deterministic().await.map_err(Into::into)
 }
 
 fn previous_report_urls(previous_markdown: Option<&str>) -> HashSet<String> {
@@ -556,13 +726,34 @@ pub struct ReportContentRequest {
     pub max_links: i64,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GroupReportGeneration {
+    pub markdown: String,
+    pub loaded_message_count: usize,
+    pub loaded_link_count: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GroupReportFallback {
+    pub loaded_message_count: usize,
+    pub loaded_link_count: usize,
+    pub reason_code: String,
+    pub reason: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum GroupReportAttempt {
+    Generated(GroupReportGeneration),
+    Empty(GroupReportFallback),
+}
+
 pub async fn generate_group_report_from_store(
     ai_client: Arc<dyn AiClient>,
     message_store: Arc<dyn MessageStore>,
     request: &ReportContentRequest,
     daily_quote: &str,
     previous_markdown: Option<&str>,
-) -> anyhow::Result<Option<String>> {
+) -> anyhow::Result<GroupReportAttempt> {
     let lookback_hours = request.lookback_hours.max(1);
     let max_messages = request.max_messages.max(1);
     let max_links = request.max_links.max(0);
@@ -572,6 +763,8 @@ pub async fn generate_group_report_from_store(
     let messages =
         load_report_messages(message_store.as_ref(), request, since, until, max_messages).await?;
     let links = load_report_links(message_store.as_ref(), request, since, until, max_links).await?;
+    let loaded_message_count = messages.len();
+    let loaded_link_count = links.len();
 
     let items = group_report_items(&messages, &links, since, until);
     if !items.is_empty() {
@@ -580,13 +773,41 @@ pub async fn generate_group_report_from_store(
             Arc::new(source::manual::ManualSource::new(&Default::default())),
             daily_quote.to_string(),
         )
-        .with_recent_used_urls(previous_report_urls(previous_markdown))
-        .with_extra_prompt_context(Some(request.prompt.clone()));
-        let markdown = generator.generate_from_curated_items(items).await?;
-        return Ok(Some(markdown));
+        .with_recent_used_urls(previous_report_urls(previous_markdown));
+        let markdown = generator
+            .generate_deterministic_from_curated_items(items)
+            .await?;
+        return Ok(GroupReportAttempt::Generated(GroupReportGeneration {
+            markdown,
+            loaded_message_count,
+            loaded_link_count,
+        }));
     }
 
-    Ok(None)
+    let (reason_code, reason) = if request.chat_id.trim().is_empty() {
+        (
+            "report_target_chat_id_empty".to_string(),
+            "当前日报目标未配置 chat_id，本次不会读取本地群消息，已回退到公开来源。".to_string(),
+        )
+    } else if loaded_message_count == 0 && loaded_link_count == 0 {
+        (
+            "no_group_material_in_lookback_window".to_string(),
+            "回看窗口内没有读到可用的群消息或链接情报，已回退到公开来源。".to_string(),
+        )
+    } else {
+        (
+            "no_renderable_group_material".to_string(),
+            "虽然读到了群消息或链接，但没有形成可用于日报成稿的素材，已回退到公开来源。"
+                .to_string(),
+        )
+    };
+
+    Ok(GroupReportAttempt::Empty(GroupReportFallback {
+        loaded_message_count,
+        loaded_link_count,
+        reason_code,
+        reason,
+    }))
 }
 
 fn group_report_items(
@@ -1263,14 +1484,18 @@ mod tests {
             None,
         )
         .await
-        .unwrap()
-        .expect("markdown");
+        .unwrap();
+
+        let markdown = match markdown {
+            GroupReportAttempt::Generated(result) => result.markdown,
+            GroupReportAttempt::Empty(_) => panic!("expected group report markdown"),
+        };
 
         assert!(markdown.contains("## 今日焦点"));
         assert!(markdown.contains("### 正文引用来源（"));
         assert!(markdown.contains("### 深读 01"));
-        assert!(markdown.contains("原文：https://example.com/report"));
-        assert!(markdown.contains("原文：https://example.com/postmortem"));
+        assert!(markdown.contains("**原文入口**：https://example.com/report"));
+        assert!(markdown.contains("**原文入口**：https://example.com/postmortem"));
     }
 
     #[test]
@@ -1600,6 +1825,17 @@ mod tests {
     }
 
     #[test]
+    fn previous_report_urls_extracts_emphasized_original_source_urls() {
+        let urls = previous_report_urls(Some(
+            r#"
+> **原文入口**：https://example.com/current
+"#,
+        ));
+
+        assert!(urls.contains("https://example.com/current"));
+    }
+
+    #[test]
     fn publish_receipt_automation_state_marks_soft_failure_without_login_timeout() {
         let warnings = vec!["automation: preview step not found".to_string()];
 
@@ -1699,6 +1935,57 @@ mod tests {
         assert_eq!(
             json["publish_receipt"]["automation_state"],
             "login_required"
+        );
+    }
+
+    #[test]
+    fn with_lint_result_appends_lint_payload_and_block_flag() {
+        let base = serde_json::json!({
+            "ok": true,
+            "published": false
+        });
+        let lint = crate::daily_report::lint::DailyReportLintResult {
+            issues: vec![crate::daily_report::lint::DailyReportLintIssue {
+                severity: crate::daily_report::lint::DailyReportLintSeverity::Warn,
+                code: "slug_reuse_risk".to_string(),
+                message: "same stem".to_string(),
+            }],
+            has_errors: false,
+        };
+
+        let json = with_lint_result(base, &lint, true);
+
+        assert_eq!(json["publish_blocked_by_lint"], true);
+        assert_eq!(json["lint"]["has_errors"], false);
+        assert_eq!(json["lint"]["issues"][0]["code"], "slug_reuse_risk");
+    }
+
+    #[test]
+    fn with_report_source_info_appends_source_payload() {
+        let base = serde_json::json!({
+            "ok": true,
+            "published": false
+        });
+        let json = with_report_source_info(
+            base,
+            &ManualDailyReportSourceInfo {
+                mode: ManualDailyReportSourceMode::PublicSources,
+                public_only: true,
+                requested_chat_id: "group-1".to_string(),
+                loaded_message_count: 0,
+                loaded_link_count: 0,
+                fallback_reason_code: Some("forced_public_only".to_string()),
+                fallback_reason: Some(
+                    "本次按 public_only 显式只使用公开来源生成日报。".to_string(),
+                ),
+            },
+        );
+
+        assert_eq!(json["report_source"]["mode"], "public_sources");
+        assert_eq!(json["report_source"]["public_only"], true);
+        assert_eq!(
+            json["report_source"]["fallback_reason_code"],
+            "forced_public_only"
         );
     }
 

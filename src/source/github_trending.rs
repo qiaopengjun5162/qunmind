@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use futures::stream::{FuturesUnordered, StreamExt};
 use reqwest::Client;
 use tokio::sync::OnceCell;
 use tracing::warn;
@@ -97,9 +98,20 @@ impl GitHubTrendingSource {
 #[async_trait]
 impl PublicNewsSource for GitHubTrendingSource {
     async fn fetch_top_items(&self) -> Result<Vec<PublicNewsItem>> {
+        let mut fetched_by_language = vec![Vec::new(); self.languages.len()];
+        let mut pending = FuturesUnordered::new();
+
+        for (index, language) in self.languages.iter().cloned().enumerate() {
+            pending.push(async move { (index, self.fetch_language(&language).await) });
+        }
+
+        while let Some((index, fetched)) = pending.next().await {
+            fetched_by_language[index] = fetched?;
+        }
+
         let mut items = Vec::new();
-        for language in &self.languages {
-            items.extend(self.fetch_language(language).await?);
+        for fetched in fetched_by_language {
+            items.extend(fetched);
             if items.len() >= self.max_items {
                 break;
             }

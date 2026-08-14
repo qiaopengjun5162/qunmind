@@ -5,11 +5,12 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use regex::Regex;
 use reqwest::Client;
+use reqwest::StatusCode;
 use tokio::time::sleep;
 
 use super::{PublicNewsItem, PublicNewsSource};
 use crate::config::PublicSourcesConfig;
-use crate::error::Result;
+use crate::error::{QunMindError, Result};
 
 pub struct RedditRssSource {
     client: Client,
@@ -62,6 +63,13 @@ impl PublicNewsSource for RedditRssSource {
                 }
                 Err(err) => {
                     tracing::warn!(url = %url, error = %err, "Reddit RSS 拉取失败，跳过");
+                    if is_rate_limited_error(&err) {
+                        tracing::warn!(
+                            url = %url,
+                            "Reddit RSS 命中 429，本轮后续 subreddit 抓取直接跳过，避免继续浪费日报生成时间"
+                        );
+                        break;
+                    }
                 }
             }
         }
@@ -300,6 +308,13 @@ fn atom_link_href_re() -> &'static Regex {
 fn subreddit_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     RE.get_or_init(|| Regex::new(r"(?i)reddit\.com/r/([^/.?]+)").unwrap())
+}
+
+fn is_rate_limited_error(err: &QunMindError) -> bool {
+    matches!(
+        err,
+        QunMindError::Http(http_err) if http_err.status() == Some(StatusCode::TOO_MANY_REQUESTS)
+    )
 }
 
 #[cfg(test)]

@@ -706,7 +706,7 @@ pub fn decrypt_db(encrypted_path: &std::path::Path, all_keys: &[String]) -> Resu
     Err(QunMindError::Channel(format!(
         "内存中未找到匹配数据库 {} 的密钥 (salt={}, candidates=[{}])",
         encrypted_path.display(),
-        &file_salt,
+        file_salt,
         cand_info.join(", ")
     )))
 }
