@@ -243,6 +243,15 @@ pub const LEARNING_RESOURCES: &[LearningResource] = &[
         priority: 150,
         url: Some("https://aiweb3.school/zh/handbook/"),
     },
+    LearningResource {
+        title: "ClawFeed — AI 新闻摘要聚合",
+        category: LearningResourceCategory::AgentFrameworks,
+        provider: "kevinho",
+        focus: "Self-hosted 多源（Twitter/RSS/HN/Reddit/GitHub Trending）AI 聚合 + 结构化日报，与 QunMind 日报引擎同类思路的参考产品；只借鉴成稿与架构边界，不并入主进程、不消费其私有订阅源",
+        format: LearningResourceFormat::Docs,
+        priority: 152,
+        url: Some("https://github.com/kevinho/clawfeed"),
+    },
 ];
 
 pub fn resources_by_category(category: LearningResourceCategory) -> Vec<&'static LearningResource> {
