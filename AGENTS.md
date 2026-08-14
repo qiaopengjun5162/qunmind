@@ -129,6 +129,8 @@ Reddit 这类社区讨论来源也优先走 `PublicNewsSource` 边界。当前�
 如果微信公众号发布命中 `errcode=40164 invalid ip`，先区分是 `QunMind` 侧还是 `moonpub` 侧的问题。当前本地 `moonpub` 原版 `src/wechat.rs` 默认用 `ureq` 直连微信 API，不会自动继承 shell 里设置的代理语义；需要显式在 `moonpub` 微信客户端里接入 `HTTP_PROXY` / `HTTPS_PROXY` / `ALL_PROXY` 环境变量，修复后微信侧看到的出口 IP 会改变。若出口 IP 已变化但仍未进白名单，说明剩余阻塞纯粹是公众号后台白名单，而不是代码没走代理。
 如果已经关闭透明代理 / TUN / Warp / Clash / EasyConnect 一类网络接管，并且微信连续两次以上都返回同一个稳定出口 IP 的 `errcode=40164 invalid ip`，就不要再回头怀疑正文、lint、slug、`moonpub push --render` 或代理是否生效。此时应直接把问题归类为“公众号后台 API 白名单未生效、加错位置或尚未保存成功”的外部阻塞；后续排查重点是核对白名单页面、等待生效，或让操作者重新确认添加的就是微信 OpenAPI 看到的那个 IP。
 
+当前公众号账号是**个人订阅号**，`QunMind -> moonpub` 这条链路**无法自动发表**，只会推到草稿箱、再由人工点「发表」。两条自动发表路径都已被堵死：API 路径下 `moonpub` 的 `freepublish` 对个人订阅号返回 `errcode=48001: api unauthorized`（账号没有发布接口权限），因此 `moonpub.toml` 里把 `auto_publish` 改成 `true`（并解锁 `account_type`）只会产生一次 `auto-publish failed: ... 48001` 的 spurious 失败、然后仍停在草稿；浏览器路径下 `moonpub push --render` 的 post-push 自动化对个人号明确 “not yet supported in cookie mode”，只配置原创/赞赏/留言/创作来源并落草稿，不会点最后的「发表」。**不要把 `auto_publish = true` 当成个人号能自动发表的信号**；要真正自动发表，要么在 `moonpub` 补上个人号「发表」按钮的浏览器点击（填 `push_browser.rs` 的 not-yet-supported 缺口），要么把号升级为已开通 `freepublish` 权限的服务号，再改回 `auto_publish = true`。
+
 `QUNMIND_PUBLISH_PROXY` 不再只是 `report-network-status` 的诊断输入；设置后，`src/publisher.rs` 必须把它显式转发为所有 `moonpub` 子进程的 `HTTP_PROXY` / `HTTPS_PROXY` / `ALL_PROXY` 及小写同名变量，覆盖手工推送、定时推送和后台辅助命令。未设置时继续继承调用者环境，不要擅自修改 macOS、Mihomo 或 Clash 全局代理配置。
 
 参考 `mcncarl/yichen-skills` 时，只借鉴“私密状态外置、浏览器/平台自动化隔离、结构化诊断先行”的边界，不要把它当成 Mihomo / Clash 的现成实现。Mihomo、Clash Verge、HTTP 代理和微信 OpenAPI 出口 IP 属于本机发布运维诊断，优先沉淀到 `docs/local-publisher-network-diagnostics.md` 这种只读/可脱敏的诊断方案里；不要把 Clash profile、订阅 URL、节点密码、cookies、微信数据库密钥或本机绝对私密路径提交进仓库，也不要让日报生成逻辑直接依赖或修改代理配置。
