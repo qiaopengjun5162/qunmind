@@ -79,3 +79,39 @@ pub fn build(config: &PublicSourcesConfig) -> Result<Option<Arc<dyn PublicNewsSo
         config.max_items,
     ))))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 端到端验证 6551 源已真实注册进 Composite：只启用 news6551，走 build() +
+    /// CompositePublicNewsSource::fetch_top_items，确认返回条目来自 ai.6551.io 聚合。
+    /// 默认忽略，避免 CI 命中外网；手动 `cargo test --lib -- --ignored registry`。
+    #[tokio::test]
+    #[ignore = "hits live ai.6551.io via registry; run with --ignored"]
+    async fn news6551_registered_in_composite_and_fetches() {
+        let config = PublicSourcesConfig {
+            news6551_enabled: true,
+            news6551_categories: vec!["web3/defi".into(), "ai/models".into()],
+            news6551_max_items: 6,
+            ..Default::default()
+        };
+        let composite = build(&config)
+            .expect("build composite")
+            .expect("composite should contain news6551");
+        let items = composite.fetch_top_items().await.expect("fetch");
+
+        assert!(
+            !items.is_empty(),
+            "6551 source registered in composite but returned 0 items"
+        );
+        println!(
+            "registry-level 6551 fetch returned {} items via CompositePublicNewsSource",
+            items.len()
+        );
+        for item in items.iter().take(3) {
+            assert!(!item.url.is_empty(), "registered source must yield traceable urls");
+            println!("  - [{}] {}", item.source, item.title);
+        }
+    }
+}
