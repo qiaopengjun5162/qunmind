@@ -12,6 +12,7 @@ pub mod manual;
 pub mod official_blogs;
 pub mod reddit_rss;
 pub mod registry;
+pub mod sixfivefiveone;
 pub mod slerf_blog;
 pub mod web3_media;
 pub mod wechat_rss;
@@ -151,6 +152,7 @@ fn is_curated_source_url(url: &str) -> bool {
         || url.contains("github.blog/")
         || url.contains("ecb.europa.eu/")
         || url.contains("reddit.com/r/")
+        || url.contains("ai.6551.io")
 }
 
 fn is_manual_item(item: &PublicNewsItem) -> bool {

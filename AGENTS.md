@@ -24,6 +24,8 @@
 
 `web3_media` 默认精选源要按真实可抓取性维护，不要机械保留“理论上不错、实际上长期 403/Cloudflare challenge”的 feed。当前 `thedefiant.io/feed` 已确认会跳到 `https://thedefiant.io/api/feed` 并返回 Cloudflare 403，默认列表已改为可稳定访问的 `https://decrypt.co/feed`；后续若再遇到同类站点，要先实测 HTTP 状态与可持续性，再决定是否保留在默认源里。
 
+`6551Team/daily-news`（底层 `ai.6551.io` 免费 API）沿 `news6551` 边界接入，但它不是 RSS/Atom，而是第三方 REST JSON 聚合（crypto/AI 新闻）。实测 `/open/free_categories` 与 `/open/free_hot` 免 key、返回稳定 JSON（`title`/`link`/`source`/`score`/`grade`/`coins` 等）。接入时已在 `src/source/sixfivefiveone.rs` 内做：HTML 标题清洗、空 `link` 过滤（jin10 类聚合摘要无外链）、源内按 `url` 去重、遇「数据生成中」(`success=false`) 跳过该分类。默认 `news6551_enabled = false`，仅作 crypto/AI 素材可选补充，不压过 RSS 一手源；`news6551_categories` 用 `category/subcategory` 格式（如 `web3/defi`、`ai/models`），聚焦 web3/ai，跳过 macro 宏观类。`ai.6551.io` 已被视作精选可追溯来源（`src/source/mod.rs` 的 `is_curated_source_url`），避免聚合条目因标题没命中 `topic_keywords` 而在聚合层被误过滤。
+
 `[[groups]]` 目前用于群级运行覆盖：`enabled = false` 时该群入站消息仍会保存但不会回复；`mention_names` 和 `context_messages` 可覆盖全局 `[bot]` 配置；`system_prompt` 会作为群级 persona 插入到 AI 消息最前面。未配置群覆盖时继续使用全局 `[bot]`。
 
 `src/research/tools.rs` 维护项目投研工具目录，覆盖基础信息与行情数据、链上数据与分析、项目代码与安全、社区与社交媒体、投资与资金动向、研究报告与专家观点。新增投研来源时先归类到该目录，再决定是否实现为 `PublicNewsSource`、链上 connector 或人工辅助入口。

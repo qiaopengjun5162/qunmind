@@ -305,6 +305,16 @@ pub struct PublicSourcesConfig {
     #[serde(default = "default_web3_media_timeout_secs")]
     pub web3_media_timeout_secs: u64,
     #[serde(default)]
+    pub news6551_enabled: bool,
+    #[serde(default = "default_news6551_base_url")]
+    pub news6551_base_url: String,
+    #[serde(default = "default_news6551_categories")]
+    pub news6551_categories: Vec<String>,
+    #[serde(default = "default_news6551_max_items")]
+    pub news6551_max_items: usize,
+    #[serde(default = "default_news6551_timeout_secs")]
+    pub news6551_timeout_secs: u64,
+    #[serde(default)]
     pub manual_items: Vec<ManualPublicSourceItem>,
 }
 
@@ -655,6 +665,28 @@ fn default_web3_media_timeout_secs() -> u64 {
     15
 }
 
+fn default_news6551_base_url() -> String {
+    "https://ai.6551.io".to_string()
+}
+
+fn default_news6551_categories() -> Vec<String> {
+    vec![
+        "web3/defi".to_string(),
+        "web3/regulation".to_string(),
+        "web3/meme".to_string(),
+        "ai/models".to_string(),
+        "ai/crypto_ai".to_string(),
+    ]
+}
+
+fn default_news6551_max_items() -> usize {
+    10
+}
+
+fn default_news6551_timeout_secs() -> u64 {
+    15
+}
+
 fn default_bot_context_messages() -> usize {
     8
 }
@@ -796,6 +828,11 @@ impl Default for PublicSourcesConfig {
             web3_media_urls: default_web3_media_urls(),
             web3_media_max_items: default_web3_media_max_items(),
             web3_media_timeout_secs: default_web3_media_timeout_secs(),
+            news6551_enabled: false,
+            news6551_base_url: default_news6551_base_url(),
+            news6551_categories: default_news6551_categories(),
+            news6551_max_items: default_news6551_max_items(),
+            news6551_timeout_secs: default_news6551_timeout_secs(),
             manual_items: Vec::new(),
         }
     }
