@@ -110,7 +110,10 @@ mod tests {
             items.len()
         );
         for item in items.iter().take(3) {
-            assert!(!item.url.is_empty(), "registered source must yield traceable urls");
+            assert!(
+                !item.url.is_empty(),
+                "registered source must yield traceable urls"
+            );
             println!("  - [{}] {}", item.source, item.title);
         }
     }

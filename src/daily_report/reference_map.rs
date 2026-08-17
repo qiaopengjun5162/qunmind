@@ -40,7 +40,12 @@ pub fn build_reference_map(markdown: &str, date: Option<&str>) -> ReferenceMap {
             continue;
         }
         let body = &trimmed[2..];
-        if !body.chars().next().map(|c| c.is_ascii_digit()).unwrap_or(false) {
+        if !body
+            .chars()
+            .next()
+            .map(|c| c.is_ascii_digit())
+            .unwrap_or(false)
+        {
             continue;
         }
         let parts: Vec<&str> = body.split(" | ").collect();
@@ -71,7 +76,9 @@ pub fn build_reference_map(markdown: &str, date: Option<&str>) -> ReferenceMap {
 
 fn domain_of(url: &str) -> Option<String> {
     let u = url.trim();
-    let rest = u.strip_prefix("https://").or_else(|| u.strip_prefix("http://"))?;
+    let rest = u
+        .strip_prefix("https://")
+        .or_else(|| u.strip_prefix("http://"))?;
     let host = rest.split(['/', '?', '#']).next()?;
     if host.is_empty() {
         None

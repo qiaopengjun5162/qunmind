@@ -170,7 +170,7 @@ impl DailyReportScheduler {
                     target.daily_quote.clone(),
                 );
 
-                match generator.generate_deterministic().await {
+                match generator.generate_with_ai_fallback().await {
                     Ok(markdown) => markdown,
                     Err(e) => {
                         error!("生成微信日报失败: {}", e);
@@ -1221,8 +1221,10 @@ mod tests {
 
         scheduler.send_report().await;
 
+        // AI 优先：会调用一次 AI 尝试生成；RecordingAi 返回非 JSON 时回退确定性配方。
         let requests = ai.requests.lock().await;
-        assert!(requests.is_empty());
+        assert_eq!(requests.len(), 1);
+        assert!(requests[0][0].content.contains("JSON schema"));
         assert_eq!(
             *store.text_queries.lock().await,
             vec![("group-2".to_string(), 20)]

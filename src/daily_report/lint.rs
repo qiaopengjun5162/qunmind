@@ -60,7 +60,7 @@ const FIXED_TITLE_PREFIX: &str = "AI · Web3 最新日报｜";
 const FIXED_OUTRO_TITLE: &str = "## 继续交流";
 const ORIGINAL_SOURCE_MARKER: &str = "**原文入口**：https://";
 const FORBIDDEN_PHRASES: [&str; 2] = ["不走本地群消息", "未生成可靠摘要，请直接阅读原文核对"];
-const LOW_CONFIDENCE_PHRASES: [&str; 9] = [
+const LOW_CONFIDENCE_PHRASES: [&str; 20] = [
     "这篇材料围绕",
     "这篇官方材料围绕",
     "这篇材料讨论",
@@ -70,6 +70,17 @@ const LOW_CONFIDENCE_PHRASES: [&str; 9] = [
     "这条材料更适合直接打开原文",
     "建议直接阅读原文核对",
     "建议打开原文核对",
+    "值得关注：AI has access",
+    "适合重点核对能力变化、使用场景和实际限制",
+    "再判断要不要纳入自己的工作流",
+    "建议重点核对这次更新具体改了什么",
+    "这条英文来源信息需要结合原文核对关键细节",
+    "建议打开原文核对关键事实",
+    "是否值得纳入自己的工作流",
+    "建议核对原文中的参与方、时间口径和后续影响",
+    "建议打开原文核对关键参与方",
+    "建议核对最近 release、README 更新和 issue 讨论",
+    "技术基础设施相关主题，建议打开原文核对关键参与方",
 ];
 const ALLOWED_COMPACT_SECTIONS: [&str; 2] = ["### 正文引用来源", "### 补充阅读池"];
 const MAX_COMPACT_LINK_METADATA_CHARS: usize = 96;
@@ -319,12 +330,7 @@ fn lint_focus_block(markdown: &str, result: &mut DailyReportLintResult) {
     };
 
     let focus = slice_until_next_h2(&markdown[focus_pos..]);
-    for required in [
-        "**发生了什么**",
-        "**为什么有用**",
-        "**你可以怎么用**",
-        "**核对入口**",
-    ] {
+    for required in ["**发生了什么**", "**为什么值得关注**", "**核对入口**"] {
         if !focus.contains(required) {
             result.push(
                 DailyReportLintSeverity::Error,
@@ -358,11 +364,18 @@ fn lint_body_sections(markdown: &str, result: &mut DailyReportLintResult) {
         if let Some(pos) = markdown.find(section_title) {
             let section = slice_until_next_h2(&markdown[pos..]);
             for card in section.split("\n### ").skip(1) {
-                if !card.contains("> 值得关注：") {
+                if !card.contains("> **发生了什么**：") {
                     result.push(
                         DailyReportLintSeverity::Error,
                         "section_missing_reason_line",
-                        format!("`{section_title}` 中有正文条目缺少 `值得关注：`。"),
+                        format!("`{section_title}` 中有正文条目缺少 `> **发生了什么**：`。"),
+                    );
+                }
+                if !card.contains("> **为什么值得关注**：") {
+                    result.push(
+                        DailyReportLintSeverity::Error,
+                        "section_missing_takeaway_line",
+                        format!("`{section_title}` 中有正文条目缺少 `> **为什么值得关注**：`。"),
                     );
                 }
                 if !card.contains("来源依据：") {
@@ -407,11 +420,11 @@ fn lint_reads(markdown: &str, result: &mut DailyReportLintResult) {
     };
     let section = slice_until_next_h2(&markdown[pos..]);
     for block in section.split("\n### 深读 ").skip(1) {
-        if !block.contains("> 为什么读：") {
+        if !block.contains("> **为什么值得读**：") {
             result.push(
                 DailyReportLintSeverity::Error,
                 "read_missing_why",
-                "`推荐深读` 中存在条目缺少 `为什么读：`。",
+                "`推荐深读` 中存在条目缺少 `为什么值得读：`。",
             );
         }
         if !block.contains(ORIGINAL_SOURCE_MARKER) {
@@ -705,13 +718,9 @@ Cloudflare 推出 Workers Cache — [点击阅读](https://blog.cloudflare.com/w
 
 Cloudflare 把每个 Worker 的缓存边界做得更细了。
 
-**为什么有用**
+**为什么值得关注**
 
 它能帮助开发者更细颗粒度地控制边缘缓存和计费。
-
-**你可以怎么用**
-
-可以先核对缓存命中策略，再评估是否适合自己的边缘接口。
 
 **核对入口**
 
@@ -721,7 +730,8 @@ Cloudflare 把每个 Worker 的缓存边界做得更细了。
 
 ### AI｜[Leanstral 1.5](https://mistral.ai/news/leanstral-1-5/)
 
-> 值得关注：这次更新把形式化验证和代码推理场景拉得更近了。
+> **发生了什么**：这次更新把形式化验证和代码推理场景拉得更近了。
+> **为什么值得关注**：形式化验证正在成为模型评估的新维度。
 > 来源依据：Mistral · 120 points
 > **原文入口**：https://mistral.ai/news/leanstral-1-5/
 
@@ -729,7 +739,8 @@ Cloudflare 把每个 Worker 的缓存边界做得更细了。
 
 ### Web3｜[SIGN 参与塞拉利昂国家数字身份系统建设](https://www.wublock123.com/news/sign-sierra-leone)
 
-> 值得关注：这不是单纯的代币消息，而是 Web3 技术进入国家级数字身份基础设施的真实案例。
+> **发生了什么**：SIGN 参与塞拉利昂国家数字身份系统建设。
+> **为什么值得关注**：这是 Web3 技术进入国家级数字身份基础设施的真实案例。
 > 来源依据：吴说区块链 · 90 points
 > **原文入口**：https://www.wublock123.com/news/sign-sierra-leone
 
@@ -737,7 +748,8 @@ Cloudflare 把每个 Worker 的缓存边界做得更细了。
 
 ### 技术｜[韩国警方推进虚拟资产托管服务商竞标](https://www.wublock123.com/news/korea-custody)
 
-> 值得关注：它直接关联到虚拟资产托管责任和赔偿边界。
+> **发生了什么**：韩国警方推进虚拟资产托管服务商竞标。
+> **为什么值得关注**：它直接关联到虚拟资产托管责任和赔偿边界。
 > 来源依据：吴说区块链 · 70 points
 > **原文入口**：https://www.wublock123.com/news/korea-custody
 
@@ -745,7 +757,7 @@ Cloudflare 把每个 Worker 的缓存边界做得更细了。
 
 ### 深读 01｜[Workers Cache](https://blog.cloudflare.com/workers-cache/)
 
-> 为什么读：这篇官方文章把缓存模型、适用边界和成本控制讲得很清楚，适合作为边缘接口设计的核对入口。
+> **为什么值得读**：这篇官方文章把缓存模型、适用边界和成本控制讲得很清楚，适合作为边缘接口设计的核对入口。
 > **原文入口**：https://blog.cloudflare.com/workers-cache/
 
 ## 05. 资料索引

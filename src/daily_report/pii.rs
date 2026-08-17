@@ -76,21 +76,26 @@ impl PiiFinding {
 fn email_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     RE.get_or_init(|| {
-        Regex::new(r"[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}").expect("compile email regex")
+        Regex::new(r"[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}")
+            .expect("compile email regex")
     })
 }
 
 fn license_plate_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     RE.get_or_init(|| {
-        Regex::new(r"[京津沪渝冀豫云辽黑湘皖鲁新苏浙赣鄂桂甘晋蒙陕吉闽贵粤川青藏琼宁][A-Z][A-Z0-9]{5}")
-            .expect("compile license plate regex")
+        Regex::new(
+            r"[京津沪渝冀豫云辽黑湘皖鲁新苏浙赣鄂桂甘晋蒙陕吉闽贵粤川青藏琼宁][A-Z][A-Z0-9]{5}",
+        )
+        .expect("compile license plate regex")
     })
 }
 
 fn precise_address_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
-    RE.get_or_init(|| Regex::new(r"\d+号\d+楼|\d+栋\d+单元").expect("compile precise address regex"))
+    RE.get_or_init(|| {
+        Regex::new(r"\d+号\d+楼|\d+栋\d+单元").expect("compile precise address regex")
+    })
 }
 
 fn url_re() -> &'static Regex {
@@ -228,7 +233,11 @@ pub fn scan_pii(text: &str) -> Vec<PiiFinding> {
         let at = s.find('@').expect("email regex guarantees @");
         let local = &s[..at];
         let domain = &s[at..];
-        let visible = if local.len() > 2 { &local[..2] } else { &local[..1] };
+        let visible = if local.len() > 2 {
+            &local[..2]
+        } else {
+            &local[..1]
+        };
         push_finding(
             &mut findings,
             PiiKind::Email,
@@ -255,7 +264,14 @@ pub fn scan_pii(text: &str) -> Vec<PiiFinding> {
             || {
                 let chars: Vec<char> = s.chars().collect();
                 let head: String = chars.iter().take(2).collect();
-                let tail: String = chars.iter().rev().take(2).collect::<Vec<_>>().into_iter().rev().collect();
+                let tail: String = chars
+                    .iter()
+                    .rev()
+                    .take(2)
+                    .collect::<Vec<_>>()
+                    .into_iter()
+                    .rev()
+                    .collect();
                 format!("{}***{}", head, tail)
             },
         );
@@ -301,14 +317,21 @@ mod tests {
         let phone = findings.iter().find(|f| f.kind == PiiKind::Phone).unwrap();
         assert_eq!(phone.matched, "13812345678");
         assert_eq!(phone.redacted, "138****5678");
-        assert_eq!(redact_pii(text, &findings), "我的手机号是138****5678，请加我");
+        assert_eq!(
+            redact_pii(text, &findings),
+            "我的手机号是138****5678，请加我"
+        );
     }
 
     #[test]
     fn detects_email_and_id_card() {
         let text = "联系 alice@example.com 或身份证 11010519900307891X 的人";
         let findings = scan_pii(text);
-        assert!(findings.iter().any(|f| f.kind == PiiKind::Email && f.matched == "alice@example.com"));
+        assert!(
+            findings
+                .iter()
+                .any(|f| f.kind == PiiKind::Email && f.matched == "alice@example.com")
+        );
         let id = findings
             .iter()
             .find(|f| f.kind == PiiKind::IdCard)

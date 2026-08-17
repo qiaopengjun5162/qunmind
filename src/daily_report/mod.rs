@@ -79,15 +79,39 @@ impl DailyReportGenerator {
         self.generate_from_curated_items(items).await
     }
 
+    /// AI 生成日报；AI 失败时回退确定性配方，保证任何情况下都有成稿。
+    pub async fn generate_with_ai_fallback(&self) -> Result<String> {
+        let items = self.news_source.fetch_top_items().await?;
+        self.generate_from_curated_items_with_fallback(items).await
+    }
+
+    /// 从已选素材生成日报：优先 AI，失败回退确定性配方。
+    pub async fn generate_from_curated_items_with_fallback(
+        &self,
+        items: Vec<PublicNewsItem>,
+    ) -> Result<String> {
+        let ranked = curate_report_items(items)?;
+        match self.render_from_ai_with_curated(&ranked).await {
+            Ok(markdown) => Ok(markdown),
+            Err(e) => {
+                tracing::warn!(error = %e, "AI 日报生成失败，回退确定性配方");
+                Ok(self.render_deterministic_from_curated(&ranked))
+            }
+        }
+    }
+
     pub async fn generate_from_curated_items(&self, items: Vec<PublicNewsItem>) -> Result<String> {
         let ranked = curate_report_items(items)?;
+        self.render_from_ai_with_curated(&ranked).await
+    }
 
+    async fn render_from_ai_with_curated(&self, ranked: &[PublicNewsItem]) -> Result<String> {
         let messages = vec![ChatMessage {
             role: "user".to_string(),
-            content: build_json_prompt_with_context(&ranked, self.extra_prompt_context.as_deref()),
+            content: build_json_prompt_with_context(ranked, self.extra_prompt_context.as_deref()),
         }];
         let raw = self.ai.chat(&messages).await?;
-        Ok(self.render_from_ai_response(&ranked, &raw))
+        Ok(self.render_from_ai_response(ranked, &raw))
     }
 
     pub async fn generate_deterministic(&self) -> Result<String> {
@@ -100,9 +124,13 @@ impl DailyReportGenerator {
         items: Vec<PublicNewsItem>,
     ) -> Result<String> {
         let ranked = curate_report_items(items)?;
-        let ranked = fresh_deterministic_report_items(ranked);
+        Ok(self.render_deterministic_from_curated(&ranked))
+    }
+
+    fn render_deterministic_from_curated(&self, ranked: &[PublicNewsItem]) -> String {
+        let ranked = fresh_deterministic_report_items(ranked.to_vec());
         let report = enrich_report(ReportJson::default(), &ranked, &self.recent_used_urls);
-        Ok(assemble_markdown(&report, &ranked, &self.daily_quote))
+        assemble_markdown(&report, &ranked, &self.daily_quote)
     }
 
     fn render_from_ai_response(&self, ranked: &[PublicNewsItem], raw: &str) -> String {
@@ -268,8 +296,131 @@ fn enrich_report(
     restore_minimum_sections_after_classification(&mut report, items, recent_used_urls);
     remove_focus_duplicates_from_sections(&mut report, items);
     ensure_minimum_reads(&mut report, items, recent_used_urls);
+    localize_ellipsis_titles(&mut report, items);
+    report.focus_text = strip_focus_boilerplate(&report.focus_text);
+    report.intro = strip_focus_boilerplate(&report.intro);
 
     report
+}
+
+/// 把 AI 输出里仍带英文省略号的标题（说明模型没按要求翻译）替换为
+/// 基于新闻项的中文标题，避免首屏出现“AI has access to a vastly l…”这类截断。
+/// 若中文标签过于泛化（以“相关主题”结尾），则退回保留完整英文标题去掉省略号。
+fn localize_ellipsis_titles(report: &mut ReportJson, items: &[PublicNewsItem]) {
+    let by_url = items
+        .iter()
+        .map(|item| (normalize_story_url(&item.url), item))
+        .collect::<std::collections::HashMap<_, _>>();
+
+    for section in report
+        .ai_items
+        .iter_mut()
+        .chain(report.web3_items.iter_mut())
+        .chain(report.tech_items.iter_mut())
+    {
+        if let Some(item) = by_url.get(&normalize_story_url(&section.url)) {
+            if render::has_ascii_ellipsis_fragment(&section.title) || section.title.contains('…')
+            {
+                section.title = localized_section_title(&section.title, item);
+            }
+            if render::has_ascii_ellipsis_fragment(&section.comment)
+                || section.comment.contains("…")
+                || section.comment.trim().is_empty()
+                || is_low_confidence_fallback_summary(&section.comment)
+            {
+                section.comment = fallback_comment(item);
+            } else {
+                section.comment = strip_focus_boilerplate(&section.comment);
+            }
+            if render::has_ascii_ellipsis_fragment(&section.takeaway)
+                || section.takeaway.trim().is_empty()
+                || is_low_confidence_fallback_summary(&section.takeaway)
+            {
+                section.takeaway = takeaway_from_item(item);
+            }
+        }
+    }
+
+    for read in report.reads.iter_mut() {
+        if !render::has_ascii_ellipsis_fragment(&read.title) {
+            continue;
+        }
+        if let Some(item) = by_url.get(&normalize_story_url(&read.url)) {
+            read.title = localized_section_title(&read.title, item);
+        }
+    }
+}
+
+/// takeaway 缺失或为英文截断时，基于新闻项生成一句事实性点评。
+fn takeaway_from_item(item: &PublicNewsItem) -> String {
+    let source = item.source.to_lowercase();
+    let url = item.url.to_lowercase();
+    let mut subject = chinese_topic_label(item);
+    if subject.ends_with("相关主题") {
+        subject = full_clean_title(item);
+    }
+
+    if url.contains("arxiv.org/") || url.contains("eprint.iacr.org/") {
+        return format!(
+            "{} 来自论文预印本，建议核对方法设定与实验结果后再判断价值。",
+            subject
+        );
+    }
+    if url.contains("github.com/") {
+        return format!(
+            "{} 是开源项目，值得关注其最近 release 与社区讨论热度。",
+            subject
+        );
+    }
+    if url.contains("ethresear.ch/") {
+        return format!(
+            "{} 是研究社区讨论稿，关注它是否进入协议层面的讨论议程。",
+            subject
+        );
+    }
+    if url.contains("openai.com/")
+        || url.contains("blog.google/")
+        || url.contains("blog.cloudflare.com/")
+        || url.contains("github.blog/")
+    {
+        return format!(
+            "{} 来自官方博客，建议核对这次更新对开发者的实际影响。",
+            subject
+        );
+    }
+    if source.contains("wublock") || source.contains("吴说") || source.contains("panewslab") {
+        return format!(
+            "{} 是行业媒体追踪的近期动态，建议结合原文背景判断其影响范围。",
+            subject
+        );
+    }
+    format!("{} 建议结合原文背景判断其影响范围。", subject)
+}
+
+/// 优先中文标签；若中文标签太泛（“XX相关主题”），退回完整英文标题，
+/// 因为新闻项的原始标题通常是完整的，比模型的截断标题信息量更大。
+fn localized_section_title(fallback_english: &str, item: &PublicNewsItem) -> String {
+    let chinese = chinese_topic_label(item);
+    if chinese.ends_with("相关主题") {
+        let original = strip_ellipsis_fragment(&item.title);
+        let fallback = strip_ellipsis_fragment(fallback_english);
+        let cleaned = if original.trim().is_empty() {
+            fallback
+        } else {
+            original
+        };
+        if !cleaned.trim().is_empty() {
+            return cleaned.trim().to_string();
+        }
+    }
+    chinese
+}
+
+fn strip_ellipsis_fragment(value: &str) -> String {
+    let Some((index, _)) = value.match_indices("...").next() else {
+        return value.to_string();
+    };
+    value[..index].trim_end().to_string()
 }
 
 fn promote_web3_focus(report: &mut ReportJson, items: &[PublicNewsItem]) {
@@ -648,6 +799,7 @@ fn fallback_ai_items(items: &[PublicNewsItem]) -> Vec<ReportSection> {
             source: item.source.clone(),
             points: item.score.unwrap_or(0),
             subsection: infer_ai_subsection(item).to_string(),
+            takeaway: String::new(),
         })
         .collect()
 }
@@ -692,6 +844,7 @@ fn fallback_web3_items(items: &[PublicNewsItem]) -> Vec<ReportSection> {
             source: item.source.clone(),
             points: item.score.unwrap_or(0),
             subsection: String::new(),
+            takeaway: String::new(),
         })
         .collect()
 }
@@ -708,6 +861,7 @@ fn fallback_tech_items(items: &[PublicNewsItem]) -> Vec<ReportSection> {
             source: item.source.clone(),
             points: item.score.unwrap_or(0),
             subsection: String::new(),
+            takeaway: String::new(),
         })
         .collect()
 }
@@ -968,7 +1122,7 @@ fn fallback_comment(item: &PublicNewsItem) -> String {
             )
         }
         source if source.contains("Hacker News") => {
-            let title = reportable_title(item);
+            let title = full_clean_title(item);
             format!(
                 "《{}》在 Hacker News 引发讨论，建议回看原文与评论区，区分首发信息和二次解读。",
                 title
@@ -988,7 +1142,7 @@ fn focus_comment(item: &PublicNewsItem) -> String {
     if let Some(summary) = item.summary.as_deref() {
         let summary = clean_summary(summary);
         if !summary.is_empty() && !summary_is_english_fragment(&summary) {
-            return summary;
+            return strip_focus_boilerplate(&summary);
         }
     }
 
@@ -998,6 +1152,32 @@ fn focus_comment(item: &PublicNewsItem) -> String {
     }
 
     fallback_comment(item)
+}
+
+/// 去掉源摘要常见的“；建议核对原文中的参与方、时间口径和后续影响”类套话后缀，
+/// 让焦点区更像编辑筛选后的实用摘要。
+fn strip_focus_boilerplate(value: &str) -> String {
+    const SUFFIXES: [&str; 5] = [
+        "；建议核对原文中的参与方、时间口径和后续影响",
+        "；建议核对原文中的参与方、机制变化",
+        "，建议核对原文中的参与方、时间口径和后续影响",
+        "；建议打开原文核对关键参与方、具体变化和上下文",
+        "；建议核对原文中的参与方、具体变化和上下文",
+    ];
+    let mut cleaned = value.trim().to_string();
+    for suffix in SUFFIXES {
+        let variants = [
+            suffix.to_string(),
+            format!("{suffix}。"),
+            format!("{suffix}；"),
+        ];
+        for variant in variants {
+            if let Some(stripped) = cleaned.strip_suffix(&variant) {
+                cleaned = stripped.trim_end().to_string();
+            }
+        }
+    }
+    cleaned
 }
 
 fn chinese_topic_label(item: &PublicNewsItem) -> String {
@@ -1946,6 +2126,7 @@ fn backfill_fresh_tech_items(section_items: &mut Vec<ReportSection>, items: &[Pu
             source: item.source.clone(),
             points: item.score.unwrap_or(0),
             subsection: String::new(),
+            takeaway: String::new(),
         })
         .collect::<Vec<_>>();
 
@@ -2385,6 +2566,7 @@ fn backfill_recently_pruned_sections(
             title: compact_title(item.title.trim(), 50),
             url: item.url.clone(),
             comment: fallback_comment(item),
+            takeaway: String::new(),
             source: item.source.clone(),
             points: item.score.unwrap_or(0),
             subsection: if is_ai_item(item) {
@@ -2519,6 +2701,7 @@ fn top_up_tech_section_with_general_items(
                 source: item.source.clone(),
                 points: item.score.unwrap_or(0),
                 subsection: String::new(),
+                takeaway: String::new(),
             });
 
             if section_items.len() + additions.len() >= target_len {
@@ -2585,6 +2768,7 @@ fn backfill_section_after_focus_removal(
                 title: compact_title(item.title.trim(), 50),
                 url: item.url.clone(),
                 comment: fallback_comment(item),
+                takeaway: String::new(),
                 source: item.source.clone(),
                 points: item.score.unwrap_or(0),
                 subsection: if is_ai_item(item) {
@@ -4071,9 +4255,9 @@ fn compact_title(value: &str, max_chars: usize) -> String {
     }
     trimmed
         .chars()
-        .take(max_chars.saturating_sub(3))
+        .take(max_chars.saturating_sub(1))
         .collect::<String>()
-        + "..."
+        + "…"
 }
 
 fn extract_github_repo(url: &str) -> Option<String> {
@@ -4251,6 +4435,16 @@ fn strip_model_artifacts(value: &str) -> String {
         .unwrap_or(trimmed)
         .trim()
         .to_string()
+}
+
+/// 返回新闻项的完整标题（去除模型伪影与多余空白），不截断。
+fn full_clean_title(item: &PublicNewsItem) -> String {
+    let title = strip_model_artifacts(item.title.trim());
+    if title.is_empty() {
+        chinese_topic_label(item)
+    } else {
+        title.split_whitespace().collect::<Vec<_>>().join(" ")
+    }
 }
 
 fn reportable_title(item: &PublicNewsItem) -> String {
@@ -5376,6 +5570,7 @@ mod tests {
                 source: "GitHub Trending".to_string(),
                 points: 117175,
                 subsection: String::new(),
+                takeaway: String::new(),
             },
             ReportSection {
                 title: "rust-lang / rust".to_string(),
@@ -5384,6 +5579,7 @@ mod tests {
                 source: "GitHub Trending".to_string(),
                 points: 114305,
                 subsection: String::new(),
+                takeaway: String::new(),
             },
             ReportSection {
                 title: "zed-industries / zed".to_string(),
@@ -5392,6 +5588,7 @@ mod tests {
                 source: "GitHub Trending".to_string(),
                 points: 86092,
                 subsection: String::new(),
+                takeaway: String::new(),
             },
             ReportSection {
                 title: "Anonymous GitHub account mass-dropping undisclosed 0-days".to_string(),
@@ -5400,6 +5597,7 @@ mod tests {
                 source: "Hacker News".to_string(),
                 points: 778,
                 subsection: String::new(),
+                takeaway: String::new(),
             },
             ReportSection {
                 title: "AMD Strix Halo RDMA Cluster Setup Guide".to_string(),
@@ -5408,6 +5606,7 @@ mod tests {
                 source: "Hacker News".to_string(),
                 points: 111,
                 subsection: String::new(),
+                takeaway: String::new(),
             },
             ReportSection {
                 title: "WAL-RUS: a Rust Rewrite of WAL-G for PostgreSQL Backups".to_string(),
@@ -5416,6 +5615,7 @@ mod tests {
                 source: "Hacker News".to_string(),
                 points: 51,
                 subsection: String::new(),
+                takeaway: String::new(),
             },
         ];
 
@@ -5627,6 +5827,7 @@ mod tests {
                 source: "The Defiant".to_string(),
                 points: 110,
                 subsection: String::new(),
+                takeaway: String::new(),
             }],
             tech_items: vec![ReportSection {
                 title: "Tech item".to_string(),
@@ -5635,6 +5836,7 @@ mod tests {
                 source: "Hacker News".to_string(),
                 points: 90,
                 subsection: String::new(),
+                takeaway: String::new(),
             }],
             reads: vec![
                 ReportRead {
@@ -6126,6 +6328,7 @@ mod tests {
                     source: recent.source.clone(),
                     points: 100,
                     subsection: String::new(),
+                    takeaway: String::new(),
                 },
                 ReportSection {
                     title: "Fresh technical release".to_string(),
@@ -6134,6 +6337,7 @@ mod tests {
                     source: fresh.source.clone(),
                     points: 90,
                     subsection: String::new(),
+                    takeaway: String::new(),
                 },
             ],
             ..Default::default()
@@ -6188,6 +6392,7 @@ mod tests {
                     source: manual.source.clone(),
                     points: 1000,
                     subsection: String::new(),
+                    takeaway: String::new(),
                 },
                 ReportSection {
                     title: research.title.clone(),
@@ -6196,6 +6401,7 @@ mod tests {
                     source: research.source.clone(),
                     points: 90,
                     subsection: String::new(),
+                    takeaway: String::new(),
                 },
             ],
             ..Default::default()
@@ -6236,6 +6442,7 @@ mod tests {
                 source: manual.source.clone(),
                 points: 1000,
                 subsection: String::new(),
+                takeaway: String::new(),
             }],
             ..Default::default()
         };
@@ -7747,6 +7954,7 @@ mod tests {
             source: "ICME Blog".to_string(),
             points: 5000,
             subsection: String::new(),
+            takeaway: String::new(),
         };
 
         assert_eq!(section_summary_topic(&item, &[]), "LatticeBlindFold");
@@ -7758,6 +7966,7 @@ mod tests {
             source: "PSE".to_string(),
             points: 4700,
             subsection: String::new(),
+            takeaway: String::new(),
         };
 
         assert_eq!(
@@ -7772,6 +7981,7 @@ mod tests {
             source: "吴说区块链".to_string(),
             points: 120,
             subsection: String::new(),
+            takeaway: String::new(),
         };
 
         assert_eq!(
@@ -7791,6 +8001,7 @@ mod tests {
                     source: "The Defiant".to_string(),
                     points: 120,
                     subsection: String::new(),
+                    takeaway: String::new(),
                 },
                 ReportSection {
                     title: "Ripple RLUSD Japan".to_string(),
@@ -7799,6 +8010,7 @@ mod tests {
                     source: "The Defiant".to_string(),
                     points: 120,
                     subsection: String::new(),
+                    takeaway: String::new(),
                 },
                 ReportSection {
                     title: "MoneyGram MGUSD".to_string(),
@@ -7807,6 +8019,7 @@ mod tests {
                     source: "The Defiant".to_string(),
                     points: 120,
                     subsection: String::new(),
+                    takeaway: String::new(),
                 },
             ],
             ..Default::default()
@@ -9475,6 +9688,7 @@ mod tests {
                 source: panews.source.clone(),
                 points: 120,
                 subsection: String::new(),
+                takeaway: String::new(),
             },
             ReportSection {
                 title: cointelegraph.title.clone(),
@@ -9483,6 +9697,7 @@ mod tests {
                 source: cointelegraph.source.clone(),
                 points: 120,
                 subsection: String::new(),
+                takeaway: String::new(),
             },
         ];
 
@@ -9621,6 +9836,7 @@ mod tests {
             source: "RWA.xyz".to_string(),
             points: 100,
             subsection: String::new(),
+            takeaway: String::new(),
         }];
 
         drop_focus_duplicate_if_possible(&mut items, "https://example.com/buidl", true);
@@ -9649,6 +9865,7 @@ mod tests {
             source: item.source.clone(),
             points: 450,
             subsection: "工作方式变革".to_string(),
+            takeaway: String::new(),
         };
 
         assert!(is_deep_read_only_item(&item));
@@ -10023,6 +10240,7 @@ mod tests {
             source: "Rust Blog".to_string(),
             points: 180,
             subsection: String::new(),
+            takeaway: String::new(),
         };
 
         assert!(!is_web3_section_item(&section, &source_items));

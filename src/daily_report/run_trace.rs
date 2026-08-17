@@ -174,18 +174,19 @@ mod tests {
         assert!(trace.privacy_flags.is_empty());
         assert!(trace.human_review_required.is_empty());
         assert_eq!(trace.steps.len(), 4);
-        assert!(trace.steps.iter().all(|s| s.status == RunStepStatus::Completed));
+        assert!(
+            trace
+                .steps
+                .iter()
+                .all(|s| s.status == RunStepStatus::Completed)
+        );
         assert_eq!(trace.pipeline_version.as_deref(), Some("0.1.0"));
     }
 
     #[test]
     fn lint_error_marks_failed_and_requires_review() {
         let mut lint = DailyReportLintResult::new();
-        lint.push(
-            DailyReportLintSeverity::Error,
-            "title_missing",
-            "标题缺失",
-        );
+        lint.push(DailyReportLintSeverity::Error, "title_missing", "标题缺失");
         let trace = RunTrace::from_daily_report(
             "2026-07-07",
             &source_info(),
@@ -193,22 +194,30 @@ mod tests {
             RunTraceOptions::default(),
         );
         assert_eq!(trace.status, "failed");
-        assert!(trace
-            .steps
-            .iter()
-            .find(|s| s.name == "lint")
-            .unwrap()
-            .status
-            == RunStepStatus::Failed);
-        assert!(trace.human_review_required.contains(&"lint_errors".to_string()));
+        assert!(
+            trace
+                .steps
+                .iter()
+                .find(|s| s.name == "lint")
+                .unwrap()
+                .status
+                == RunStepStatus::Failed
+        );
+        assert!(
+            trace
+                .human_review_required
+                .contains(&"lint_errors".to_string())
+        );
         // 未发布 -> publish 步骤为 skipped
-        assert!(trace
-            .steps
-            .iter()
-            .find(|s| s.name == "publish")
-            .unwrap()
-            .status
-            == RunStepStatus::Skipped);
+        assert!(
+            trace
+                .steps
+                .iter()
+                .find(|s| s.name == "publish")
+                .unwrap()
+                .status
+                == RunStepStatus::Skipped
+        );
     }
 
     #[test]
@@ -226,7 +235,11 @@ mod tests {
             RunTraceOptions::default(),
         );
         assert_eq!(trace.privacy_flags, vec!["privacy_pii_phone".to_string()]);
-        assert!(trace.human_review_required.contains(&"pii_detected".to_string()));
+        assert!(
+            trace
+                .human_review_required
+                .contains(&"pii_detected".to_string())
+        );
     }
 
     #[test]
@@ -245,6 +258,9 @@ mod tests {
         assert_eq!(trace.status, "failed");
         let publish = trace.steps.iter().find(|s| s.name == "publish").unwrap();
         assert_eq!(publish.status, RunStepStatus::Failed);
-        assert_eq!(publish.error_detail.as_deref(), Some("wechat bin not found"));
+        assert_eq!(
+            publish.error_detail.as_deref(),
+            Some("wechat bin not found")
+        );
     }
 }

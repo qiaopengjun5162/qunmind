@@ -11,6 +11,8 @@ pub(crate) struct ReportJson {
     #[serde(default)]
     pub focus_url: String,
     #[serde(default)]
+    pub focus_takeaway: String,
+    #[serde(default)]
     pub ai_items: Vec<ReportSection>,
     #[serde(default)]
     pub ai_signals: Vec<String>,
@@ -67,6 +69,8 @@ pub(crate) struct ReportSection {
     pub url: String,
     #[serde(default)]
     pub comment: String,
+    #[serde(default)]
+    pub takeaway: String,
     #[serde(default)]
     pub source: String,
     #[serde(default)]

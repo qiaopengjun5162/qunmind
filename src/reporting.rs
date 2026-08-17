@@ -673,7 +673,10 @@ async fn generate_manual_public_daily_report(
     )
     .with_recent_used_urls(previous_report_urls(previous_markdown));
 
-    generator.generate_deterministic().await.map_err(Into::into)
+    generator
+        .generate_with_ai_fallback()
+        .await
+        .map_err(Into::into)
 }
 
 fn previous_report_urls(previous_markdown: Option<&str>) -> HashSet<String> {
@@ -775,7 +778,7 @@ pub async fn generate_group_report_from_store(
         )
         .with_recent_used_urls(previous_report_urls(previous_markdown));
         let markdown = generator
-            .generate_deterministic_from_curated_items(items)
+            .generate_from_curated_items_with_fallback(items)
             .await?;
         return Ok(GroupReportAttempt::Generated(GroupReportGeneration {
             markdown,

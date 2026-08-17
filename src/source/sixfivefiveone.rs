@@ -49,7 +49,11 @@ impl News6551Source {
         })
     }
 
-    async fn fetch_category(&self, category: &str, subcategory: &str) -> Result<Vec<PublicNewsItem>> {
+    async fn fetch_category(
+        &self,
+        category: &str,
+        subcategory: &str,
+    ) -> Result<Vec<PublicNewsItem>> {
         let url = format!(
             "{}/open/free_hot?category={}&subcategory={}",
             self.base_url.trim_end_matches('/'),
@@ -118,7 +122,14 @@ fn parse_category_response(value: &Value, category: &str, max_items: usize) -> V
     }
 
     let news = match value.get("news") {
-        Some(news) if news.get("success").and_then(Value::as_bool).unwrap_or(false) => news,
+        Some(news)
+            if news
+                .get("success")
+                .and_then(Value::as_bool)
+                .unwrap_or(false) =>
+        {
+            news
+        }
         _ => return Vec::new(),
     };
 
@@ -143,7 +154,11 @@ fn parse_news_item(item: &Value, category: &str) -> Option<PublicNewsItem> {
     }
 
     // jin10 等聚合摘要无外链，空 link 直接跳过，避免日报出现无法追溯的纯文本。
-    let link = item.get("link").and_then(Value::as_str).unwrap_or("").trim();
+    let link = item
+        .get("link")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .trim();
     if link.is_empty() {
         return None;
     }
@@ -210,14 +225,19 @@ fn clean_text(value: &str) -> String {
         .map(str::trim)
         .filter(|line| {
             !line.is_empty()
-                && !line.chars().all(|c| {
-                    matches!(c, '─' | '—' | '|' | '-' | '=' | '*' | '·')
-                })
+                && !line
+                    .chars()
+                    .all(|c| matches!(c, '─' | '—' | '|' | '-' | '=' | '*' | '·'))
         })
         .collect::<Vec<_>>()
         .join(" ");
 
     joined.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+#[cfg(test)]
+fn default_base_url() -> String {
+    "https://ai.6551.io".to_string()
 }
 
 #[cfg(test)]
@@ -342,13 +362,11 @@ mod tests {
                 "[{i}] [{}] {} | {} | score={:?}",
                 item.source, item.title, item.url, item.score
             );
-            assert!(!item.url.is_empty(), "url must not be empty after filtering");
+            assert!(
+                !item.url.is_empty(),
+                "url must not be empty after filtering"
+            );
             assert!(!item.title.contains('<'), "title HTML must be stripped");
         }
     }
-}
-
-#[cfg(test)]
-fn default_base_url() -> String {
-    "https://ai.6551.io".to_string()
 }

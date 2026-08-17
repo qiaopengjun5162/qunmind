@@ -171,7 +171,7 @@ Reddit RSS 现在默认只作为补充社区信号，不应进入公众号日报
 
 `src/daily_report/render.rs` 的 frontmatter 必须直接写入 `theme: notebook`；不能只依赖 lint 检查或人工修稿补上。否则 `moonpub` 会回退到本地全局主题，重新引入日报主题和手机排版漂移。
 
-公众号日报默认必须走 `DailyReportGenerator::generate_deterministic*`：Rust 固定完成素材排序、去重、分类、焦点/深读选择、排版配方和 lint，不能为了“更像 AI 写的”而每次调用模型消耗 token。普通群内对话摘要仍可使用 AI；未来只有明确配置的深度改写模式才可重新启用模型成稿。
+公众号日报默认走 `DailyReportGenerator::generate_with_ai_fallback*`：优先调用 AI（DeepSeek）按 AIIA 风格 prompt 生成精选 8-12 条 + 具体事实 comment + 一句事实性短评 takeaway；AI 调用失败时回退 `generate_deterministic*`（Rust 固定配方完成素材排序、去重、分类、焦点/深读选择、排版配方和 lint），保证任何情况都有成稿。这一决策来自 2026-08-16 用户反馈：纯确定性配方产出的是套话式内容（"值得关注：…建议核对…"）导致日报没人看，启用 AI 后首屏与正文出现真实编辑判断。AI 输出仍需经过 `enrich_report` 后处理（中文化截断标题、剥离"建议核对原文"套话、补齐空 takeaway）与 lint 校验；普通群内对话摘要同样走 AI 优先。
 
 确定性公众号日报对能从 `published_at` 或 URL 日历路径确认、超过 4 天的素材必须默认排除，避免旧的官方博客和缓存条目混进“今天日报”；只有新鲜可信候选不足 3 条时才允许回退保留旧素材。没有可靠日期的材料仍可保留，但不能因为固定配方而伪造“今天发生”的事实。
 

@@ -22,8 +22,8 @@ use qunmind::reporting::{
     effective_publish_history_name, effective_report_status_target,
     generate_manual_daily_report_markdown_with_options, manual_daily_report_publish_target,
     manual_publish_response_json, persist_manual_publish_receipt, publish_receipt_automation_state,
-    publish_receipt_json, report_status_json, resolve_manual_daily_report_target, with_lint_result,
-    with_report_source_info, with_reference_map, with_run_trace, today_naive_date,
+    publish_receipt_json, report_status_json, resolve_manual_daily_report_target, today_naive_date,
+    with_lint_result, with_reference_map, with_report_source_info, with_run_trace,
 };
 use qunmind::scheduler::daily_report::DailyReportScheduler;
 use qunmind::source::wechat_rss::{fetch_named_wechat_account_articles, find_wechat_account};
@@ -945,7 +945,8 @@ mod tests {
                 .contains("**原文入口**：https://example.com/postmortem")
         );
         let requests = ai.requests.lock().await;
-        assert!(requests.is_empty());
+        // AI 优先：群消息路径现在调用一次 AI 生成日报。
+        assert_eq!(requests.len(), 1);
     }
 
     #[tokio::test]
