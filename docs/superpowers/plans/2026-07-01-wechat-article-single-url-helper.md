@@ -24,24 +24,35 @@
 
 ## 参考项目
 
-候选上游：`jackwener/wechat-article-to-markdown`
+候选上游目前分成两档：
 
-- 仓库：<https://github.com/jackwener/wechat-article-to-markdown>
-- 形态：Python CLI，不是 Rust crate
-- 核心能力：
-  - 单篇公众号文章抓取
-  - HTML -> Markdown
-  - 图片下载到本地 `images/`
-  - 保留代码块语言 fence
-  - 提取标题、公众号名、发布时间、原文链接
-- 风险边界：
-  - 依赖 `Camoufox` 反检测抓取
-  - 天然属于高波动浏览器抓取路径
-  - 不适合作为主进程内建硬依赖
+1. `Noisepoint/mp-weixin-to-md`
+   - 仓库：<https://github.com/Noisepoint/mp-weixin-to-md>
+   - 更轻、更聚焦“单篇 URL -> Markdown”
+   - 适合当默认优先参考
+   - 更符合 `QunMind` 需要的“显式 helper、失败隔离、只做单篇链接”的边界
+2. `jackwener/wechat-article-to-markdown`
+   - 仓库：<https://github.com/jackwener/wechat-article-to-markdown>
+   - 形态：Python CLI，不是 Rust crate
+   - 核心能力：
+     - 单篇公众号文章抓取
+     - HTML -> Markdown
+     - 图片下载到本地 `images/`
+     - 保留代码块语言 fence
+     - 提取标题、公众号名、发布时间、原文链接
+   - 风险边界：
+     - 依赖 `Camoufox` 反检测抓取
+     - 天然属于高波动浏览器抓取路径
+     - 不适合作为主进程内建硬依赖
 
 ## 决策
 
 采用“外部 helper，可选接入”的方式，不把抓取实现并入 `QunMind` 主进程。
+
+同时明确两条补充原则：
+
+- helper 契约优先于具体实现，不能把 `wechat-article-url` 永久绑定到某一个上游 CLI 的参数和目录布局
+- 如果后续要同时兼容轻量 helper 与更重 helper，应先扩适配层，不要把不同抓取器的分支逻辑直接散进 CLI / MCP 命令入口
 
 ### 要做的
 

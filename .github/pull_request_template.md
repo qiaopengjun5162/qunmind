@@ -15,6 +15,7 @@
 - [ ] `AGENTS.md` updated when project rules or constraints changed
 - [ ] `PROGRESS.md` updated when project stage, roadmap, or real completion state changed
 - [ ] `README.md` / `README_zh.md` updated when user-facing status, commands, or positioning changed
+- [ ] `docs/README.md` / `docs/change-routing-index.md` updated when entry paths, change-routing guidance, or "look here first" rules changed
 - [ ] `CONTRIBUTING.md` updated when workflow changed
 - [ ] `docs/visual-operations.md` updated when the change included visual work
 
@@ -28,3 +29,5 @@
 
 - 
 - If this PR changes daily-report readiness or diagnostics semantics, note whether each new condition is a hard blocker or only an empty-group fallback warning.
+- If this PR changes manual daily-report source routing, note whether `report_source` output changed and how `chat_id`-empty / `public_only` behavior is surfaced to operators.
+- If this PR changes daily-report candidate ranking or lint, note source-diversity effects and whether full raw URLs remain directly traceable.

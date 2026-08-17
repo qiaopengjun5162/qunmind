@@ -111,6 +111,10 @@ report-preview config='config.toml' report='微信公众号日报' headed='false
 report-markdown config='config.toml' report='微信公众号日报' output='/tmp/wechat-report.md':
     cargo run -- --config {{config}} daily-report --report-name "{{report}}" --output {{output}}
 
+# 生成只使用公开来源的本地日报 markdown（不发布）
+report-markdown-public-only config='config.toml' report='微信公众号日报' output='/tmp/wechat-report-public-only.md':
+    cargo run -- --config {{config}} daily-report --report-name "{{report}}" --output {{output}} --public-only
+
 # 查看日报发布历史
 report-history config='config.toml' report='微信公众号日报' limit='5':
     cargo run -- --config {{config}} publish-history --report-name "{{report}}" --limit {{limit}}
@@ -118,6 +122,10 @@ report-history config='config.toml' report='微信公众号日报' limit='5':
 # 推送日报到已配置 publisher（会触发真实外部发布）
 report-publish config='config.toml' report='微信公众号日报' output='/tmp/wechat-report.md':
     cargo run -- --config {{config}} daily-report --report-name "{{report}}" --output {{output}} --publish
+
+# 推送只使用公开来源生成的日报到已配置 publisher（会触发真实外部发布）
+report-publish-public-only config='config.toml' report='微信公众号日报' output='/tmp/wechat-report-public-only.md':
+    cargo run -- --config {{config}} daily-report --report-name "{{report}}" --output {{output}} --public-only --publish
 
 # ============================================================
 # wx-cli 诊断

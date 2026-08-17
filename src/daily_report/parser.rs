@@ -55,9 +55,54 @@ fn repair_and_parse(raw: &str) -> ReportJson {
 }
 
 fn repair_common_json_issues(input: &str) -> String {
-    let mut repaired = strip_trailing_commas(input);
+    let mut repaired = strip_invalid_control_chars(input);
+    repaired = strip_trailing_commas(&repaired);
     repaired = strip_parser_garbage(&repaired);
     repaired
+}
+
+fn strip_invalid_control_chars(input: &str) -> String {
+    let mut out = String::with_capacity(input.len());
+    let mut in_string = false;
+    let mut escape = false;
+
+    for ch in input.chars() {
+        if in_string {
+            if escape {
+                out.push(ch);
+                escape = false;
+                continue;
+            }
+            match ch {
+                '\\' => {
+                    out.push(ch);
+                    escape = true;
+                }
+                '"' => {
+                    out.push(ch);
+                    in_string = false;
+                }
+                '\u{0000}'..='\u{001f}' => {
+                    if matches!(ch, '\n' | '\r' | '\t') {
+                        out.push(' ');
+                    }
+                }
+                _ => out.push(ch),
+            }
+            continue;
+        }
+
+        match ch {
+            '"' => {
+                out.push(ch);
+                in_string = true;
+            }
+            '\u{0000}'..='\u{0008}' | '\u{000b}' | '\u{000c}' | '\u{000e}'..='\u{001f}' => {}
+            _ => out.push(ch),
+        }
+    }
+
+    out
 }
 
 fn strip_trailing_commas(input: &str) -> String {
@@ -312,5 +357,13 @@ mod tests {
         let report = parse_report_json(raw);
         assert_eq!(report.focus_text, "主线");
         assert_eq!(report.summary, "总结");
+    }
+
+    #[test]
+    fn strips_invalid_control_chars_inside_json_strings() {
+        let raw = "{\n\"intro\":\"第一行\n第二行\",\n\"summary\":\"保留\t可读性\"\n}";
+        let report = parse_report_json(raw);
+        assert_eq!(report.intro, "第一行 第二行");
+        assert_eq!(report.summary, "保留 可读性");
     }
 }

@@ -8,7 +8,9 @@ use crate::config::ScheduleConfig;
 use crate::daily_report::DailyReportGenerator;
 use crate::error::Result;
 use crate::publisher::{PublishReceipt, PublishTarget, publish_markdown};
-use crate::reporting::{ReportContentRequest, generate_group_report_from_store};
+use crate::reporting::{
+    GroupReportAttempt, ReportContentRequest, generate_group_report_from_store,
+};
 use crate::source::{PublicNewsItem, PublicNewsSource};
 use crate::storage::{MessageStore, StoredLink, StoredMessage};
 
@@ -155,8 +157,8 @@ impl DailyReportScheduler {
         )
         .await
         {
-            Ok(Some(markdown)) => markdown,
-            Ok(None) => {
+            Ok(GroupReportAttempt::Generated(result)) => result.markdown,
+            Ok(GroupReportAttempt::Empty(_fallback)) => {
                 let Some(source) = &self.public_news_source else {
                     error!("微信日报需要启用 public_sources");
                     return;
@@ -168,7 +170,7 @@ impl DailyReportScheduler {
                     target.daily_quote.clone(),
                 );
 
-                match generator.generate().await {
+                match generator.generate_with_ai_fallback().await {
                     Ok(markdown) => markdown,
                     Err(e) => {
                         error!("生成微信日报失败: {}", e);
@@ -1219,10 +1221,10 @@ mod tests {
 
         scheduler.send_report().await;
 
+        // AI 优先：会调用一次 AI 尝试生成；RecordingAi 返回非 JSON 时回退确定性配方。
         let requests = ai.requests.lock().await;
         assert_eq!(requests.len(), 1);
-        assert!(requests[0][0].content.contains("请总结技术群"));
-        assert!(requests[0][0].content.contains("今天把日报链路对齐了"));
+        assert!(requests[0][0].content.contains("JSON schema"));
         assert_eq!(
             *store.text_queries.lock().await,
             vec![("group-2".to_string(), 20)]
