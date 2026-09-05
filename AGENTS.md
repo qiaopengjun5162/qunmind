@@ -26,6 +26,8 @@
 
 `6551Team/daily-news`（底层 `ai.6551.io` 免费 API）沿 `news6551` 边界接入，但它不是 RSS/Atom，而是第三方 REST JSON 聚合（crypto/AI 新闻）。实测 `/open/free_categories` 与 `/open/free_hot` 免 key、返回稳定 JSON（`title`/`link`/`source`/`score`/`grade`/`coins` 等）。接入时已在 `src/source/sixfivefiveone.rs` 内做：HTML 标题清洗、空 `link` 过滤（jin10 类聚合摘要无外链）、源内按 `url` 去重、遇「数据生成中」(`success=false`) 跳过该分类。twitter 源 `title` 还含内嵌换行与 `————————————` 分隔符行/日期行，`clean_text` 已逐行丢弃空行与纯分隔符行（`─—|-=*·`）并压缩空白，避免脏标题进日报。默认 `news6551_enabled = false`，仅作 crypto/AI 素材可选补充，不压过 RSS 一手源；`news6551_categories` 用 `category/subcategory` 格式（如 `web3/defi`、`ai/models`），聚焦 web3/ai，跳过 macro 宏观类。`ai.6551.io` 已被视作精选可追溯来源（`src/source/mod.rs` 的 `is_curated_source_url`），避免聚合条目因标题没命中 `topic_keywords` 而在聚合层被误过滤。
 
+`XAirouter`（底层 `news.xairouter.com`）沿 `xairouter` 边界接入，是 AI 圈热点聚合，提供 Atom feed（`/feed.xml`）而非 RSS/Atom 之外的私有接口；聚合 Anthropic / OpenAI / Google / NYT / Guardian 等多家媒体与官方博客的 AI 动态。实测 feed 稳定返回 `application/atom+xml`，条目含 `title` / `link`(alternate href) / `summary` / `published` / `author` / `category`，归一化实现在 `src/source/xairouter.rs`。它默认 `xairouter_enabled = false`（部署配置里已显式开启），作为 AI 前沿热点的稳定补充，不压过 RSS 一手源。关键差异：其条目指向**外部媒体**（URL 多为 nytimes.com / theguardian.com 等，不在 `is_curated_source_url` 白名单内），且标题也未必命中 `topic_keywords`（如「Anthropic 版权和解」不含 "ai" 子串），若按关键词过滤会被误丢；因此已在 `src/source/mod.rs` 的 `matches_topics` 中按 `source == "XAirouter"` 始终纳入素材池，同时在 `is_curated_source_url` 补挂 `xairouter.com` 域名作双保险。新增类似「聚合外部媒体、靠 source 身份纳入」的精选源时，沿用这个「按 source 标记强制纳入」的边界，不要退回成 keyword 过滤。
+
 `[[groups]]` 目前用于群级运行覆盖：`enabled = false` 时该群入站消息仍会保存但不会回复；`mention_names` 和 `context_messages` 可覆盖全局 `[bot]` 配置；`system_prompt` 会作为群级 persona 插入到 AI 消息最前面。未配置群覆盖时继续使用全局 `[bot]`。
 
 `src/research/tools.rs` 维护项目投研工具目录，覆盖基础信息与行情数据、链上数据与分析、项目代码与安全、社区与社交媒体、投资与资金动向、研究报告与专家观点。新增投研来源时先归类到该目录，再决定是否实现为 `PublicNewsSource`、链上 connector 或人工辅助入口。
@@ -362,6 +364,11 @@ MCP 侧的 `report_markdown` / `report_publish` 也应继续复用 `src/reportin
   - 多平台内容获取与 Agent 能力层参考，更适合借鉴“doctor / 路由 / skill 安装 / 多后端切换”的产品结构，而不是照搬其 Python 工具编排实现。
   - 对 QunMind 的启发是把公共投研来源继续抽象成独立 connector / capability layer，让微信群消息主链路与外部研究素材采集保持边界清晰。
   - 不要把高风控平台登录态、Cookie、浏览器自动化或账号运营逻辑直接并入 QunMind 主进程；优先吸收低风险、可公开、可测试的来源边界。
+
+- https://github.com/mvanhorn/last30days-skill
+  - 作为外部 research helper 参考：可借鉴最近 30 天窗口、多源并行、互动信号排序、跨来源事件聚类和结构化 JSON 输出。
+  - 只接入隔离的 helper / staging 边界；不要把其 Python runtime、ScrapeCreators、yt-dlp、X/Reddit Cookie 或 MCP backend 并入日报主进程。
+  - 视频、播客和周报仍只能进入推荐深读；互动热度不能替代原文可访问性、日期、事实关联和人工审核。
 
 - https://github.com/jd-opensource/JoyAI-VL-Interaction
   - 实时视频-语言交互、多模态 Agent runtime 和“说 / 停 / 委托”决策参考。

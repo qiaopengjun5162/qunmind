@@ -100,6 +100,7 @@ flowchart LR
 | 群消息 | 最近保存消息 + 链接情报 | 正式日报优先来源 |
 | 公开来源 | Hacker News、CoinMarketCap、CoinGecko、DeFi Llama、Dune、GitHub Trending、Slerf Blog、Reddit RSS | 群消息为空时回退 |
 | 中文 Web3 媒体 | PANews RSS、吴说区块链 Atom | 作为可追溯精选来源保留 |
+| AI 热点聚合 | XAirouter Atom（`news.xairouter.com/feed.xml`）| 精选 AI 热点源；按 source 身份始终纳入素材池 |
 | 官方博客 | OpenAI / Google / Cloudflare / Rust / GitHub / ECB 等 RSS / Atom | 提升一手来源密度 |
 | 手工精选 | `[[public_sources.manual_items]]` | 补入你明确想推荐读者继续阅读的原文 |
 | 公众号 RSS | `wechat_rss_*`、`[[public_sources.wechat_accounts]]` | 通过上游 RSS / Atom 接入，不在主进程里硬抓微信 |
@@ -301,6 +302,8 @@ defillama_enabled = true
 dune_enabled = false
 github_trending_enabled = true
 slerf_blog_enabled = true
+xairouter_enabled = true
+xairouter_max_items = 12
 hacker_news_max_items = 10
 coinmarketcap_max_items = 8
 coingecko_max_items = 8
@@ -371,6 +374,8 @@ cargo run -- wechat-articles --account-name '寻月隐君' --limit 20
 当前这层 `wechat_rss` 也补了几种常见 feed 字段兼容：Atom 的 `<author><name>`、RSS 的 `dc:creator`，以及 `pubDate` / `updated` / `published` / `dc:date` 时间字段都会尽量归一成统一的 `author` 和 UTC `published_at`，减少不同上游服务接入后摘要 prompt 字段风格漂移。
 
 如果需求变成“给一个单独的 `mp.weixin.qq.com/s/...` 链接，尽量把正文转成 markdown 并下载图片”，推荐的接入形态和 RSS 长期订阅不同。当前更适合优先参考 [`Noisepoint/mp-weixin-to-md`](https://github.com/Noisepoint/mp-weixin-to-md) 这类更轻、更聚焦“单篇 URL -> Markdown”的外部工具；[`jackwener/wechat-article-to-markdown`](https://github.com/jackwener/wechat-article-to-markdown) 仍然适合作为更重的备选参考，尤其在更强调代码块、图片下载或更强页面提取时。无论最终选哪一个，QunMind 都应把它作为显式调用的 helper：由单独的 CLI / MCP 入口去调用外部命令、读取 markdown / 图片目录 / 元数据并返回结构化结果，而不是把浏览器抓取、反检测和登录态复杂度直接内嵌进主进程。
+
+多平台研究发现可参考 [`mvanhorn/last30days-skill`](https://github.com/mvanhorn/last30days-skill)，但它只作为可选外部 helper。QunMind 只应在 staging / 人工审核边界读取结构化 JSON，并保留原文链接、平台、发布时间或观察时间、互动量来源和事件聚类依据；不要把 Python runtime、浏览器 Cookie、平台凭据或抓取后端并入主进程。视频、播客和周报结果仍只能作为推荐深读候选，详见 [`docs/last30days-integration.md`](docs/last30days-integration.md)。
 
 这条显式入口现在已经有了骨架：
 

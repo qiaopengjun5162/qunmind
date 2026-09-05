@@ -147,6 +147,14 @@ news6551_base_url = "https://ai.6551.io"
 news6551_categories = ["web3/defi", "web3/regulation", "web3/meme", "ai/models", "ai/crypto_ai"]
 news6551_max_items = 10
 news6551_timeout_secs = 15
+
+# XAirouter（news.xairouter.com）AI 圈热点聚合，Atom feed（/feed.xml）。
+# 聚合 Anthropic / OpenAI / Google / NYT / Guardian 等多家媒体与官方博客的 AI 动态，默认关闭；开启后作为 AI 前沿热点的稳定补充。
+# 其条目指向外部媒体、标题未必命中 topic_keywords，已在聚合层按 source 始终纳入素材池，不会被关键词过滤误丢。
+xairouter_enabled = false
+xairouter_url = "https://news.xairouter.com/feed.xml"
+xairouter_max_items = 12
+xairouter_timeout_secs = 15
 wechat_rss_enabled = true
 wechat_rss_max_items = 10
 wechat_rss_timeout_secs = 10

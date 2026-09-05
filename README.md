@@ -113,6 +113,7 @@ Correspondingly, it is **not** currently the best fit for:
 | Group messages | recently stored messages + extracted links | primary source for formal reports |
 | Public-source fallback | Hacker News, CoinMarketCap, CoinGecko, DeFi Llama, Dune, GitHub Trending, Slerf Blog, Reddit RSS | used when the target group is empty |
 | Chinese Web3 media | PANews RSS, WuBlockchain Atom | kept as curated traceable media sources |
+| AI news aggregator | XAirouter Atom (`news.xairouter.com/feed.xml`) | curated AI hotspot feed; always included in the pool by source identity |
 | Official blogs | OpenAI / Google / Cloudflare / Rust / GitHub / ECB RSS or Atom | raises first-hand source density |
 | Manual curated links | `[[public_sources.manual_items]]` | for links you explicitly want readers to continue reading |
 | WeChat RSS feeds | `wechat_rss_*`, `[[public_sources.wechat_accounts]]` | upstream RSS / Atom only, not direct in-process scraping |
@@ -317,6 +318,8 @@ defillama_enabled = true
 dune_enabled = false
 github_trending_enabled = true
 slerf_blog_enabled = true
+xairouter_enabled = true
+xairouter_max_items = 12
 hacker_news_max_items = 10
 coinmarketcap_max_items = 8
 coingecko_max_items = 8
@@ -371,6 +374,8 @@ The command returns structured JSON with the resolved account name, feed URL, ar
 The current `wechat_rss` reader also normalizes a few common feed variants so mixed upstream services stay usable: Atom `<author><name>`, RSS `dc:creator`, and `pubDate` / `updated` / `published` / `dc:date` timestamps are mapped into the same `author` and UTC `published_at` fields before they enter the daily-report prompt.
 
 For a single public-account article URL, the preferred future shape is different from the feed-backed path above. If the goal is "take one `mp.weixin.qq.com/s/...` link and turn it into markdown plus downloaded images", treat that as an explicit helper workflow, not as a built-in main-process fetcher. The current preferred lightweight reference is [`Noisepoint/mp-weixin-to-md`](https://github.com/Noisepoint/mp-weixin-to-md), because it stays focused on "single URL -> markdown" without pulling an entire account-sync surface into the main process. [`jackwener/wechat-article-to-markdown`](https://github.com/jackwener/wechat-article-to-markdown) remains a useful heavier fallback reference when code blocks, image download, or tougher page extraction matter more than keeping the helper narrow.
+
+For multi-platform research discovery, [`mvanhorn/last30days-skill`](https://github.com/mvanhorn/last30days-skill) is an optional external helper. QunMind should consume only structured JSON through a staging/review boundary, preserving source URL, platform, publication or observation time, engagement provenance, and event-cluster evidence. Its Python runtime, browser cookies, platform credentials, and scraping backends stay outside the main process. Video, podcast, and newsletter results remain deep-reading candidates only; see [`docs/last30days-integration.md`](docs/last30days-integration.md).
 
 That opt-in entry now exists in skeleton form:
 

@@ -10,7 +10,7 @@ use super::{
     github_trending::GitHubTrendingSource, hacker_news::HackerNewsSource, hn_daily::HnDailySource,
     manual::ManualSource, official_blogs::OfficialBlogsSource, reddit_rss::RedditRssSource,
     sixfivefiveone::News6551Source, slerf_blog::SlerfBlogSource, web3_media::Web3MediaSource,
-    wechat_rss::WechatRssSource, x_rss::XRssSource,
+    wechat_rss::WechatRssSource, x_rss::XRssSource, xairouter::XAirouterSource,
 };
 
 /// 根据配置构建聚合新闻源。所有新闻源的注册都在这里，添加新源只需改这一处。
@@ -65,6 +65,9 @@ pub fn build(config: &PublicSourcesConfig) -> Result<Option<Arc<dyn PublicNewsSo
     if config.news6551_enabled {
         sources.push(Arc::new(News6551Source::new(config)?));
     }
+    if config.xairouter_enabled {
+        sources.push(Arc::new(XAirouterSource::new(config)?));
+    }
     if !config.manual_items.is_empty() {
         sources.push(Arc::new(ManualSource::new(config)));
     }
@@ -110,6 +113,42 @@ mod tests {
             items.len()
         );
         for item in items.iter().take(3) {
+            assert!(
+                !item.url.is_empty(),
+                "registered source must yield traceable urls"
+            );
+            println!("  - [{}] {}", item.source, item.title);
+        }
+    }
+
+    /// 端到端验证 XAirouter 源已真实注册进 Composite：只启用 xairouter，走 build() +
+    /// CompositePublicNewsSource::fetch_top_items，确认返回条目来自 news.xairouter.com 聚合。
+    /// 默认忽略，避免 CI 命中外网；手动 `cargo test --lib -- --ignored registry`。
+    #[tokio::test]
+    #[ignore = "hits live news.xairouter.com via registry; run with --ignored"]
+    async fn xairouter_registered_in_composite_and_fetches() {
+        let config = PublicSourcesConfig {
+            xairouter_enabled: true,
+            xairouter_url: "https://news.xairouter.com/feed.xml".to_string(),
+            xairouter_max_items: 12,
+            xairouter_timeout_secs: 20,
+            ..Default::default()
+        };
+        let composite = build(&config)
+            .expect("build composite")
+            .expect("composite should contain xairouter");
+        let items = composite.fetch_top_items().await.expect("fetch");
+
+        assert!(
+            !items.is_empty(),
+            "xairouter source registered in composite but returned 0 items"
+        );
+        println!(
+            "registry-level xairouter fetch returned {} items via CompositePublicNewsSource",
+            items.len()
+        );
+        for item in items.iter().take(3) {
+            assert_eq!(item.source, "XAirouter", "items must come from xairouter");
             assert!(
                 !item.url.is_empty(),
                 "registered source must yield traceable urls"

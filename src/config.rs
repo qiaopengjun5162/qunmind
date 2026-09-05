@@ -315,6 +315,14 @@ pub struct PublicSourcesConfig {
     #[serde(default = "default_news6551_timeout_secs")]
     pub news6551_timeout_secs: u64,
     #[serde(default)]
+    pub xairouter_enabled: bool,
+    #[serde(default = "default_xairouter_url")]
+    pub xairouter_url: String,
+    #[serde(default = "default_xairouter_max_items")]
+    pub xairouter_max_items: usize,
+    #[serde(default = "default_xairouter_timeout_secs")]
+    pub xairouter_timeout_secs: u64,
+    #[serde(default)]
     pub manual_items: Vec<ManualPublicSourceItem>,
 }
 
@@ -687,6 +695,18 @@ fn default_news6551_timeout_secs() -> u64 {
     15
 }
 
+fn default_xairouter_url() -> String {
+    "https://news.xairouter.com/feed.xml".to_string()
+}
+
+fn default_xairouter_max_items() -> usize {
+    12
+}
+
+fn default_xairouter_timeout_secs() -> u64 {
+    15
+}
+
 fn default_bot_context_messages() -> usize {
     8
 }
@@ -833,6 +853,10 @@ impl Default for PublicSourcesConfig {
             news6551_categories: default_news6551_categories(),
             news6551_max_items: default_news6551_max_items(),
             news6551_timeout_secs: default_news6551_timeout_secs(),
+            xairouter_enabled: false,
+            xairouter_url: default_xairouter_url(),
+            xairouter_max_items: default_xairouter_max_items(),
+            xairouter_timeout_secs: default_xairouter_timeout_secs(),
             manual_items: Vec::new(),
         }
     }

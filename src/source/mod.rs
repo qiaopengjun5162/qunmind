@@ -17,6 +17,7 @@ pub mod slerf_blog;
 pub mod web3_media;
 pub mod wechat_rss;
 pub mod x_rss;
+pub mod xairouter;
 
 use async_trait::async_trait;
 use futures::stream::{FuturesUnordered, StreamExt};
@@ -123,6 +124,14 @@ fn matches_topics(item: &PublicNewsItem, topic_keywords: &[String]) -> bool {
     }
 
     if is_manual_item(item) || is_official_blog_item(item) || is_curated_source_url(&item.url) {
+        return true;
+    }
+
+    // XAirouter（news.xairouter.com）是用户指定的 AI 圈精选聚合源。其条目指向多家外部媒体
+    // （NYT / Guardian / OpenAI Blog 等），文章 URL 不在 is_curated_source_url 白名单内，
+    // 标题也未必命中 topic_keywords（如「Anthropic 版权和解」不含 "ai" 子串），若按关键词过滤
+    // 会被误丢。按 source 标记始终纳入素材池，作为 AI 前沿热点的稳定补充。
+    if item.source == "XAirouter" {
         return true;
     }
 
