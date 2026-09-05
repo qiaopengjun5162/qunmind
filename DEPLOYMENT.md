@@ -26,6 +26,10 @@ docker compose up -d --build
 docker compose logs -f qunmind
 ```
 
+The Docker build intentionally copies `docs/assets/wechat/` into the builder
+stage because QunMind embeds the fixed WeChat daily-report cover at compile
+time. Keep that asset path available when changing the Docker build context.
+
 Stop the stack:
 
 ```bash

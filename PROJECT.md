@@ -277,7 +277,7 @@ group_chat_id = ""
 mention_names = ["@AI助手"]
 
 [schedule]
-daily_report_cron = "0 0 9 * * *"  # 每天早上 9:00
+daily_report_cron = "0 0 1 * * *"  # UTC 01:00 = 北京时间 09:00
 daily_report_chat_id = ""           # 目标群 chat_id
 daily_report_lookback_hours = 24
 daily_report_max_messages = 200

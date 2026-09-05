@@ -2,6 +2,7 @@
 
 # Local secrets and runtime state
 config.toml
+.env
 *.log
 *.db
 *.sqlite

@@ -1679,6 +1679,7 @@ dependencies = [
  "chrono",
  "clap",
  "cron",
+ "futures",
  "mach2",
  "regex",
  "reqwest 0.12.28",

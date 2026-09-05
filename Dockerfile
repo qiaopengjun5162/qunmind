@@ -11,6 +11,7 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 COPY Cargo.toml Cargo.lock ./
+COPY docs/assets/wechat ./docs/assets/wechat
 COPY src ./src
 
 RUN cargo build --locked --release --bin qunmind

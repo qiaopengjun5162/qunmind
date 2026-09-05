@@ -1,0 +1,22 @@
+{
+  "messages": [
+    {
+      "client_msg_id": "group-unique-1",
+      "conversation_id": "room-beta@chatroom",
+      "room_name": "Rust Review Room",
+      "msg_content": "@QunMind 帮我整理今天的发版信息",
+      "plain_text": "@QunMind 帮我整理今天的发版信息",
+      "is_group": true,
+      "is_chatroom": true
+    },
+    {
+      "client_msg_id": "group-unique-2",
+      "conversation_id": "room-beta@chatroom",
+      "room_name": "Rust Review Room",
+      "msg_content": "今天先别刷屏",
+      "plain_text": "今天先别刷屏",
+      "is_group": true,
+      "is_chatroom": true
+    }
+  ]
+}

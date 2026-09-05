@@ -3,11 +3,12 @@ use chrono::{DateTime, Utc};
 use sqlx::postgres::{PgPoolOptions, PgRow};
 use sqlx::{PgPool, Row};
 
-use super::{MessageStore, NewMessage, StoredLink, StoredMessage};
+use super::{MessageStore, NewMessage, StoredLink, StoredMessage, StoredPublishReceipt};
 use crate::channel::MsgType;
 use crate::config::StorageConfig;
 use crate::error::Result;
 use crate::intelligence::links::extract_links;
+use crate::publisher::PublishReceipt;
 
 pub struct PostgresMessageStore {
     pool: PgPool,
@@ -97,6 +98,31 @@ impl PostgresMessageStore {
         .execute(&self.pool)
         .await?;
 
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS publish_receipts (
+                id BIGSERIAL PRIMARY KEY,
+                report_name TEXT NOT NULL,
+                target TEXT NOT NULL,
+                destination TEXT NOT NULL,
+                published_at TIMESTAMPTZ NOT NULL,
+                summary TEXT NOT NULL,
+                raw_output TEXT NOT NULL
+            )
+            "#,
+        )
+        .execute(&self.pool)
+        .await?;
+
+        sqlx::query(
+            r#"
+            CREATE INDEX IF NOT EXISTS idx_publish_receipts_report_time
+            ON publish_receipts(report_name, published_at DESC)
+            "#,
+        )
+        .execute(&self.pool)
+        .await?;
+
         Ok(())
     }
 }
@@ -160,6 +186,40 @@ impl MessageStore for PostgresMessageStore {
                 .await?;
             }
         }
+
+        Ok(())
+    }
+
+    async fn save_publish_receipt(
+        &self,
+        report_name: &str,
+        receipt: &PublishReceipt,
+    ) -> Result<()> {
+        let published_at = DateTime::parse_from_rfc3339(&receipt.published_at)
+            .map(|time| time.with_timezone(&Utc))
+            .map_err(|err| crate::error::QunMindError::Storage(err.to_string()))?;
+
+        sqlx::query(
+            r#"
+            INSERT INTO publish_receipts (
+                report_name,
+                target,
+                destination,
+                published_at,
+                summary,
+                raw_output
+            )
+            VALUES ($1, $2, $3, $4, $5, $6)
+            "#,
+        )
+        .bind(report_name)
+        .bind(&receipt.target)
+        .bind(&receipt.destination)
+        .bind(published_at)
+        .bind(&receipt.summary)
+        .bind(&receipt.raw_output)
+        .execute(&self.pool)
+        .await?;
 
         Ok(())
     }
@@ -263,6 +323,34 @@ impl MessageStore for PostgresMessageStore {
 
         rows.into_iter().map(row_to_link).collect()
     }
+
+    async fn recent_publish_receipts(
+        &self,
+        report_name: &str,
+        limit: i64,
+    ) -> Result<Vec<StoredPublishReceipt>> {
+        let rows = sqlx::query(
+            r#"
+            SELECT
+                report_name,
+                target,
+                destination,
+                published_at,
+                summary,
+                raw_output
+            FROM publish_receipts
+            WHERE report_name = $1
+            ORDER BY published_at DESC, id DESC
+            LIMIT $2
+            "#,
+        )
+        .bind(report_name)
+        .bind(limit.max(1))
+        .fetch_all(&self.pool)
+        .await?;
+
+        rows.into_iter().map(row_to_publish_receipt).collect()
+    }
 }
 
 fn row_to_message(row: PgRow) -> Result<StoredMessage> {
@@ -290,6 +378,17 @@ fn row_to_link(row: PgRow) -> Result<StoredLink> {
         normalized_url: row.try_get("normalized_url")?,
         title: row.try_get("title")?,
         received_at: row.try_get("received_at")?,
+    })
+}
+
+fn row_to_publish_receipt(row: PgRow) -> Result<StoredPublishReceipt> {
+    Ok(StoredPublishReceipt {
+        report_name: row.try_get("report_name")?,
+        target: row.try_get("target")?,
+        destination: row.try_get("destination")?,
+        published_at: row.try_get("published_at")?,
+        summary: row.try_get("summary")?,
+        raw_output: row.try_get("raw_output")?,
     })
 }
 

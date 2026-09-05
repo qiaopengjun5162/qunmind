@@ -7,6 +7,8 @@ pub enum LearningResourceCategory {
     AgentFrameworks,
     HermesExecution,
     WechatAgentSkills,
+    MultimodalAgents,
+    FormalMethods,
     LearningWorkflow,
     AiWeb3Bridge,
 }
@@ -98,6 +100,15 @@ pub const LEARNING_RESOURCES: &[LearningResource] = &[
         url: None,
     },
     LearningResource {
+        title: "Agent Skills Engineering Workflow",
+        category: LearningResourceCategory::CodingAgents,
+        provider: "Addy Osmani",
+        focus: "参考上下文工程、源码驱动决策、故障恢复和发布前验证的可复用工程流程；不直接安装第三方 hooks、命令或跨模型 CLI",
+        format: LearningResourceFormat::Docs,
+        priority: 75,
+        url: Some("https://github.com/addyosmani/agent-skills"),
+    },
+    LearningResource {
         title: "AI Agent 入门",
         category: LearningResourceCategory::AgentFoundations,
         provider: "General agent intro",
@@ -134,6 +145,15 @@ pub const LEARNING_RESOURCES: &[LearningResource] = &[
         url: None,
     },
     LearningResource {
+        title: "DojoAgents Architecture",
+        category: LearningResourceCategory::AgentFrameworks,
+        provider: "Alpha Dojo",
+        focus: "学习 Agent Loop、Gateway adapter、记忆来源约束与 Skill 懒加载的分层边界，不引入投资执行能力",
+        format: LearningResourceFormat::Docs,
+        priority: 115,
+        url: Some("https://github.com/Alpha-Dojo/DojoAgents"),
+    },
+    LearningResource {
         title: "Hermes Agent Docs",
         category: LearningResourceCategory::HermesExecution,
         provider: "Hermes",
@@ -161,6 +181,42 @@ pub const LEARNING_RESOURCES: &[LearningResource] = &[
         url: Some("https://mp.weixin.qq.com/s/djeUolNR4bms8wGsvBTAZQ"),
     },
     LearningResource {
+        title: "JoyAI-VL-Interaction",
+        category: LearningResourceCategory::MultimodalAgents,
+        provider: "JD Open Source",
+        focus: "理解实时视频-语言交互、边看边说、说/停/委托决策和多模态 Agent 运行时",
+        format: LearningResourceFormat::Docs,
+        priority: 138,
+        url: Some("https://github.com/jd-opensource/JoyAI-VL-Interaction"),
+    },
+    LearningResource {
+        title: "Lean 4 中文文档",
+        category: LearningResourceCategory::FormalMethods,
+        provider: "Lean 中文社区",
+        focus: "用中文建立 Lean 4 与定理证明器的基础使用直觉",
+        format: LearningResourceFormat::Docs,
+        priority: 139,
+        url: Some("https://www.leanprover.cn/#lean-zh_1"),
+    },
+    LearningResource {
+        title: "Lean4 通关互动小游戏",
+        category: LearningResourceCategory::FormalMethods,
+        provider: "Lean Game",
+        focus: "通过交互式练习熟悉 Lean 4 的基本证明步骤与反馈循环",
+        format: LearningResourceFormat::Course,
+        priority: 139,
+        url: Some("https://adam.math.hhu.de/#/"),
+    },
+    LearningResource {
+        title: "Logical Foundations",
+        category: LearningResourceCategory::FormalMethods,
+        provider: "Software Foundations",
+        focus: "系统学习命题逻辑、证明与 Coq / 形式化验证基础",
+        format: LearningResourceFormat::Handbook,
+        priority: 139,
+        url: Some("https://softwarefoundations.cis.upenn.edu/lf-current/index.html"),
+    },
+    LearningResource {
         title: "AI × Web3 School Learning Agent 启动 Prompt",
         category: LearningResourceCategory::LearningWorkflow,
         provider: "AI x Web3 School",
@@ -170,6 +226,15 @@ pub const LEARNING_RESOURCES: &[LearningResource] = &[
         url: Some("https://aiweb3.school/learning-agent.zh.txt"),
     },
     LearningResource {
+        title: "AI Content Knowledge Base",
+        category: LearningResourceCategory::LearningWorkflow,
+        provider: "mrbear1024",
+        focus: "学习 raw / sources / products / wiki / staging 分层、来源追溯和 review-first 知识沉淀，不把 AI 草稿直接当作事实",
+        format: LearningResourceFormat::Docs,
+        priority: 145,
+        url: Some("https://github.com/mrbear1024/ai-content-kb"),
+    },
+    LearningResource {
         title: "AI × Web3 School Handbook",
         category: LearningResourceCategory::AiWeb3Bridge,
         provider: "AI x Web3 School",
@@ -177,6 +242,15 @@ pub const LEARNING_RESOURCES: &[LearningResource] = &[
         format: LearningResourceFormat::Handbook,
         priority: 150,
         url: Some("https://aiweb3.school/zh/handbook/"),
+    },
+    LearningResource {
+        title: "ClawFeed — AI 新闻摘要聚合",
+        category: LearningResourceCategory::AgentFrameworks,
+        provider: "kevinho",
+        focus: "Self-hosted 多源（Twitter/RSS/HN/Reddit/GitHub Trending）AI 聚合 + 结构化日报，与 QunMind 日报引擎同类思路的参考产品；只借鉴成稿与架构边界，不并入主进程、不消费其私有订阅源",
+        format: LearningResourceFormat::Docs,
+        priority: 152,
+        url: Some("https://github.com/kevinho/clawfeed"),
     },
 ];
 
@@ -210,6 +284,7 @@ pub fn agent_path() -> Vec<&'static LearningResource> {
                     | LearningResourceCategory::AgentFrameworks
                     | LearningResourceCategory::HermesExecution
                     | LearningResourceCategory::WechatAgentSkills
+                    | LearningResourceCategory::MultimodalAgents
             )
         })
         .collect()
@@ -272,6 +347,7 @@ mod tests {
             "Z.ai API 开发者文档",
             "Z.ai Coding Plan",
             "Claude Code 101",
+            "Agent Skills Engineering Workflow",
             "AI Agent 入门",
             "Microsoft AI Agents for Beginners",
             "OpenAI Agents SDK Intro",
@@ -279,6 +355,10 @@ mod tests {
             "Hermes Agent Docs",
             "Zread.ai 解读 OpenClaw / Hermes",
             "wx-cli 的 AI Agent Skill 来了！让 AI 直接帮你管微信私域",
+            "JoyAI-VL-Interaction",
+            "Lean 4 中文文档",
+            "Lean4 通关互动小游戏",
+            "Logical Foundations",
             "AI × Web3 School Learning Agent 启动 Prompt",
             "AI × Web3 School Handbook",
         ] {
@@ -296,6 +376,8 @@ mod tests {
             LearningResourceCategory::AgentFrameworks,
             LearningResourceCategory::HermesExecution,
             LearningResourceCategory::WechatAgentSkills,
+            LearningResourceCategory::MultimodalAgents,
+            LearningResourceCategory::FormalMethods,
             LearningResourceCategory::LearningWorkflow,
             LearningResourceCategory::AiWeb3Bridge,
         ] {
@@ -324,11 +406,13 @@ mod tests {
             .collect::<Vec<_>>();
 
         assert!(titles.contains(&"Microsoft AI Agents for Beginners"));
+        assert!(titles.contains(&"Agent Skills Engineering Workflow"));
         assert!(titles.contains(&"OpenAI Agents SDK Intro"));
         assert!(titles.contains(&"LangGraph Overview"));
         assert!(titles.contains(&"Hermes Agent Docs"));
         assert!(titles.contains(&"Zread.ai 解读 OpenClaw / Hermes"));
         assert!(titles.contains(&"wx-cli 的 AI Agent Skill 来了！让 AI 直接帮你管微信私域"));
+        assert!(titles.contains(&"JoyAI-VL-Interaction"));
         assert!(!titles.contains(&"Hugging Face LLM Course Chapter 1"));
     }
 
@@ -349,16 +433,34 @@ mod tests {
     #[test]
     fn finds_resources_with_normalized_titles() {
         let claude = resource("anthropic building with the claude api");
+        let agent_skills = resource("agent skills engineering workflow");
         let zread = resource("Zread AI OpenClaw Hermes");
         let wx_cli_skill = resource("wx-cli 的 AI Agent Skill 来了！让 AI 直接帮你管微信私域");
+        let joyai = resource("joy ai vl interaction");
+        let lean = resource("Lean 4 中文文档");
+        let logical_foundations = resource("Logical Foundations");
         let handbook = resource("AI Web3 School Handbook");
 
         assert_eq!(claude.provider, "Anthropic");
         assert_eq!(claude.category, LearningResourceCategory::ApiCalling);
+        assert_eq!(
+            agent_skills.category,
+            LearningResourceCategory::CodingAgents
+        );
+        assert_eq!(
+            agent_skills.url,
+            Some("https://github.com/addyosmani/agent-skills")
+        );
         assert_eq!(zread.category, LearningResourceCategory::HermesExecution);
         assert_eq!(
             wx_cli_skill.category,
             LearningResourceCategory::WechatAgentSkills
+        );
+        assert_eq!(joyai.category, LearningResourceCategory::MultimodalAgents);
+        assert_eq!(lean.category, LearningResourceCategory::FormalMethods);
+        assert_eq!(
+            logical_foundations.url,
+            Some("https://softwarefoundations.cis.upenn.edu/lf-current/index.html")
         );
         assert_eq!(handbook.category, LearningResourceCategory::AiWeb3Bridge);
         assert_eq!(handbook.url, Some("https://aiweb3.school/zh/handbook/"));
