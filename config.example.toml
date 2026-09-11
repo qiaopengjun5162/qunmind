@@ -155,6 +155,16 @@ xairouter_enabled = false
 xairouter_url = "https://news.xairouter.com/feed.xml"
 xairouter_max_items = 12
 xairouter_timeout_secs = 15
+
+# XBridge：把用户指定关注的 X 账号推文纳入日报。默认关闭。
+# 机制：x.com 无原生 RSS、公共 RSSHub 被 Cloudflare 墙、匿名访问被登录墙拦截，故 QunMind 不直接抓 X。
+# 由 scripts/fetch_x_tweets.py 经本机 Clash 代理（需用户本机有代理，默认 127.0.0.1:7890）调用
+# fxtwitter / vxtwitter 镜像 API（零凭据）抓回推文正文，写入 x_bridge_file；日报只读该本地文件。
+# 抓取与生成解耦：可单独跑抓取脚本（cron 或手动），日报侧零网络依赖、文件缺失时优雅跳过。
+# 条目在聚合层按 source=="XBridge" 始终纳入素材池（x.com 链接也已在 curated 白名单内）。
+x_bridge_enabled = false
+x_bridge_file = "data/x_tweets.json"
+x_bridge_max_items = 10
 wechat_rss_enabled = true
 wechat_rss_max_items = 10
 wechat_rss_timeout_secs = 10

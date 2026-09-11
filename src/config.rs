@@ -322,6 +322,14 @@ pub struct PublicSourcesConfig {
     pub xairouter_max_items: usize,
     #[serde(default = "default_xairouter_timeout_secs")]
     pub xairouter_timeout_secs: u64,
+    /// X 推文桥：读取由 scripts/fetch_x_tweets.py 经 fxtwitter/vxtwitter 镜像抓回的本地 JSON，
+    /// 把用户指定关注的 X 账号推文纳入日报素材。默认关闭。
+    #[serde(default)]
+    pub x_bridge_enabled: bool,
+    #[serde(default = "default_x_bridge_file")]
+    pub x_bridge_file: String,
+    #[serde(default = "default_x_bridge_max_items")]
+    pub x_bridge_max_items: usize,
     #[serde(default)]
     pub manual_items: Vec<ManualPublicSourceItem>,
 }
@@ -707,6 +715,14 @@ fn default_xairouter_timeout_secs() -> u64 {
     15
 }
 
+fn default_x_bridge_file() -> String {
+    "data/x_tweets.json".to_string()
+}
+
+fn default_x_bridge_max_items() -> usize {
+    10
+}
+
 fn default_bot_context_messages() -> usize {
     8
 }
@@ -857,6 +873,9 @@ impl Default for PublicSourcesConfig {
             xairouter_url: default_xairouter_url(),
             xairouter_max_items: default_xairouter_max_items(),
             xairouter_timeout_secs: default_xairouter_timeout_secs(),
+            x_bridge_enabled: false,
+            x_bridge_file: default_x_bridge_file(),
+            x_bridge_max_items: default_x_bridge_max_items(),
             manual_items: Vec::new(),
         }
     }

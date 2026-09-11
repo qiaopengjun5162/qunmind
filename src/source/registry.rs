@@ -11,6 +11,7 @@ use super::{
     manual::ManualSource, official_blogs::OfficialBlogsSource, reddit_rss::RedditRssSource,
     sixfivefiveone::News6551Source, slerf_blog::SlerfBlogSource, web3_media::Web3MediaSource,
     wechat_rss::WechatRssSource, x_rss::XRssSource, xairouter::XAirouterSource,
+    x_bridge::XBridgeSource,
 };
 
 /// 根据配置构建聚合新闻源。所有新闻源的注册都在这里，添加新源只需改这一处。
@@ -67,6 +68,9 @@ pub fn build(config: &PublicSourcesConfig) -> Result<Option<Arc<dyn PublicNewsSo
     }
     if config.xairouter_enabled {
         sources.push(Arc::new(XAirouterSource::new(config)?));
+    }
+    if config.x_bridge_enabled {
+        sources.push(Arc::new(XBridgeSource::new(config)?));
     }
     if !config.manual_items.is_empty() {
         sources.push(Arc::new(ManualSource::new(config)));
@@ -153,6 +157,29 @@ mod tests {
                 !item.url.is_empty(),
                 "registered source must yield traceable urls"
             );
+            println!("  - [{}] {}", item.source, item.title);
+        }
+    }
+
+    /// 验证 XBridge 源已注册进 Composite：仅启用 x_bridge（读取本地 data/x_tweets.json）。
+    /// 文件由 scripts/fetch_x_tweets.py 生成；若尚未抓取则为空，测试仅断言「有条目则来自 XBridge」。
+    #[tokio::test]
+    async fn x_bridge_registered_in_composite() {
+        let config = PublicSourcesConfig {
+            x_bridge_enabled: true,
+            x_bridge_file: "data/x_tweets.json".to_string(),
+            x_bridge_max_items: 10,
+            ..Default::default()
+        };
+        let composite = build(&config)
+            .expect("build composite")
+            .expect("composite should contain x_bridge");
+
+        // fetch_top_items 不触及外网，读取本地文件；文件缺失时优雅返回空。
+        let items = composite.fetch_top_items().await.expect("fetch");
+        for item in items.iter() {
+            assert_eq!(item.source, "XBridge", "items must come from x_bridge");
+            assert!(!item.url.is_empty(), "x_bridge items must carry url");
             println!("  - [{}] {}", item.source, item.title);
         }
     }

@@ -1,0 +1,11 @@
+{
+  "note": "要纳入 QunMind 公众号日报的 X 推文清单（由用户贴链接累积）。fxtwitter/vxtwitter 免费镜像只支持按 status id 取正文，故按 handle+id 存。运行 scripts/fetch_x_tweets.py 抓取后写入 data/x_tweets.json，QunMind 的 x_bridge 源读取该文件。",
+  "max_per_item": 1,
+  "items": [
+    { "handle": "jinchenma_ai", "id": "2096251830418502068", "note": "微信 CLI 讨论" },
+    { "handle": "rionaifantasy", "id": "2097317367642501484", "note": "AI 幻想作图" },
+    { "handle": "rionaifantasy", "id": "2096086762258846033", "note": "AI 幻想作图" },
+    { "handle": "rionaifantasy", "id": "2090491734153429317", "note": "AI 幻想作图" },
+    { "handle": "gkxspace", "id": "2097989784379785419", "note": "待看调性" }
+  ]
+}

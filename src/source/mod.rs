@@ -16,6 +16,7 @@ pub mod sixfivefiveone;
 pub mod slerf_blog;
 pub mod web3_media;
 pub mod wechat_rss;
+pub mod x_bridge;
 pub mod x_rss;
 pub mod xairouter;
 
@@ -132,6 +133,13 @@ fn matches_topics(item: &PublicNewsItem, topic_keywords: &[String]) -> bool {
     // 标题也未必命中 topic_keywords（如「Anthropic 版权和解」不含 "ai" 子串），若按关键词过滤
     // 会被误丢。按 source 标记始终纳入素材池，作为 AI 前沿热点的稳定补充。
     if item.source == "XAirouter" {
+        return true;
+    }
+
+    // XBridge（scripts/fetch_x_tweets.py 抓回的本地 X 推文）是用户指定关注的 X 账号内容。
+    // X 正文未必命中 topic_keywords，且 x.com 链接已在 is_curated_source_url 白名单内（双重保险），
+    // 按 source 标记始终纳入素材池，保证「用户想看的 X 账号」稳定进入日报。
+    if item.source == "XBridge" {
         return true;
     }
 
