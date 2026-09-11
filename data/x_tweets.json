@@ -1,0 +1,85 @@
+{
+  "fetched_at": "2026-09-11T14:15:12.354242+00:00",
+  "count": 6,
+  "items": [
+    {
+      "source": "XBridge",
+      "title": "天下苦微信久矣，现在一个个大佬揭竿而起，开始做各种各样的微信 CLI。\n\n所以朋友们，最有价值的就是聊天记录里的上下文呀。\n\n赶紧把这个仓库克隆下来，搞不好过一",
+      "text": "天下苦微信久矣，现在一个个大佬揭竿而起，开始做各种各样的微信 CLI。\n\n所以朋友们，最有价值的就是聊天记录里的上下文呀。\n\n赶紧把这个仓库克隆下来，搞不好过一阵又要被 GitHub DMCA 了😂",
+      "url": "https://x.com/jinchenma_ai/status/2096251830418502068",
+      "author_name": "金尘马",
+      "author_handle": "jinchenma_ai",
+      "created_at": "Sat Sep 05 14:59:17 +0000 2026",
+      "likes": 69,
+      "retweets": 8,
+      "views": 18035,
+      "category": "jinchenma_ai"
+    },
+    {
+      "source": "XBridge",
+      "title": "我去！！我的开源项目“微信个人情报库”在三天内已经涨到接近2000star🌟了！！！\n\n还没体验过的朋友，欢迎来试试，仓库地址👇：https://github.",
+      "text": "我去！！我的开源项目“微信个人情报库”在三天内已经涨到接近2000star🌟了！！！\n\n还没体验过的朋友，欢迎来试试，仓库地址👇：https://github.com/Rion-Wu-tech/wechat-intelligence-hub\n\n大家对这个项目的支持真的远远超乎我的想象！非常感谢每位支持我的股东！！🫡\n\n另外，我的社群现在虽然已经超过50人了，但是我决定把199一人（永久）的价格延续到前100名，直到第101名再开始涨价至299元。\n\n我会不定期在群里更新这几块：\n\n ① 个人知识库：沉淀我做 AI、自媒体和商业化的方法、教程与资料，目前在陆续整理完善\n② Skill 和工具：包括微信个人情报库，以及我后续开发、开源的项目，优先在群内同步进展和更新，分享安装与使用教程\n ③ 实践交流：分享我做项目和商业化的经验，也一起讨论怎么把 AI 用到内容、工作流和业务里\n ④ 资源与合作：分享 AI 活动、行业资源，有合适的合作会优先和群友交流\n\n欢迎感兴趣的股东们来进群和我一起学习，一起交流！！🫡",
+      "url": "https://x.com/rionaifantasy/status/2097317367642501484",
+      "author_name": "Rion Wu",
+      "author_handle": "rionaifantasy",
+      "created_at": "Tue Sep 08 13:33:21 +0000 2026",
+      "likes": 65,
+      "retweets": 9,
+      "views": 9387,
+      "category": "rionaifantasy"
+    },
+    {
+      "source": "XBridge",
+      "title": "大的来了，大的来了，家人们！！！今天正式开源全网最强的微信个人情报库🫡  \n\n我终于把几万条微信聊天记录，变成了一个每天帮我列出todo事项、洽谈合作、总结群聊",
+      "text": "大的来了，大的来了，家人们！！！今天正式开源全网最强的微信个人情报库🫡  \n\n我终于把几万条微信聊天记录，变成了一个每天帮我列出todo事项、洽谈合作、总结群聊、发现赚钱机会、查找商单、建联品牌方、实时检索所有历史聊天记录的全自动超级微信小助理😤。  \n\n我用 Codex 把它做成了一个本地只读系统：  \n\n1、总结过去任何时间（默认24小时）的重要群聊和私聊 2、找出待回复、待兑现承诺和临近截止的事项 \n3、识别商单、培训、咨询、项目合作和复联等线索 \n4、按联系人、标签、具体事物、主题和日期检索历史聊天 \n5、生成 Markdown 和可交互的 HTML 报告  \n6、持久化机会管道：识别出的机会不会只存在于一份日报里，还可以进入长期机会库：\n7、个人背景与当前计划适配：首次使用时可以建立用户自己的本地画像\n8、个性化回复建议：系统只生成建议，不会替用户发送消息。\n9、重点联系人管理：可以针对个人微信关系生成情报\n10、本地索引和维护\n\n这次不只是一个 Skill。我把自己的只读 rion-wechat-cli、微信个人情报库 Skill、本地引擎、虚构 Demo、安装脚本、隐私边界和 162 项自动化测试放进了同一个独立仓库：wechat-intelligence-hub。  \n\n真实聊天和联系人留在本机；系统不会替你发微信，也不做重签名、注入或 Hook。（保证你的使用安全）  \n\n快来畅玩吧，仓库地址在这👇（觉得不错的朋友，麻烦给个star）：\nhttps://github.com/Rion-Wu-tech/wechat-intelligence-hub",
+      "url": "https://x.com/rionaifantasy/status/2096086762258846033",
+      "author_name": "Rion Wu",
+      "author_handle": "rionaifantasy",
+      "created_at": "Sat Sep 05 04:03:22 +0000 2026",
+      "likes": 1247,
+      "retweets": 218,
+      "views": 490362,
+      "category": "rionaifantasy"
+    },
+    {
+      "source": "XBridge",
+      "title": "实在对不起家人们！！让大家久等了！！！😤\n我的微信cli和微信个人情报库正式版，本周即将开源。。。\n最近几天正在加紧优化中。。。\n\n完整版功能：\n1、通过微信c",
+      "text": "实在对不起家人们！！让大家久等了！！！😤\n我的微信cli和微信个人情报库正式版，本周即将开源。。。\n最近几天正在加紧优化中。。。\n\n完整版功能：\n1、通过微信cli总结过去24小时聊天记录，给出行动总览\n\n2、自动总结过去24小时重要群聊信息\n\n3、新增html交互日报，比markdown文档看起来更爽🫡\n\n4、新增重点联系人日报，并给出回复建议\n\n5、包含跨群链接索引，帮助你自动识别商单信息\n\n6、可自由设置时间范围，过去1天，1周，1个月，只要你的微信聊天记录还在，都可以帮你总结出来！\n\n这次优化我的skill，离不开一个强大的AI调研和搜索工具：\nAnySearch，这是一个给 AI Agent 用的搜索基础设施👇\n免费使用链接🔗：\nhttps://anysearch.com/home?utm_source=kol_Rionwu&utm_medium=referral&utm_campaign=kol_08a\n\n悄悄给大伙分享我vibe coding的独门秘籍🤫：\n\n当我每次想要开始做一个新项目，或优化某个旧项目时，\n我不会让我的agent从头开始干活，而是\n\n1、先通过AnySearch这个强大的搜索工具，从外部搜索和调研公开信息，\n\n2、借鉴别人成熟的方案，再结合我的个人和项目情况，做出修改和调整，并为我所用。\n\n这样可以很好地避免很多无效劳动，快速建立起MVP。\n\n现在，AnySearch可以通过 Skill、MCP、API 接入工作流，直接访问官网注册，并领取免费的API key体验吧：\n\nhttps://anysearch.com/home?utm_source=kol_Rionwu&utm_medium=referral&utm_campaign=kol_08a\n\nGithub仓库：https://github.com/anysearch-ai",
+      "url": "https://x.com/rionaifantasy/status/2090491734153429317",
+      "author_name": "Rion Wu",
+      "author_handle": "rionaifantasy",
+      "created_at": "Thu Aug 20 17:30:43 +0000 2026",
+      "likes": 528,
+      "retweets": 99,
+      "views": 90999,
+      "category": "rionaifantasy"
+    },
+    {
+      "source": "XBridge",
+      "title": "wok，微信被彻底打通了，逸尘这个 Skills 只怪我发现太晚，立马 Fork 防被 404🥹\n\n用 Codex 直接读取你微信的本地数据，而且纯本地解密、纯",
+      "text": "wok，微信被彻底打通了，逸尘这个 Skills 只怪我发现太晚，立马 Fork 防被 404🥹\n\n用 Codex 直接读取你微信的本地数据，而且纯本地解密、纯只读，完全不影响微信正常用！\n\n聊天记录、联系人、群聊、朋友圈、收藏夹，居然全都能被 AI 直接读取。。。\n\n我来给大家详细讲一讲它有多香：\n\n1、聊业务或跟客户沟通前，让 AI 直接检索历史记录：\"分析我和某总过去半年的合作痛点，然后......\"。\n\n2、几百个的行业大群，上万条消息根本看不过来。直接跑一条命令，自动生成群聊精华日报、核心话题梳理，甚至群友画像。\n\n3、在微信收藏的几千篇好文章、群里发过的文件资料，一句话就能精准检索出来。\n\n4、把你和朋友聊过的好想法、朋友圈发过的碎碎念一键提取，直接沉淀成内容素材。\n\n数据留在 Mac 本地、不上传，绝对丝滑。\n\n🔗：https://github.com/mcncarl/yichen-skills/tree/main/yichen-wechat-local-vault",
+      "url": "https://x.com/gkxspace/status/2097989784379785419",
+      "author_name": "余温",
+      "author_handle": "gkxspace",
+      "created_at": "Thu Sep 10 10:05:18 +0000 2026",
+      "likes": 1486,
+      "retweets": 301,
+      "views": 252899,
+      "category": "gkxspace"
+    },
+    {
+      "source": "XBridge",
+      "title": "我咧个去！开源微信记忆库来了，聊天记录一键筛成 Agent 能读的个人上下文！🔥\n\n项目细节散落在微信里？导出工具又贵又闭源，记录一上传就心里没底，AI 更对不",
+      "text": "我咧个去！开源微信记忆库来了，聊天记录一键筛成 Agent 能读的个人上下文！🔥\n\n项目细节散落在微信里？导出工具又贵又闭源，记录一上传就心里没底，AI 更对不上你的真实背景？😜\n\nwechat-ai-memory 本地优先的 Windows 微信个人记忆库，按会话、日期、关键词筛选，导出可追溯的聊天上下文，内容全程不出本机。\n\n✅ 直接读微信 4.x：自动找账户目录，只读解密临时副本，不改原库\n\n✅ 记忆自己圈：联系人/群聊 + 日历范围 + 关键词，文本图片文件语音都能收\n\n✅ 一键出档案：PDF、Markdown、结构化 JSON，图片还原、语音本地转写\n\n✅ 绿色不上传：无遥测、无远程接口，便携版双击就能跑  \n\n直接去 GitHub 下：https://github.com/ikevss/wechat-ai-memory  \n\nWindows 微信用户赶紧收，聊天记录终于能变成自己的记忆资产，二次创作更方便！  \n\n#开源工具 #微信导出 #AI记忆 #效率神器",
+      "url": "https://x.com/denziideng/status/2097474556776915398",
+      "author_name": "Denzii 🕊️",
+      "author_handle": "denziideng",
+      "created_at": "Tue Sep 08 23:57:58 +0000 2026",
+      "likes": 294,
+      "retweets": 56,
+      "views": 50236,
+      "category": "denziideng"
+    }
+  ],
+  "errors": []
+}
