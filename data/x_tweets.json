@@ -1,6 +1,6 @@
 {
-  "fetched_at": "2026-09-11T14:15:12.354242+00:00",
-  "count": 6,
+  "fetched_at": "2026-09-11T14:24:56.241612+00:00",
+  "count": 7,
   "items": [
     {
       "source": "XBridge",
@@ -25,7 +25,7 @@
       "created_at": "Tue Sep 08 13:33:21 +0000 2026",
       "likes": 65,
       "retweets": 9,
-      "views": 9387,
+      "views": 9389,
       "category": "rionaifantasy"
     },
     {
@@ -38,7 +38,7 @@
       "created_at": "Sat Sep 05 04:03:22 +0000 2026",
       "likes": 1247,
       "retweets": 218,
-      "views": 490362,
+      "views": 490389,
       "category": "rionaifantasy"
     },
     {
@@ -62,9 +62,9 @@
       "author_name": "余温",
       "author_handle": "gkxspace",
       "created_at": "Thu Sep 10 10:05:18 +0000 2026",
-      "likes": 1486,
-      "retweets": 301,
-      "views": 252899,
+      "likes": 1492,
+      "retweets": 302,
+      "views": 253873,
       "category": "gkxspace"
     },
     {
@@ -77,8 +77,21 @@
       "created_at": "Tue Sep 08 23:57:58 +0000 2026",
       "likes": 294,
       "retweets": 56,
-      "views": 50236,
+      "views": 50266,
       "category": "denziideng"
+    },
+    {
+      "source": "XBridge",
+      "title": "用 Codex 直接读你微信的本地数据，纯本地解密、纯只读，不影响微信正常用。聊天记录、联系人、群聊、朋友圈、收藏夹，全能被 AI 读到，有点上头。\n\n几个玩法",
+      "text": "用 Codex 直接读你微信的本地数据，纯本地解密、纯只读，不影响微信正常用。聊天记录、联系人、群聊、朋友圈、收藏夹，全能被 AI 读到，有点上头。\n\n几个玩法说说：\n\n1️⃣ 跟客户聊之前，让 AI 先翻半年历史记录，把合作痛点扒出来。\n\n2️⃣ 几百个行业大群上万条消息，一条命令生成精华日报，连群友画像都有。\n\n3️⃣ 收藏夹几千篇好文、群里发过的文件，一句话精准捞出来。\n\n4️⃣ 你和朋友的好想法、朋友圈碎碎念，一键提取变素材。\n\n数据全留在 Mac 本地，不上传，用着踏实。\n\n🔗：https://github.com/mcncarl/yichen-skills/tree/main/yichen-wechat-local-vault",
+      "url": "https://x.com/NFTCPS/status/2098277858649186576",
+      "author_name": "鸟哥 | 蓝鸟会🕊️",
+      "author_handle": "NFTCPS",
+      "created_at": "Fri Sep 11 05:10:00 +0000 2026",
+      "likes": 46,
+      "retweets": 11,
+      "views": 9074,
+      "category": "NFTCPS"
     }
   ],
   "errors": []
