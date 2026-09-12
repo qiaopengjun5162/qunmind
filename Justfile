@@ -80,6 +80,54 @@ mcp config='config.toml':
     cargo run -- --config {{config}} mcp
 
 # ============================================================
+# 日报联调
+# ============================================================
+
+# 创建本地 PostgreSQL 业务库（若已存在则跳过）
+db-create db='qunmind':
+    psql "postgres://postgres:postgres@localhost:5432/postgres" -tAc "SELECT 1 FROM pg_database WHERE datname = '{{db}}'" | grep -q 1 || psql "postgres://postgres:postgres@localhost:5432/postgres" -c "CREATE DATABASE {{db}} OWNER postgres;"
+
+# 查看日报 readiness
+report-status config='config.toml' report='微信公众号日报' limit='5':
+    cargo run -- --config {{config}} report-status --report-name "{{report}}" --limit {{limit}}
+
+# 打开公众号后台登录，供浏览器自动化复用登录态
+report-login config='config.toml' report='微信公众号日报' temporary_profile='false':
+    cargo run -- --config {{config}} report-login --report-name "{{report}}" {{if temporary_profile == "true" { "--temporary-profile" } else { "" }}}
+
+# 重试公众号浏览器自动化配置
+report-configure config='config.toml' report='微信公众号日报' headed='false' temporary_profile='false':
+    cargo run -- --config {{config}} report-configure --report-name "{{report}}" {{if headed == "true" { "--headed" } else { "" }}} {{if temporary_profile == "true" { "--temporary-profile" } else { "" }}}
+
+# 一键执行登录 + 浏览器自动化重试
+report-recover-automation config='config.toml' report='微信公众号日报' headed='false' temporary_profile='false':
+    cargo run -- --config {{config}} report-recover-automation --report-name "{{report}}" {{if headed == "true" { "--headed" } else { "" }}} {{if temporary_profile == "true" { "--temporary-profile" } else { "" }}}
+
+# 单独测试公众号预览步骤
+report-preview config='config.toml' report='微信公众号日报' headed='false' temporary_profile='false':
+    cargo run -- --config {{config}} report-preview --report-name "{{report}}" {{if headed == "true" { "--headed" } else { "" }}} {{if temporary_profile == "true" { "--temporary-profile" } else { "" }}}
+
+# 生成本地日报 markdown（不发布）
+report-markdown config='config.toml' report='微信公众号日报' output='/tmp/wechat-report.md':
+    cargo run -- --config {{config}} daily-report --report-name "{{report}}" --output {{output}}
+
+# 生成只使用公开来源的本地日报 markdown（不发布）
+report-markdown-public-only config='config.toml' report='微信公众号日报' output='/tmp/wechat-report-public-only.md':
+    cargo run -- --config {{config}} daily-report --report-name "{{report}}" --output {{output}} --public-only
+
+# 查看日报发布历史
+report-history config='config.toml' report='微信公众号日报' limit='5':
+    cargo run -- --config {{config}} publish-history --report-name "{{report}}" --limit {{limit}}
+
+# 推送日报到已配置 publisher（会触发真实外部发布）
+report-publish config='config.toml' report='微信公众号日报' output='/tmp/wechat-report.md':
+    cargo run -- --config {{config}} daily-report --report-name "{{report}}" --output {{output}} --publish
+
+# 推送只使用公开来源生成的日报到已配置 publisher（会触发真实外部发布）
+report-publish-public-only config='config.toml' report='微信公众号日报' output='/tmp/wechat-report-public-only.md':
+    cargo run -- --config {{config}} daily-report --report-name "{{report}}" --output {{output}} --public-only --publish
+
+# ============================================================
 # wx-cli 诊断
 # ============================================================
 

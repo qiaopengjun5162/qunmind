@@ -1,14 +1,18 @@
-use std::time::Duration;
-
 use async_trait::async_trait;
+use futures::stream::{FuturesUnordered, StreamExt};
 use reqwest::Client;
+use tokio::sync::OnceCell;
+use tracing::warn;
 
+use super::http_client::{build_client, build_local_proxy_client};
 use super::{PublicNewsItem, PublicNewsSource};
 use crate::config::PublicSourcesConfig;
 use crate::error::Result;
 
 pub struct GitHubTrendingSource {
     client: Client,
+    proxy_client: Client,
+    preferred_client: OnceCell<bool>,
     base_url: String,
     languages: Vec<String>,
     since: String,
@@ -17,13 +21,13 @@ pub struct GitHubTrendingSource {
 
 impl GitHubTrendingSource {
     pub fn new(config: &PublicSourcesConfig) -> Result<Self> {
-        let client = Client::builder()
-            .timeout(Duration::from_secs(config.github_trending_timeout_secs))
-            .user_agent("qunmind/0.1")
-            .build()?;
+        let client = build_client(config.github_trending_timeout_secs)?;
+        let proxy_client = build_local_proxy_client(config.github_trending_timeout_secs)?;
 
         Ok(Self {
             client,
+            proxy_client,
+            preferred_client: OnceCell::new(),
             base_url: config
                 .github_trending_base_url
                 .trim_end_matches('/')
@@ -40,26 +44,74 @@ impl GitHubTrendingSource {
         } else {
             format!("{}/{}", self.base_url, language)
         };
-        let html = self
-            .client
-            .get(path)
-            .query(&[("since", self.since.as_str())])
-            .send()
-            .await?
-            .error_for_status()?
-            .text()
-            .await?;
+        let use_direct = *self
+            .preferred_client
+            .get_or_init(|| async { self.direct_trending_available().await })
+            .await;
+        let html = if use_direct {
+            self.client
+                .get(&path)
+                .query(&[("since", self.since.as_str())])
+                .send()
+                .await?
+                .error_for_status()?
+                .text()
+                .await?
+        } else {
+            self.proxy_client
+                .get(&path)
+                .query(&[("since", self.since.as_str())])
+                .send()
+                .await?
+                .error_for_status()?
+                .text()
+                .await?
+        };
 
         Ok(parse_trending_html(&html, self.max_items))
+    }
+
+    async fn direct_trending_available(&self) -> bool {
+        let probe_path = format!(
+            "{}/{}",
+            self.base_url,
+            self.languages.first().cloned().unwrap_or_default()
+        );
+        match self
+            .client
+            .get(&probe_path)
+            .query(&[("since", self.since.as_str())])
+            .send()
+            .await
+        {
+            Ok(response) => response.error_for_status().is_ok(),
+            Err(primary_err) => {
+                warn!(
+                    "github trending direct fetch failed, using local proxy for this run: {primary_err}"
+                );
+                false
+            }
+        }
     }
 }
 
 #[async_trait]
 impl PublicNewsSource for GitHubTrendingSource {
     async fn fetch_top_items(&self) -> Result<Vec<PublicNewsItem>> {
+        let mut fetched_by_language = vec![Vec::new(); self.languages.len()];
+        let mut pending = FuturesUnordered::new();
+
+        for (index, language) in self.languages.iter().cloned().enumerate() {
+            pending.push(async move { (index, self.fetch_language(&language).await) });
+        }
+
+        while let Some((index, fetched)) = pending.next().await {
+            fetched_by_language[index] = fetched?;
+        }
+
         let mut items = Vec::new();
-        for language in &self.languages {
-            items.extend(self.fetch_language(language).await?);
+        for fetched in fetched_by_language {
+            items.extend(fetched);
             if items.len() >= self.max_items {
                 break;
             }
@@ -82,6 +134,9 @@ fn parse_trending_html(html: &str, max_items: usize) -> Vec<PublicNewsItem> {
                 source: "GitHub Trending".to_string(),
                 title,
                 url: format!("https://github.com{href}"),
+                summary: None,
+                author: None,
+                published_at: None,
                 score: extract_stargazer_count(article),
                 comments: None,
                 ai_score: None,

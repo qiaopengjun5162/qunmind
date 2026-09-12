@@ -1,15 +1,19 @@
-use std::time::Duration;
-
 use async_trait::async_trait;
+use futures::stream::{FuturesUnordered, StreamExt};
 use reqwest::Client;
 use serde::Deserialize;
+use tokio::sync::OnceCell;
+use tracing::warn;
 
+use super::http_client::{build_client, build_local_proxy_client};
 use super::{PublicNewsItem, PublicNewsSource};
 use crate::config::PublicSourcesConfig;
 use crate::error::Result;
 
 pub struct HackerNewsSource {
     client: Client,
+    proxy_client: Client,
+    preferred_client: OnceCell<bool>,
     base_url: String,
     max_items: usize,
 }
@@ -36,12 +40,13 @@ struct HackerNewsItem {
 
 impl HackerNewsSource {
     pub fn new(config: &PublicSourcesConfig) -> Result<Self> {
-        let client = Client::builder()
-            .timeout(Duration::from_secs(config.hacker_news_timeout_secs))
-            .build()?;
+        let client = build_client(config.hacker_news_timeout_secs)?;
+        let proxy_client = build_local_proxy_client(config.hacker_news_timeout_secs)?;
 
         Ok(Self {
             client,
+            proxy_client,
+            preferred_client: OnceCell::new(),
             base_url: config
                 .hacker_news_base_url
                 .trim_end_matches('/')
@@ -51,36 +56,90 @@ impl HackerNewsSource {
     }
 
     async fn fetch_item(&self, id: i64) -> Result<Option<PublicNewsItem>> {
-        let item: Option<HackerNewsItem> = self
-            .client
-            .get(format!("{}/item/{}.json", self.base_url, id))
-            .send()
-            .await?
-            .error_for_status()?
-            .json()
-            .await?;
+        let url = format!("{}/item/{}.json", self.base_url, id);
+        let item: Option<HackerNewsItem> = if *self
+            .preferred_client
+            .get_or_init(|| async { self.direct_topstories_available().await })
+            .await
+        {
+            self.client
+                .get(&url)
+                .send()
+                .await?
+                .error_for_status()?
+                .json()
+                .await?
+        } else {
+            self.proxy_client
+                .get(&url)
+                .send()
+                .await?
+                .error_for_status()?
+                .json()
+                .await?
+        };
 
         Ok(item.and_then(into_public_item))
+    }
+
+    async fn direct_topstories_available(&self) -> bool {
+        let probe_url = format!("{}/topstories.json", self.base_url);
+        match self.client.get(&probe_url).send().await {
+            Ok(response) => response.error_for_status().is_ok(),
+            Err(primary_err) => {
+                warn!(
+                    "hacker news direct list fetch failed, using local proxy for this run: {primary_err}"
+                );
+                false
+            }
+        }
     }
 }
 
 #[async_trait]
 impl PublicNewsSource for HackerNewsSource {
     async fn fetch_top_items(&self) -> Result<Vec<PublicNewsItem>> {
-        let ids: Vec<i64> = self
-            .client
-            .get(format!("{}/topstories.json", self.base_url))
-            .send()
-            .await?
-            .error_for_status()?
-            .json()
-            .await?;
+        let url = format!("{}/topstories.json", self.base_url);
+        let use_direct = *self
+            .preferred_client
+            .get_or_init(|| async { self.direct_topstories_available().await })
+            .await;
+        let ids: Vec<i64> = if use_direct {
+            self.client
+                .get(&url)
+                .send()
+                .await?
+                .error_for_status()?
+                .json()
+                .await?
+        } else {
+            self.proxy_client
+                .get(&url)
+                .send()
+                .await?
+                .error_for_status()?
+                .json()
+                .await?
+        };
+
+        let candidate_ids = ids.into_iter().take(self.max_items * 3).collect::<Vec<_>>();
+        let mut fetched_by_rank = vec![None; candidate_ids.len()];
+        let mut pending = FuturesUnordered::new();
+
+        for (rank, id) in candidate_ids.into_iter().enumerate() {
+            pending.push(async move { (rank, self.fetch_item(id).await) });
+        }
+
+        while let Some((rank, fetched)) = pending.next().await {
+            match fetched? {
+                Some(item) => fetched_by_rank[rank] = Some(item),
+                None => continue,
+            }
+        }
 
         let mut items = Vec::new();
-        for id in ids.into_iter().take(self.max_items * 3) {
-            if let Some(item) = self.fetch_item(id).await? {
-                items.push(item);
-            }
+        for item in fetched_by_rank.into_iter().flatten() {
+            items.push(item);
             if items.len() >= self.max_items {
                 break;
             }
@@ -107,6 +166,9 @@ fn into_public_item(item: HackerNewsItem) -> Option<PublicNewsItem> {
             Some(url) => url,
             None => format!("https://news.ycombinator.com/item?id={}", item.id),
         },
+        summary: None,
+        author: None,
+        published_at: None,
         score: item.score,
         comments: item.descendants,
         ai_score: None,
@@ -117,6 +179,7 @@ fn into_public_item(item: HackerNewsItem) -> Option<PublicNewsItem> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::PublicSourcesConfig;
 
     fn public_item(item: HackerNewsItem) -> PublicNewsItem {
         match into_public_item(item) {
@@ -211,5 +274,15 @@ mod tests {
         ] {
             assert!(into_public_item(item).is_none());
         }
+    }
+
+    #[test]
+    fn builds_source_from_config() {
+        let config = PublicSourcesConfig::default();
+
+        let source = HackerNewsSource::new(&config).expect("source");
+
+        assert_eq!(source.base_url, "https://hacker-news.firebaseio.com/v0");
+        assert_eq!(source.max_items, 10);
     }
 }

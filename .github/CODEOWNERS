@@ -1,0 +1,17 @@
+# Default owner for the whole repository.
+* @qiaopengjun5162
+
+# Keep workflow and review automation changes visible to the maintainer.
+.github/ @qiaopengjun5162
+
+# Core Rust bot/runtime code.
+src/ @qiaopengjun5162
+tests/ @qiaopengjun5162
+
+# Project docs and contribution workflow.
+docs/ @qiaopengjun5162
+README.md @qiaopengjun5162
+README_zh.md @qiaopengjun5162
+AGENTS.md @qiaopengjun5162
+PROGRESS.md @qiaopengjun5162
+CONTRIBUTING.md @qiaopengjun5162

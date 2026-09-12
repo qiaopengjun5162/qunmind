@@ -1,0 +1,20 @@
+{
+  "results": [
+    {
+      "client_msg_id": "direct-only-1",
+      "conversation_id": "wxid_alice",
+      "msg_content": "@QunMind 私聊问个问题",
+      "plain_text": "@QunMind 私聊问个问题",
+      "is_group": false,
+      "is_chatroom": false
+    },
+    {
+      "client_msg_id": "direct-only-2",
+      "conversation_id": "wxid_bob",
+      "msg_content": "再补一条私聊消息",
+      "plain_text": "再补一条私聊消息",
+      "is_group": false,
+      "is_chatroom": false
+    }
+  ]
+}
