@@ -114,6 +114,7 @@ Correspondingly, it is **not** currently the best fit for:
 | Public-source fallback | Hacker News, CoinMarketCap, CoinGecko, DeFi Llama, Dune, GitHub Trending, Slerf Blog, Reddit RSS | used when the target group is empty |
 | Chinese Web3 media | PANews RSS, WuBlockchain Atom | kept as curated traceable media sources |
 | AI news aggregator | XAirouter Atom (`news.xairouter.com/feed.xml`) | curated AI hotspot feed; always included in the pool by source identity |
+| Curated X posts | XBridge (`scripts/fetch_x_tweets.py` -> `data/x_tweets.json`, `x_bridge_*`) | listed X accounts; fetched out-of-process via fxtwitter/vxtwitter mirrors, never scraped by the main process |
 | Official blogs | OpenAI / Google / Cloudflare / Rust / GitHub / ECB RSS or Atom | raises first-hand source density |
 | Manual curated links | `[[public_sources.manual_items]]` | for links you explicitly want readers to continue reading |
 | WeChat RSS feeds | `wechat_rss_*`, `[[public_sources.wechat_accounts]]` | upstream RSS / Atom only, not direct in-process scraping |

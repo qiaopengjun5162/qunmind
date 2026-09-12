@@ -101,6 +101,7 @@ flowchart LR
 | 公开来源 | Hacker News、CoinMarketCap、CoinGecko、DeFi Llama、Dune、GitHub Trending、Slerf Blog、Reddit RSS | 群消息为空时回退 |
 | 中文 Web3 媒体 | PANews RSS、吴说区块链 Atom | 作为可追溯精选来源保留 |
 | AI 热点聚合 | XAirouter Atom（`news.xairouter.com/feed.xml`）| 精选 AI 热点源；按 source 身份始终纳入素材池 |
+| 指定 X 账号推文 | XBridge（`scripts/fetch_x_tweets.py` → `data/x_tweets.json`，`x_bridge_*`）| 抓取在进程外完成（fxtwitter / vxtwitter 镜像），主进程只读本地文件、不直接抓 X |
 | 官方博客 | OpenAI / Google / Cloudflare / Rust / GitHub / ECB 等 RSS / Atom | 提升一手来源密度 |
 | 手工精选 | `[[public_sources.manual_items]]` | 补入你明确想推荐读者继续阅读的原文 |
 | 公众号 RSS | `wechat_rss_*`、`[[public_sources.wechat_accounts]]` | 通过上游 RSS / Atom 接入，不在主进程里硬抓微信 |
