@@ -142,9 +142,15 @@ web3_media_urls = [
 # 6551 (ai.6551.io) 免费加密 / AI 新闻聚合 API（第三方 REST JSON，非 RSS/Atom）。
 # 默认关闭；开启后按 categories 聚焦 web3/ai，作为 crypto/AI 素材的可选补充，不压过 RSS 一手源。
 # 内容多源聚合、质量参差，空 link 与 HTML 标题已在源内清洗过滤；categories 用 "category/subcategory" 格式。
-news6551_enabled = false
 news6551_base_url = "https://ai.6551.io"
-news6551_categories = ["web3/defi", "web3/regulation", "web3/meme", "ai/models", "ai/crypto_ai"]
+news6551_categories = [
+  "web3/defi",
+  "web3/regulation",
+  "web3/meme",
+  "ai/models",
+  "ai/crypto_ai",
+]
+news6551_enabled = false
 news6551_max_items = 10
 news6551_timeout_secs = 15
 
@@ -152,9 +158,9 @@ news6551_timeout_secs = 15
 # 聚合 Anthropic / OpenAI / Google / NYT / Guardian 等多家媒体与官方博客的 AI 动态，默认关闭；开启后作为 AI 前沿热点的稳定补充。
 # 其条目指向外部媒体、标题未必命中 topic_keywords，已在聚合层按 source 始终纳入素材池，不会被关键词过滤误丢。
 xairouter_enabled = false
-xairouter_url = "https://news.xairouter.com/feed.xml"
 xairouter_max_items = 12
 xairouter_timeout_secs = 15
+xairouter_url = "https://news.xairouter.com/feed.xml"
 
 # XBridge：把用户指定关注的 X 账号推文纳入日报。默认关闭。
 # 机制：x.com 无原生 RSS、公共 RSSHub 被 Cloudflare 墙、匿名访问被登录墙拦截，故 QunMind 不直接抓 X。
@@ -162,15 +168,15 @@ xairouter_timeout_secs = 15
 # fxtwitter / vxtwitter 镜像 API（零凭据）抓回推文正文，写入 x_bridge_file；日报只读该本地文件。
 # 抓取与生成解耦：可单独跑抓取脚本（cron 或手动），日报侧零网络依赖、文件缺失时优雅跳过。
 # 条目在聚合层按 source=="XBridge" 始终纳入素材池（x.com 链接也已在 curated 白名单内）。
-x_bridge_enabled = false
-x_bridge_file = "data/x_tweets.json"
-x_bridge_max_items = 10
 wechat_rss_enabled = true
 wechat_rss_max_items = 10
 wechat_rss_timeout_secs = 10
 wechat_rss_urls = [
   "http://127.0.0.1:8080/rss.xml",
 ] # 可对接 wechat-download-api / Horizon 一类上游 RSS 输出；适合公众号日报空群回退或手工日报联调
+x_bridge_enabled = false
+x_bridge_file = "data/x_tweets.json"
+x_bridge_max_items = 10
 
 # 命名公众号源目录：用于 `qunmind wechat-articles --account-name ...`。
 # QunMind 只消费已绑定的 RSS / Atom / API 上游，不在主进程内按公众号名硬爬微信历史文章。

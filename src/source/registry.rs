@@ -10,8 +10,8 @@ use super::{
     github_trending::GitHubTrendingSource, hacker_news::HackerNewsSource, hn_daily::HnDailySource,
     manual::ManualSource, official_blogs::OfficialBlogsSource, reddit_rss::RedditRssSource,
     sixfivefiveone::News6551Source, slerf_blog::SlerfBlogSource, web3_media::Web3MediaSource,
-    wechat_rss::WechatRssSource, x_rss::XRssSource, xairouter::XAirouterSource,
-    x_bridge::XBridgeSource,
+    wechat_rss::WechatRssSource, x_bridge::XBridgeSource, x_rss::XRssSource,
+    xairouter::XAirouterSource,
 };
 
 /// 根据配置构建聚合新闻源。所有新闻源的注册都在这里，添加新源只需改这一处。
