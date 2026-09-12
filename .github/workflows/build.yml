@@ -9,6 +9,13 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    # `.cargo/config.toml` 里带 `-C target-cpu=native`（本机提速用）。CI 上 Swatinem/rust-cache
+    # 会把「在另一台 runner CPU 上」编译出的产物（尤其是 proc-macro dylib，如 async-trait）
+    # 恢复到当前 runner，加载后可能直接 SIGILL（实测 clippy-driver 报 `signal: 4`，只在
+    # docs-only 提交上也会偶发）。CI 不需要 native 优化，这里用空 RUSTFLAGS 覆盖
+    # config.toml 的 build.rustflags（RUSTFLAGS 优先级更高），保证产物可移植、缓存可复用。
+    env:
+      RUSTFLAGS: ""
     steps:
       - uses: actions/checkout@v4
 
