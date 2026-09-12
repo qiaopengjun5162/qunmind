@@ -142,25 +142,31 @@ web3_media_urls = [
 # 6551 (ai.6551.io) 免费加密 / AI 新闻聚合 API（第三方 REST JSON，非 RSS/Atom）。
 # 默认关闭；开启后按 categories 聚焦 web3/ai，作为 crypto/AI 素材的可选补充，不压过 RSS 一手源。
 # 内容多源聚合、质量参差，空 link 与 HTML 标题已在源内清洗过滤；categories 用 "category/subcategory" 格式。
-news6551_enabled = false
 news6551_base_url = "https://ai.6551.io"
-news6551_categories = ["web3/defi", "web3/regulation", "web3/meme", "ai/models", "ai/crypto_ai"]
+news6551_categories = [
+  "web3/defi",
+  "web3/regulation",
+  "web3/meme",
+  "ai/models",
+  "ai/crypto_ai",
+]
+news6551_enabled = false
 news6551_max_items = 10
 news6551_timeout_secs = 15
 
 # XAirouter（news.xairouter.com）AI 圈热点聚合，Atom feed（/feed.xml）。
 # 聚合 Anthropic / OpenAI / Google / NYT / Guardian 等多家媒体与官方博客的 AI 动态，默认关闭；开启后作为 AI 前沿热点的稳定补充。
 # 其条目指向外部媒体、标题未必命中 topic_keywords，已在聚合层按 source 始终纳入素材池，不会被关键词过滤误丢。
-xairouter_enabled = false
-xairouter_url = "https://news.xairouter.com/feed.xml"
-xairouter_max_items = 12
-xairouter_timeout_secs = 15
 wechat_rss_enabled = true
 wechat_rss_max_items = 10
 wechat_rss_timeout_secs = 10
 wechat_rss_urls = [
   "http://127.0.0.1:8080/rss.xml",
 ] # 可对接 wechat-download-api / Horizon 一类上游 RSS 输出；适合公众号日报空群回退或手工日报联调
+xairouter_enabled = false
+xairouter_max_items = 12
+xairouter_timeout_secs = 15
+xairouter_url = "https://news.xairouter.com/feed.xml"
 
 # 命名公众号源目录：用于 `qunmind wechat-articles --account-name ...`。
 # QunMind 只消费已绑定的 RSS / Atom / API 上游，不在主进程内按公众号名硬爬微信历史文章。

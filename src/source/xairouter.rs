@@ -98,8 +98,8 @@ fn parse_atom_entry(xml: &str) -> Option<PublicNewsItem> {
     let summary = extract_tag_text(xml, "summary")
         .or_else(|| extract_tag_text(xml, "content"))
         .map(|text| strip_html_tags(&html_decode(&text)));
-    let published_at = extract_tag_text(xml, "published")
-        .or_else(|| extract_tag_text(xml, "updated"));
+    let published_at =
+        extract_tag_text(xml, "published").or_else(|| extract_tag_text(xml, "updated"));
     let author = extract_atom_author_name(xml);
 
     Some(PublicNewsItem {
@@ -126,7 +126,8 @@ fn parse_rss_item(xml: &str) -> Option<PublicNewsItem> {
         return None;
     }
 
-    let summary = extract_tag_text(xml, "description").map(|text| strip_html_tags(&html_decode(&text)));
+    let summary =
+        extract_tag_text(xml, "description").map(|text| strip_html_tags(&html_decode(&text)));
     let published_at = extract_tag_text(xml, "pubDate");
     let author = extract_tag_text(xml, "author").or_else(|| extract_tag_text(xml, "dc:creator"));
 
@@ -196,7 +197,10 @@ fn extract_first_category_term(xml: &str) -> Option<String> {
     static RE: OnceLock<Regex> = OnceLock::new();
     RE.get_or_init(|| Regex::new(r#"(?s)<category[^>]*term=["']([^"']+)["'][^>]*/?>"#).unwrap())
         .captures(xml)
-        .and_then(|cap| cap.get(1).map(|m| html_decode(m.as_str().trim()).to_string()))
+        .and_then(|cap| {
+            cap.get(1)
+                .map(|m| html_decode(m.as_str().trim()).to_string())
+        })
         .filter(|text| !text.is_empty())
 }
 
