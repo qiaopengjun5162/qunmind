@@ -28,8 +28,10 @@ fn aes_cbc_decrypt(key: &[u8; 32], iv: &[u8; 16], data: &[u8]) -> Result<Vec<u8>
         )));
     }
     let mut blocks: Vec<Block<Aes256>> = data
-        .chunks_exact(16)
-        .map(Block::<Aes256>::clone_from_slice)
+        .as_chunks::<16>()
+        .0
+        .iter()
+        .map(|chunk| Block::<Aes256>::clone_from_slice(chunk.as_slice()))
         .collect();
     cbc::Decryptor::<Aes256>::new(key.into(), iv.into()).decrypt_blocks_mut(&mut blocks);
     Ok(blocks.iter().flat_map(|b| b.iter().copied()).collect())
