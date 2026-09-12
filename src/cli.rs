@@ -30,9 +30,124 @@ pub enum CliCommand {
         /// 输出文件路径
         #[arg(long)]
         output: PathBuf,
+        /// 已配置日报目标名称；用于复用该目标的 daily_quote / output 配置
+        #[arg(long, default_value = "")]
+        report_name: String,
         /// 回溯小时数
         #[arg(long, default_value_t = 24)]
         hours: i64,
+        /// 生成 markdown 后，按目标配置继续执行发布
+        #[arg(long)]
+        publish: bool,
+        /// 显式只使用 public_sources 生成日报，不读取本地群消息
+        #[arg(long)]
+        public_only: bool,
+    },
+    /// 查看最近的日报发布回执
+    #[command(name = "publish-history")]
+    PublishHistory {
+        /// 日报目标名称；为空时使用 legacy daily_report_chat_id 兼容名称
+        #[arg(long, default_value = "")]
+        report_name: String,
+        /// 最多返回多少条记录
+        #[arg(long, default_value_t = 5)]
+        limit: i64,
+    },
+    /// 查看日报发布就绪状态与最近发布记录
+    #[command(name = "report-status")]
+    ReportStatus {
+        /// 日报目标名称；为空时使用 legacy daily_report_chat_id 兼容名称
+        #[arg(long, default_value = "")]
+        report_name: String,
+        /// 最多返回多少条最近回执
+        #[arg(long, default_value_t = 5)]
+        limit: i64,
+    },
+    /// 查看公众号发布链路的本机代理 / Mihomo 只读诊断状态
+    #[command(name = "report-network-status")]
+    ReportNetworkStatus {
+        /// 日报目标名称；为空时使用 legacy daily_report_chat_id 兼容名称
+        #[arg(long, default_value = "")]
+        report_name: String,
+    },
+    /// 打开公众号浏览器登录，供后续自动化复用登录态
+    #[command(name = "report-login")]
+    ReportLogin {
+        /// 日报目标名称；为空时自动复用唯一日报目标
+        #[arg(long, default_value = "")]
+        report_name: String,
+        /// 使用一次性隔离浏览器 profile，不复用本机持久登录态
+        #[arg(long)]
+        temporary_profile: bool,
+    },
+    /// 重试公众号浏览器自动化配置步骤
+    #[command(name = "report-configure")]
+    ReportConfigure {
+        /// 日报目标名称；为空时自动复用唯一日报目标
+        #[arg(long, default_value = "")]
+        report_name: String,
+        /// 用有头浏览器调试自动化步骤
+        #[arg(long)]
+        headed: bool,
+        /// 使用一次性隔离浏览器 profile，不复用本机持久登录态
+        #[arg(long)]
+        temporary_profile: bool,
+    },
+    /// 顺序执行公众号登录与浏览器自动化重试
+    #[command(name = "report-recover-automation")]
+    ReportRecoverAutomation {
+        /// 日报目标名称；为空时自动复用唯一日报目标
+        #[arg(long, default_value = "")]
+        report_name: String,
+        /// 用有头浏览器调试自动化步骤
+        #[arg(long)]
+        headed: bool,
+        /// 使用一次性隔离浏览器 profile，不复用本机持久登录态
+        #[arg(long)]
+        temporary_profile: bool,
+    },
+    /// 单独测试公众号预览步骤
+    #[command(name = "report-preview")]
+    ReportPreview {
+        /// 日报目标名称；为空时自动复用唯一日报目标
+        #[arg(long, default_value = "")]
+        report_name: String,
+        /// 用有头浏览器调试预览步骤
+        #[arg(long)]
+        headed: bool,
+        /// 使用一次性隔离浏览器 profile，不复用本机持久登录态
+        #[arg(long)]
+        temporary_profile: bool,
+    },
+    /// 按已绑定公众号名称拉取文章列表
+    #[command(name = "wechat-articles")]
+    WechatArticles {
+        /// 公众号名称或别名，必须先在 public_sources.wechat_accounts 中绑定 feed_url
+        #[arg(long)]
+        account_name: String,
+        /// 最多返回多少篇文章
+        #[arg(long, default_value_t = 20)]
+        limit: usize,
+    },
+    /// 按单篇公众号文章链接调用外部 helper 提取 markdown / 图片 / 元数据
+    #[command(name = "wechat-article-url")]
+    WechatArticleUrl {
+        /// 单篇公众号文章链接，必须是 https://mp.weixin.qq.com/s/... 形式
+        #[arg(long)]
+        url: String,
+        /// 可选输出目录；未传时使用 public_sources.wechat_article_helper_output_dir
+        #[arg(long)]
+        output_dir: Option<PathBuf>,
+    },
+    /// 只读诊断单篇公众号链接 helper 配置、输出目录和调用预览
+    #[command(name = "wechat-article-url-doctor")]
+    WechatArticleUrlDoctor {
+        /// 可选公众号文章链接；传入时会额外校验 URL 形态
+        #[arg(long)]
+        url: Option<String>,
+        /// 可选输出目录；未传时使用 public_sources.wechat_article_helper_output_dir
+        #[arg(long)]
+        output_dir: Option<PathBuf>,
     },
 }
 
@@ -520,14 +635,26 @@ mod tests {
             "daily-report",
             "--output",
             "/tmp/daily.md",
+            "--report-name",
+            "技术群日报",
             "--hours",
             "48",
+            "--publish",
         ]);
 
         match args.command {
-            Some(CliCommand::DailyReport { output, hours }) => {
+            Some(CliCommand::DailyReport {
+                output,
+                report_name,
+                hours,
+                publish,
+                public_only,
+            }) => {
                 assert_eq!(output, PathBuf::from("/tmp/daily.md"));
+                assert_eq!(report_name, "技术群日报");
                 assert_eq!(hours, 48);
+                assert!(publish);
+                assert!(!public_only);
             }
             _ => panic!("daily-report command should parse"),
         }
@@ -538,10 +665,234 @@ mod tests {
         let args = parse_args(&["qunmind", "daily-report", "--output", "/tmp/daily.md"]);
 
         match args.command {
-            Some(CliCommand::DailyReport { hours, .. }) => {
+            Some(CliCommand::DailyReport {
+                report_name,
+                hours,
+                publish,
+                ..
+            }) => {
+                assert_eq!(report_name, "");
                 assert_eq!(hours, 24);
+                assert!(!publish);
             }
             _ => panic!("daily-report command should parse"),
+        }
+    }
+
+    #[test]
+    fn parses_publish_history_command() {
+        let args = parse_args(&[
+            "qunmind",
+            "publish-history",
+            "--report-name",
+            "技术群日报",
+            "--limit",
+            "3",
+        ]);
+
+        match args.command {
+            Some(CliCommand::PublishHistory { report_name, limit }) => {
+                assert_eq!(report_name, "技术群日报");
+                assert_eq!(limit, 3);
+            }
+            _ => panic!("publish-history command should parse"),
+        }
+    }
+
+    #[test]
+    fn parses_report_status_command() {
+        let args = parse_args(&[
+            "qunmind",
+            "report-status",
+            "--report-name",
+            "技术群日报",
+            "--limit",
+            "2",
+        ]);
+
+        match args.command {
+            Some(CliCommand::ReportStatus { report_name, limit }) => {
+                assert_eq!(report_name, "技术群日报");
+                assert_eq!(limit, 2);
+            }
+            _ => panic!("report-status command should parse"),
+        }
+    }
+
+    #[test]
+    fn parses_report_network_status_command() {
+        let args = parse_args(&[
+            "qunmind",
+            "report-network-status",
+            "--report-name",
+            "技术群日报",
+        ]);
+
+        match args.command {
+            Some(CliCommand::ReportNetworkStatus { report_name }) => {
+                assert_eq!(report_name, "技术群日报");
+            }
+            _ => panic!("report-network-status command should parse"),
+        }
+    }
+
+    #[test]
+    fn parses_report_login_command() {
+        let args = parse_args(&[
+            "qunmind",
+            "report-login",
+            "--report-name",
+            "技术群日报",
+            "--temporary-profile",
+        ]);
+
+        match args.command {
+            Some(CliCommand::ReportLogin {
+                report_name,
+                temporary_profile,
+            }) => {
+                assert_eq!(report_name, "技术群日报");
+                assert!(temporary_profile);
+            }
+            _ => panic!("report-login command should parse"),
+        }
+    }
+
+    #[test]
+    fn parses_report_configure_command() {
+        let args = parse_args(&[
+            "qunmind",
+            "report-configure",
+            "--report-name",
+            "技术群日报",
+            "--headed",
+            "--temporary-profile",
+        ]);
+
+        match args.command {
+            Some(CliCommand::ReportConfigure {
+                report_name,
+                headed,
+                temporary_profile,
+            }) => {
+                assert_eq!(report_name, "技术群日报");
+                assert!(headed);
+                assert!(temporary_profile);
+            }
+            _ => panic!("report-configure command should parse"),
+        }
+    }
+
+    #[test]
+    fn parses_report_recover_automation_command() {
+        let args = parse_args(&[
+            "qunmind",
+            "report-recover-automation",
+            "--report-name",
+            "技术群日报",
+            "--headed",
+            "--temporary-profile",
+        ]);
+
+        match args.command {
+            Some(CliCommand::ReportRecoverAutomation {
+                report_name,
+                headed,
+                temporary_profile,
+            }) => {
+                assert_eq!(report_name, "技术群日报");
+                assert!(headed);
+                assert!(temporary_profile);
+            }
+            _ => panic!("report-recover-automation command should parse"),
+        }
+    }
+
+    #[test]
+    fn parses_report_preview_command() {
+        let args = parse_args(&[
+            "qunmind",
+            "report-preview",
+            "--report-name",
+            "技术群日报",
+            "--headed",
+            "--temporary-profile",
+        ]);
+
+        match args.command {
+            Some(CliCommand::ReportPreview {
+                report_name,
+                headed,
+                temporary_profile,
+            }) => {
+                assert_eq!(report_name, "技术群日报");
+                assert!(headed);
+                assert!(temporary_profile);
+            }
+            _ => panic!("report-preview command should parse"),
+        }
+    }
+
+    #[test]
+    fn parses_wechat_articles_command() {
+        let args = parse_args(&[
+            "qunmind",
+            "wechat-articles",
+            "--account-name",
+            "寻月隐君",
+            "--limit",
+            "20",
+        ]);
+
+        match args.command {
+            Some(CliCommand::WechatArticles {
+                account_name,
+                limit,
+            }) => {
+                assert_eq!(account_name, "寻月隐君");
+                assert_eq!(limit, 20);
+            }
+            _ => panic!("wechat-articles command should parse"),
+        }
+    }
+
+    #[test]
+    fn parses_wechat_article_url_command() {
+        let args = parse_args(&[
+            "qunmind",
+            "wechat-article-url",
+            "--url",
+            "https://mp.weixin.qq.com/s/example",
+            "--output-dir",
+            "/tmp/wechat-helper",
+        ]);
+
+        match args.command {
+            Some(CliCommand::WechatArticleUrl { url, output_dir }) => {
+                assert_eq!(url, "https://mp.weixin.qq.com/s/example");
+                assert_eq!(output_dir, Some(PathBuf::from("/tmp/wechat-helper")));
+            }
+            _ => panic!("wechat-article-url command should parse"),
+        }
+    }
+
+    #[test]
+    fn parses_wechat_article_url_doctor_command() {
+        let args = parse_args(&[
+            "qunmind",
+            "wechat-article-url-doctor",
+            "--url",
+            "https://mp.weixin.qq.com/s/example",
+            "--output-dir",
+            "/tmp/wechat-helper",
+        ]);
+
+        match args.command {
+            Some(CliCommand::WechatArticleUrlDoctor { url, output_dir }) => {
+                assert_eq!(url.as_deref(), Some("https://mp.weixin.qq.com/s/example"));
+                assert_eq!(output_dir, Some(PathBuf::from("/tmp/wechat-helper")));
+            }
+            _ => panic!("wechat-article-url-doctor command should parse"),
         }
     }
 }

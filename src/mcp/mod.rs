@@ -68,7 +68,7 @@ pub async fn run(config_path: PathBuf) -> anyhow::Result<()> {
                 let result = handle_tools_list();
                 build_response(id, Some(result), None)
             }
-            "tools/call" if initialized => handle_tools_call(&config, &request).await,
+            "tools/call" if initialized => handle_tools_call(&config, &config_path, &request).await,
             _ if !initialized => {
                 build_response(id, None, Some(jsonrpc_error(-32002, "Not initialized")))
             }
@@ -119,7 +119,11 @@ fn handle_tools_list() -> Value {
     })
 }
 
-async fn handle_tools_call(config: &Config, request: &Value) -> Value {
+async fn handle_tools_call(
+    config: &Config,
+    config_path: &std::path::Path,
+    request: &Value,
+) -> Value {
     let id = request.get("id").cloned();
     let params = match request.get("params") {
         Some(p) => p,
@@ -140,7 +144,7 @@ async fn handle_tools_call(config: &Config, request: &Value) -> Value {
         .cloned()
         .unwrap_or(Value::Object(serde_json::Map::new()));
 
-    match call_tool(config, tool_name, &arguments).await {
+    match call_tool(config, config_path, tool_name, &arguments).await {
         Ok(content) => build_response(
             id,
             Some(serde_json::json!({

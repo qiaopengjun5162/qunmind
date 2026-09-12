@@ -258,6 +258,98 @@ pub struct PublicSourcesConfig {
     pub ethresear_max_items: usize,
     #[serde(default = "default_ethresear_timeout_secs")]
     pub ethresear_timeout_secs: u64,
+    #[serde(default)]
+    pub wechat_rss_enabled: bool,
+    #[serde(default = "default_wechat_rss_urls")]
+    pub wechat_rss_urls: Vec<String>,
+    #[serde(default = "default_wechat_rss_max_items")]
+    pub wechat_rss_max_items: usize,
+    #[serde(default = "default_wechat_rss_timeout_secs")]
+    pub wechat_rss_timeout_secs: u64,
+    #[serde(default)]
+    pub wechat_accounts: Vec<WechatAccountSourceConfig>,
+    #[serde(default)]
+    pub wechat_article_helper_bin: String,
+    #[serde(default = "default_wechat_article_helper_output_dir")]
+    pub wechat_article_helper_output_dir: String,
+    #[serde(default)]
+    pub x_rss_enabled: bool,
+    #[serde(default = "default_x_rss_urls")]
+    pub x_rss_urls: Vec<String>,
+    #[serde(default = "default_x_rss_max_items")]
+    pub x_rss_max_items: usize,
+    #[serde(default = "default_x_rss_timeout_secs")]
+    pub x_rss_timeout_secs: u64,
+    #[serde(default)]
+    pub official_blogs_enabled: bool,
+    #[serde(default = "default_official_blogs_urls")]
+    pub official_blogs_urls: Vec<String>,
+    #[serde(default = "default_official_blogs_max_items")]
+    pub official_blogs_max_items: usize,
+    #[serde(default = "default_official_blogs_timeout_secs")]
+    pub official_blogs_timeout_secs: u64,
+    #[serde(default)]
+    pub reddit_rss_enabled: bool,
+    #[serde(default = "default_reddit_rss_urls")]
+    pub reddit_rss_urls: Vec<String>,
+    #[serde(default = "default_reddit_rss_max_items")]
+    pub reddit_rss_max_items: usize,
+    #[serde(default = "default_reddit_rss_timeout_secs")]
+    pub reddit_rss_timeout_secs: u64,
+    #[serde(default)]
+    pub web3_media_enabled: bool,
+    #[serde(default = "default_web3_media_urls")]
+    pub web3_media_urls: Vec<String>,
+    #[serde(default = "default_web3_media_max_items")]
+    pub web3_media_max_items: usize,
+    #[serde(default = "default_web3_media_timeout_secs")]
+    pub web3_media_timeout_secs: u64,
+    #[serde(default)]
+    pub news6551_enabled: bool,
+    #[serde(default = "default_news6551_base_url")]
+    pub news6551_base_url: String,
+    #[serde(default = "default_news6551_categories")]
+    pub news6551_categories: Vec<String>,
+    #[serde(default = "default_news6551_max_items")]
+    pub news6551_max_items: usize,
+    #[serde(default = "default_news6551_timeout_secs")]
+    pub news6551_timeout_secs: u64,
+    #[serde(default)]
+    pub xairouter_enabled: bool,
+    #[serde(default = "default_xairouter_url")]
+    pub xairouter_url: String,
+    #[serde(default = "default_xairouter_max_items")]
+    pub xairouter_max_items: usize,
+    #[serde(default = "default_xairouter_timeout_secs")]
+    pub xairouter_timeout_secs: u64,
+    #[serde(default)]
+    pub manual_items: Vec<ManualPublicSourceItem>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct WechatAccountSourceConfig {
+    pub name: String,
+    pub feed_url: String,
+    #[serde(default)]
+    pub aliases: Vec<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct ManualPublicSourceItem {
+    pub title: String,
+    pub url: String,
+    #[serde(default = "default_manual_source_name")]
+    pub source: String,
+    #[serde(default)]
+    pub summary: Option<String>,
+    #[serde(default)]
+    pub author: Option<String>,
+    #[serde(default)]
+    pub published_at: Option<String>,
+    #[serde(default)]
+    pub score: Option<i64>,
+    #[serde(default)]
+    pub category: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -374,7 +466,7 @@ fn default_hacker_news_max_items() -> usize {
 }
 
 fn default_hacker_news_timeout_secs() -> u64 {
-    10
+    15
 }
 
 fn default_coinmarketcap_top_stories_url() -> String {
@@ -445,7 +537,7 @@ fn default_github_trending_max_items() -> usize {
 }
 
 fn default_github_trending_timeout_secs() -> u64 {
-    10
+    20
 }
 
 fn default_slerf_blog_urls() -> Vec<String> {
@@ -494,6 +586,125 @@ fn default_ethresear_max_items() -> usize {
 
 fn default_ethresear_timeout_secs() -> u64 {
     10
+}
+
+fn default_wechat_rss_urls() -> Vec<String> {
+    vec!["http://127.0.0.1:8080/rss.xml".to_string()]
+}
+
+fn default_wechat_rss_max_items() -> usize {
+    10
+}
+
+fn default_wechat_rss_timeout_secs() -> u64 {
+    10
+}
+
+fn default_wechat_article_helper_output_dir() -> String {
+    "/tmp/qunmind-wechat-article-helper".to_string()
+}
+
+fn default_x_rss_urls() -> Vec<String> {
+    Vec::new()
+}
+
+fn default_x_rss_max_items() -> usize {
+    20
+}
+
+fn default_x_rss_timeout_secs() -> u64 {
+    10
+}
+
+fn default_official_blogs_urls() -> Vec<String> {
+    vec![
+        "https://openai.com/news/rss.xml".to_string(),
+        "https://blog.google/innovation-and-ai/technology/ai/rss/".to_string(),
+        "https://blog.cloudflare.com/rss/".to_string(),
+        "https://blog.rust-lang.org/feed.xml".to_string(),
+        "https://github.blog/feed/".to_string(),
+        "https://www.ecb.europa.eu/rss/press.html".to_string(),
+    ]
+}
+
+fn default_official_blogs_max_items() -> usize {
+    12
+}
+
+fn default_official_blogs_timeout_secs() -> u64 {
+    15
+}
+
+fn default_reddit_rss_urls() -> Vec<String> {
+    vec![
+        "https://www.reddit.com/r/rust/.rss".to_string(),
+        "https://www.reddit.com/r/MachineLearning/.rss".to_string(),
+        "https://www.reddit.com/r/ethdev/.rss".to_string(),
+        "https://www.reddit.com/r/cryptography/.rss".to_string(),
+    ]
+}
+
+fn default_reddit_rss_max_items() -> usize {
+    16
+}
+
+fn default_reddit_rss_timeout_secs() -> u64 {
+    15
+}
+
+fn default_manual_source_name() -> String {
+    "Manual Picks".to_string()
+}
+
+fn default_web3_media_urls() -> Vec<String> {
+    vec![
+        "https://decrypt.co/feed".to_string(),
+        "https://cointelegraph.com/rss".to_string(),
+        "https://www.panewslab.com/rss.xml?lang=zh&type=NEWS".to_string(),
+        "https://www.wublock123.com/feed".to_string(),
+    ]
+}
+
+fn default_web3_media_max_items() -> usize {
+    10
+}
+
+fn default_web3_media_timeout_secs() -> u64 {
+    15
+}
+
+fn default_news6551_base_url() -> String {
+    "https://ai.6551.io".to_string()
+}
+
+fn default_news6551_categories() -> Vec<String> {
+    vec![
+        "web3/defi".to_string(),
+        "web3/regulation".to_string(),
+        "web3/meme".to_string(),
+        "ai/models".to_string(),
+        "ai/crypto_ai".to_string(),
+    ]
+}
+
+fn default_news6551_max_items() -> usize {
+    10
+}
+
+fn default_news6551_timeout_secs() -> u64 {
+    15
+}
+
+fn default_xairouter_url() -> String {
+    "https://news.xairouter.com/feed.xml".to_string()
+}
+
+fn default_xairouter_max_items() -> usize {
+    12
+}
+
+fn default_xairouter_timeout_secs() -> u64 {
+    15
 }
 
 fn default_bot_context_messages() -> usize {
@@ -614,6 +825,39 @@ impl Default for PublicSourcesConfig {
             ethresear_url: default_ethresear_url(),
             ethresear_max_items: default_ethresear_max_items(),
             ethresear_timeout_secs: default_ethresear_timeout_secs(),
+            wechat_rss_enabled: false,
+            wechat_rss_urls: default_wechat_rss_urls(),
+            wechat_rss_max_items: default_wechat_rss_max_items(),
+            wechat_rss_timeout_secs: default_wechat_rss_timeout_secs(),
+            wechat_accounts: Vec::new(),
+            wechat_article_helper_bin: String::new(),
+            wechat_article_helper_output_dir: default_wechat_article_helper_output_dir(),
+            x_rss_enabled: false,
+            x_rss_urls: default_x_rss_urls(),
+            x_rss_max_items: default_x_rss_max_items(),
+            x_rss_timeout_secs: default_x_rss_timeout_secs(),
+            official_blogs_enabled: false,
+            official_blogs_urls: default_official_blogs_urls(),
+            official_blogs_max_items: default_official_blogs_max_items(),
+            official_blogs_timeout_secs: default_official_blogs_timeout_secs(),
+            reddit_rss_enabled: false,
+            reddit_rss_urls: default_reddit_rss_urls(),
+            reddit_rss_max_items: default_reddit_rss_max_items(),
+            reddit_rss_timeout_secs: default_reddit_rss_timeout_secs(),
+            web3_media_enabled: false,
+            web3_media_urls: default_web3_media_urls(),
+            web3_media_max_items: default_web3_media_max_items(),
+            web3_media_timeout_secs: default_web3_media_timeout_secs(),
+            news6551_enabled: false,
+            news6551_base_url: default_news6551_base_url(),
+            news6551_categories: default_news6551_categories(),
+            news6551_max_items: default_news6551_max_items(),
+            news6551_timeout_secs: default_news6551_timeout_secs(),
+            xairouter_enabled: false,
+            xairouter_url: default_xairouter_url(),
+            xairouter_max_items: default_xairouter_max_items(),
+            xairouter_timeout_secs: default_xairouter_timeout_secs(),
+            manual_items: Vec::new(),
         }
     }
 }
@@ -697,7 +941,7 @@ mod tests {
             "https://hacker-news.firebaseio.com/v0"
         );
         assert_eq!(config.public_sources.hacker_news_max_items, 10);
-        assert_eq!(config.public_sources.hacker_news_timeout_secs, 10);
+        assert_eq!(config.public_sources.hacker_news_timeout_secs, 15);
         assert!(!config.public_sources.coinmarketcap_enabled);
         assert_eq!(
             config.public_sources.coinmarketcap_top_stories_url,
@@ -743,11 +987,66 @@ mod tests {
             ]
         );
         assert_eq!(config.public_sources.github_trending_since, "daily");
+        assert_eq!(config.public_sources.github_trending_timeout_secs, 20);
         assert!(!config.public_sources.slerf_blog_enabled);
         assert_eq!(
             config.public_sources.slerf_blog_urls,
             vec!["https://blog.slerf.tools/".to_string()]
         );
+        assert!(!config.public_sources.wechat_rss_enabled);
+        assert_eq!(
+            config.public_sources.wechat_rss_urls,
+            vec!["http://127.0.0.1:8080/rss.xml".to_string()]
+        );
+        assert_eq!(config.public_sources.wechat_rss_max_items, 10);
+        assert_eq!(config.public_sources.wechat_rss_timeout_secs, 10);
+        assert!(config.public_sources.wechat_article_helper_bin.is_empty());
+        assert_eq!(
+            config.public_sources.wechat_article_helper_output_dir,
+            "/tmp/qunmind-wechat-article-helper"
+        );
+        assert!(!config.public_sources.x_rss_enabled);
+        assert!(config.public_sources.x_rss_urls.is_empty());
+        assert_eq!(config.public_sources.x_rss_max_items, 20);
+        assert_eq!(config.public_sources.x_rss_timeout_secs, 10);
+        assert!(!config.public_sources.official_blogs_enabled);
+        assert_eq!(
+            config.public_sources.official_blogs_urls,
+            vec![
+                "https://openai.com/news/rss.xml".to_string(),
+                "https://blog.google/innovation-and-ai/technology/ai/rss/".to_string(),
+                "https://blog.cloudflare.com/rss/".to_string(),
+                "https://blog.rust-lang.org/feed.xml".to_string(),
+                "https://github.blog/feed/".to_string(),
+                "https://www.ecb.europa.eu/rss/press.html".to_string(),
+            ]
+        );
+        assert_eq!(config.public_sources.official_blogs_max_items, 12);
+        assert_eq!(config.public_sources.official_blogs_timeout_secs, 15);
+        assert!(!config.public_sources.reddit_rss_enabled);
+        assert_eq!(
+            config.public_sources.reddit_rss_urls,
+            vec![
+                "https://www.reddit.com/r/rust/.rss".to_string(),
+                "https://www.reddit.com/r/MachineLearning/.rss".to_string(),
+                "https://www.reddit.com/r/ethdev/.rss".to_string(),
+                "https://www.reddit.com/r/cryptography/.rss".to_string(),
+            ]
+        );
+        assert_eq!(config.public_sources.reddit_rss_max_items, 16);
+        assert_eq!(config.public_sources.reddit_rss_timeout_secs, 15);
+        assert!(!config.public_sources.web3_media_enabled);
+        assert_eq!(
+            config.public_sources.web3_media_urls,
+            vec![
+                "https://decrypt.co/feed".to_string(),
+                "https://cointelegraph.com/rss".to_string(),
+                "https://www.panewslab.com/rss.xml?lang=zh&type=NEWS".to_string(),
+                "https://www.wublock123.com/feed".to_string(),
+            ]
+        );
+        assert_eq!(config.public_sources.web3_media_max_items, 10);
+        assert_eq!(config.public_sources.web3_media_timeout_secs, 15);
         assert!(!config.public_sources.hn_daily_enabled);
         assert_eq!(
             config.public_sources.hn_daily_url,
@@ -858,6 +1157,28 @@ mod tests {
             slerf_blog_enabled = true
             slerf_blog_urls = ["https://blog.slerf.tools/"]
             slerf_blog_max_items = 2
+            wechat_rss_enabled = true
+            wechat_rss_urls = ["http://127.0.0.1:8080/rss.xml", "http://127.0.0.1:8081/feed.xml"]
+            wechat_rss_max_items = 3
+            wechat_rss_timeout_secs = 14
+            wechat_article_helper_bin = "wechat-article-to-markdown"
+            wechat_article_helper_output_dir = "/tmp/wechat-helper"
+            x_rss_enabled = true
+            x_rss_urls = ["https://rsshub.example/x/user/openai", "https://nitter.example/a16z.rss"]
+            x_rss_max_items = 5
+            x_rss_timeout_secs = 13
+            official_blogs_enabled = true
+            official_blogs_urls = ["https://openai.com/news/rss.xml", "https://blog.google/innovation-and-ai/technology/ai/rss/"]
+            official_blogs_max_items = 6
+            official_blogs_timeout_secs = 16
+            [[public_sources.manual_items]]
+            title = "Open-source Codex orchestration symphony"
+            url = "https://openai.com/zh-Hans-CN/index/open-source-codex-orchestration-symphony/"
+            source = "OpenAI"
+            summary = "OpenAI 官方文章，适合作为 AI Agent 编排方向的推荐深读。"
+            author = "OpenAI"
+            score = 1000
+            category = "ai"
 
             [[groups]]
             chat_id = "group-1"
@@ -948,6 +1269,51 @@ mod tests {
         assert_eq!(config.public_sources.github_trending_max_items, 4);
         assert!(config.public_sources.slerf_blog_enabled);
         assert_eq!(config.public_sources.slerf_blog_max_items, 2);
+        assert!(config.public_sources.wechat_rss_enabled);
+        assert_eq!(
+            config.public_sources.wechat_rss_urls,
+            vec![
+                "http://127.0.0.1:8080/rss.xml".to_string(),
+                "http://127.0.0.1:8081/feed.xml".to_string()
+            ]
+        );
+        assert_eq!(config.public_sources.wechat_rss_max_items, 3);
+        assert_eq!(config.public_sources.wechat_rss_timeout_secs, 14);
+        assert_eq!(
+            config.public_sources.wechat_article_helper_bin,
+            "wechat-article-to-markdown"
+        );
+        assert_eq!(
+            config.public_sources.wechat_article_helper_output_dir,
+            "/tmp/wechat-helper"
+        );
+        assert!(config.public_sources.x_rss_enabled);
+        assert_eq!(
+            config.public_sources.x_rss_urls,
+            vec![
+                "https://rsshub.example/x/user/openai".to_string(),
+                "https://nitter.example/a16z.rss".to_string()
+            ]
+        );
+        assert_eq!(config.public_sources.x_rss_max_items, 5);
+        assert_eq!(config.public_sources.x_rss_timeout_secs, 13);
+        assert!(config.public_sources.official_blogs_enabled);
+        assert_eq!(
+            config.public_sources.official_blogs_urls,
+            vec![
+                "https://openai.com/news/rss.xml".to_string(),
+                "https://blog.google/innovation-and-ai/technology/ai/rss/".to_string(),
+            ]
+        );
+        assert_eq!(config.public_sources.official_blogs_max_items, 6);
+        assert_eq!(config.public_sources.official_blogs_timeout_secs, 16);
+        assert_eq!(config.public_sources.manual_items.len(), 1);
+        assert_eq!(config.public_sources.manual_items[0].source, "OpenAI");
+        assert_eq!(
+            config.public_sources.manual_items[0].url,
+            "https://openai.com/zh-Hans-CN/index/open-source-codex-orchestration-symphony/"
+        );
+        assert_eq!(config.public_sources.manual_items[0].score, Some(1000));
         assert_eq!(config.groups.len(), 1);
         assert!(!config.groups[0].enabled);
         assert_eq!(config.groups[0].name, "技术群");
@@ -959,6 +1325,31 @@ mod tests {
         assert_eq!(
             config.groups[0].system_prompt.as_deref(),
             Some("你是技术群 Rust 助手。")
+        );
+    }
+
+    #[test]
+    fn parses_named_wechat_accounts() {
+        let config = config_from(
+            r#"
+            [public_sources]
+
+            [[public_sources.wechat_accounts]]
+            name = "寻月隐君"
+            feed_url = "http://127.0.0.1:8080/xunyue/rss.xml"
+            aliases = ["xunyue", "寻月"]
+            "#,
+        );
+
+        assert_eq!(config.public_sources.wechat_accounts.len(), 1);
+        assert_eq!(config.public_sources.wechat_accounts[0].name, "寻月隐君");
+        assert_eq!(
+            config.public_sources.wechat_accounts[0].feed_url,
+            "http://127.0.0.1:8080/xunyue/rss.xml"
+        );
+        assert_eq!(
+            config.public_sources.wechat_accounts[0].aliases,
+            vec!["xunyue".to_string(), "寻月".to_string()]
         );
     }
 }

@@ -1,0 +1,24 @@
+{
+  "data": {
+    "items": [
+      {
+        "client_msg_id": "fixture-msg-1",
+        "conversation_id": "room-alpha@chatroom",
+        "room_name": "Rust Daily Lab",
+        "msg_content": "@QunMind 帮我总结今天群里的 Rust 动态",
+        "plain_text": "@QunMind 帮我总结今天群里的 Rust 动态",
+        "is_group": true,
+        "is_chatroom": true
+      },
+      {
+        "client_msg_id": "fixture-msg-2",
+        "conversation_id": "room-alpha@chatroom",
+        "room_name": "Rust Daily Lab",
+        "msg_content": "这条没有提到机器人",
+        "plain_text": "这条没有提到机器人",
+        "is_group": true,
+        "is_chatroom": true
+      }
+    ]
+  }
+}

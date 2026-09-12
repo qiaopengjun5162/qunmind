@@ -7,9 +7,12 @@ use crate::channel::Channel;
 use crate::config::ScheduleConfig;
 use crate::daily_report::DailyReportGenerator;
 use crate::error::Result;
+use crate::publisher::{PublishReceipt, PublishTarget, publish_markdown};
+use crate::reporting::{
+    GroupReportAttempt, ReportContentRequest, generate_group_report_from_store,
+};
 use crate::source::{PublicNewsItem, PublicNewsSource};
 use crate::storage::{MessageStore, StoredLink, StoredMessage};
-use crate::wechat_publisher::publish_to_wechat;
 
 pub struct DailyReportScheduler {
     channel: Arc<dyn Channel>,
@@ -139,27 +142,79 @@ impl DailyReportScheduler {
             return;
         }
 
-        let Some(source) = &self.public_news_source else {
-            error!("微信日报需要启用 public_sources");
-            return;
-        };
-
-        let generator = DailyReportGenerator::new(
+        let markdown = match generate_group_report_from_store(
             Arc::clone(&self.ai),
-            Arc::clone(source),
-            target.daily_quote.clone(),
-        );
+            Arc::clone(&self.message_store),
+            &ReportContentRequest {
+                chat_id: target.chat_id.clone(),
+                prompt: target.prompt.clone(),
+                lookback_hours: target.lookback_hours,
+                max_messages: target.max_messages,
+                max_links: target.max_links,
+            },
+            &target.daily_quote,
+            None,
+        )
+        .await
+        {
+            Ok(GroupReportAttempt::Generated(result)) => result.markdown,
+            Ok(GroupReportAttempt::Empty(_fallback)) => {
+                let Some(source) = &self.public_news_source else {
+                    error!("微信日报需要启用 public_sources");
+                    return;
+                };
 
-        let markdown = match generator.generate().await {
-            Ok(md) => md,
+                let generator = DailyReportGenerator::new(
+                    Arc::clone(&self.ai),
+                    Arc::clone(source),
+                    target.daily_quote.clone(),
+                );
+
+                match generator.generate_with_ai_fallback().await {
+                    Ok(markdown) => markdown,
+                    Err(e) => {
+                        error!("生成微信日报失败: {}", e);
+                        return;
+                    }
+                }
+            }
             Err(e) => {
                 error!("生成微信日报失败: {}", e);
                 return;
             }
         };
 
-        match publish_to_wechat(&markdown, &target.wechat_bin, &target.wechat_articles_dir) {
-            Ok(_) => info!(name = %target.name, "微信日报发布成功"),
+        match publish_markdown(
+            &markdown,
+            &PublishTarget::WechatDraft {
+                bin: target.wechat_bin.clone(),
+                articles_dir: target.wechat_articles_dir.clone(),
+            },
+        ) {
+            Ok(receipt) => {
+                if let Err(err) = self
+                    .message_store
+                    .save_publish_receipt(&target.name, &receipt)
+                    .await
+                {
+                    error!(
+                        name = %target.name,
+                        error = %err,
+                        "微信日报发布成功，但保存发布回执失败"
+                    );
+                }
+                let receipt_summary = publish_receipt_summary(&receipt);
+                info!(
+                    name = %target.name,
+                    target = %receipt.target,
+                    destination = %receipt.destination,
+                    published_at = %receipt.published_at,
+                    summary = %receipt.summary,
+                    raw_output = %receipt.raw_output,
+                    receipt_summary = %receipt_summary,
+                    "微信日报发布成功"
+                )
+            }
             Err(e) => error!("微信日报发布失败: {}", e),
         }
     }
@@ -212,7 +267,7 @@ impl DailyReportScheduler {
 
         let messages = vec![ChatMessage {
             role: "user".to_string(),
-            content: build_report_prompt(target, &messages, &links, since, until),
+            content: build_group_report_prompt(&target.prompt, &messages, &links, since, until),
         }];
 
         let report = match self.ai.chat(&messages).await {
@@ -340,8 +395,8 @@ fn report_targets(config: &ScheduleConfig) -> Vec<DailyReportTarget> {
     }]
 }
 
-fn build_report_prompt(
-    target: &DailyReportTarget,
+pub fn build_group_report_prompt(
+    prompt: &str,
     messages: &[StoredMessage],
     links: &[StoredLink],
     since: chrono::DateTime<chrono::Utc>,
@@ -349,7 +404,7 @@ fn build_report_prompt(
 ) -> String {
     let mut prompt = format!(
         "{}\n\n时间范围: {} 到 {}\n群消息:\n",
-        target.prompt,
+        prompt,
         since.to_rfc3339(),
         until.to_rfc3339()
     );
@@ -406,6 +461,10 @@ fn str_or<'a>(value: Option<&'a str>, fallback: &'a str) -> &'a str {
     }
 }
 
+fn publish_receipt_summary(receipt: &PublishReceipt) -> String {
+    receipt.compact_summary()
+}
+
 fn build_public_report_prompt(
     target: &DailyReportTarget,
     items: &[PublicNewsItem],
@@ -453,7 +512,7 @@ mod tests {
     use crate::channel::MsgType;
     use crate::error::QunMindError;
     use crate::source::PublicNewsSource;
-    use crate::storage::{NewMessage, StoredLink};
+    use crate::storage::{NewMessage, StoredLink, StoredPublishReceipt};
 
     fn test_target(chat_id: &str, prompt: &str) -> DailyReportTarget {
         DailyReportTarget {
@@ -532,6 +591,7 @@ mod tests {
         links: Vec<StoredLink>,
         text_queries: Mutex<Vec<(String, i64)>>,
         link_queries: Mutex<Vec<(String, i64)>>,
+        publish_receipts: Mutex<Vec<(String, PublishReceipt)>>,
     }
 
     #[async_trait]
@@ -566,6 +626,42 @@ mod tests {
                 .await
                 .push((chat_id.to_string(), limit));
             Ok(self.links.clone())
+        }
+
+        async fn save_publish_receipt(
+            &self,
+            report_name: &str,
+            receipt: &PublishReceipt,
+        ) -> Result<()> {
+            self.publish_receipts
+                .lock()
+                .await
+                .push((report_name.to_string(), receipt.clone()));
+            Ok(())
+        }
+
+        async fn recent_publish_receipts(
+            &self,
+            report_name: &str,
+            limit: i64,
+        ) -> Result<Vec<StoredPublishReceipt>> {
+            let mut receipts = self
+                .publish_receipts
+                .lock()
+                .await
+                .iter()
+                .filter(|(name, _)| name == report_name)
+                .map(|(name, receipt)| StoredPublishReceipt {
+                    report_name: name.clone(),
+                    target: receipt.target.clone(),
+                    destination: receipt.destination.clone(),
+                    published_at: utc_time(&receipt.published_at),
+                    summary: receipt.summary.clone(),
+                    raw_output: receipt.raw_output.clone(),
+                })
+                .collect::<Vec<_>>();
+            receipts.truncate(limit.max(1) as usize);
+            Ok(receipts)
         }
     }
 
@@ -688,7 +784,7 @@ mod tests {
             received_at: since,
         }];
 
-        let prompt = build_report_prompt(&target, &messages, &links, since, until);
+        let prompt = build_group_report_prompt(&target.prompt, &messages, &links, since, until);
 
         assert!(prompt.contains("请总结"));
         assert!(
@@ -712,6 +808,9 @@ mod tests {
                 source: "Hacker News".to_string(),
                 title: "AI\nNews".to_string(),
                 url: "https://example.com/ai".to_string(),
+                summary: None,
+                author: None,
+                published_at: None,
                 score: Some(10),
                 comments: Some(2),
                 ai_score: None,
@@ -840,6 +939,22 @@ mod tests {
         assert_eq!(targets[1].max_links, 20);
     }
 
+    #[test]
+    fn publish_receipt_summary_contains_destination_and_status() {
+        let summary = publish_receipt_summary(&PublishReceipt {
+            target: "wechat_draft".to_string(),
+            destination: "/tmp/articles".to_string(),
+            published_at: "2026-06-23T12:00:00+00:00".to_string(),
+            summary: "moonpub draft push completed".to_string(),
+            raw_output: "ok".to_string(),
+            warnings: Vec::new(),
+        });
+
+        assert!(summary.contains("wechat_draft"));
+        assert!(summary.contains("/tmp/articles"));
+        assert!(summary.contains("moonpub draft push completed"));
+    }
+
     #[tokio::test]
     async fn start_returns_when_daily_report_chat_id_is_empty() {
         let scheduler = DailyReportScheduler::new(
@@ -928,6 +1043,9 @@ mod tests {
                 source: "Hacker News".to_string(),
                 title: "Rust release".to_string(),
                 url: "https://example.com/rust".to_string(),
+                summary: None,
+                author: None,
+                published_at: None,
                 score: Some(100),
                 comments: Some(20),
                 ai_score: None,
@@ -1050,6 +1168,153 @@ mod tests {
         assert!(requests[0][0].content.contains("今天完成了 PG 存储"));
         assert!(requests[0][0].content.contains("链接情报"));
         assert!(requests[0][0].content.contains("https://example.com/rust"));
+    }
+
+    #[tokio::test]
+    async fn wechat_report_uses_group_messages_without_public_sources() {
+        let articles_dir =
+            std::env::temp_dir().join(format!("qunmind-wechat-report-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&articles_dir);
+        must(
+            std::fs::create_dir_all(&articles_dir),
+            "create articles dir",
+        );
+
+        let channel = Arc::new(RecordingChannel::default());
+        let ai = Arc::new(RecordingAi::new("# 技术群日报\n- 已同步群消息"));
+        let store = Arc::new(RecordingStore {
+            messages: vec![StoredMessage {
+                message_id: "m1".to_string(),
+                channel: "wx_cli".to_string(),
+                chat_id: "group-2".to_string(),
+                from: "alice".to_string(),
+                is_group: true,
+                msg_type: MsgType::Text,
+                text: Some("今天把日报链路对齐了".to_string()),
+                received_at: chrono::Utc::now(),
+            }],
+            links: vec![],
+            ..Default::default()
+        });
+        let scheduler = DailyReportScheduler::new(
+            channel,
+            ai.clone(),
+            store.clone(),
+            ScheduleConfig {
+                daily_reports: vec![crate::config::DailyReportConfig {
+                    chat_id: "group-2".to_string(),
+                    name: "技术群日报".to_string(),
+                    enabled: true,
+                    cron: None,
+                    prompt: Some("请总结技术群".to_string()),
+                    lookback_hours: Some(6),
+                    max_messages: Some(20),
+                    max_links: Some(0),
+                    daily_quote: String::new(),
+                    output: "wechat".to_string(),
+                    wechat_bin: "/nonexistent/bin/moonpub".to_string(),
+                    wechat_articles_dir: articles_dir.display().to_string(),
+                }],
+                ..Default::default()
+            },
+        );
+
+        scheduler.send_report().await;
+
+        // AI 优先：会调用一次 AI 尝试生成；RecordingAi 返回非 JSON 时回退确定性配方。
+        let requests = ai.requests.lock().await;
+        assert_eq!(requests.len(), 1);
+        assert!(requests[0][0].content.contains("JSON schema"));
+        assert_eq!(
+            *store.text_queries.lock().await,
+            vec![("group-2".to_string(), 20)]
+        );
+    }
+
+    #[tokio::test]
+    async fn wechat_report_persists_publish_receipt_when_publish_succeeds() {
+        let store = Arc::new(RecordingStore::default());
+        let receipt = PublishReceipt {
+            target: "wechat_draft".to_string(),
+            destination: "/tmp/articles".to_string(),
+            published_at: "2026-06-23T12:00:00+00:00".to_string(),
+            summary: "moonpub draft push completed".to_string(),
+            raw_output: "ok".to_string(),
+            warnings: Vec::new(),
+        };
+
+        must(
+            store.save_publish_receipt("技术群日报", &receipt).await,
+            "save publish receipt",
+        );
+
+        let receipts = store.publish_receipts.lock().await;
+        assert_eq!(receipts.len(), 1);
+        assert_eq!(receipts[0].0, "技术群日报");
+        assert_eq!(receipts[0].1, receipt);
+    }
+
+    #[tokio::test]
+    async fn recent_publish_receipts_returns_latest_receipts_for_report() {
+        let store = Arc::new(RecordingStore::default());
+        must(
+            store
+                .save_publish_receipt(
+                    "技术群日报",
+                    &PublishReceipt {
+                        target: "wechat_draft".to_string(),
+                        destination: "/tmp/articles-a".to_string(),
+                        published_at: "2026-06-23T12:00:00+00:00".to_string(),
+                        summary: "first".to_string(),
+                        raw_output: "ok-a".to_string(),
+                        warnings: Vec::new(),
+                    },
+                )
+                .await,
+            "save receipt a",
+        );
+        must(
+            store
+                .save_publish_receipt(
+                    "技术群日报",
+                    &PublishReceipt {
+                        target: "wechat_draft".to_string(),
+                        destination: "/tmp/articles-b".to_string(),
+                        published_at: "2026-06-23T13:00:00+00:00".to_string(),
+                        summary: "second".to_string(),
+                        raw_output: "ok-b".to_string(),
+                        warnings: Vec::new(),
+                    },
+                )
+                .await,
+            "save receipt b",
+        );
+        must(
+            store
+                .save_publish_receipt(
+                    "别的日报",
+                    &PublishReceipt {
+                        target: "wechat_draft".to_string(),
+                        destination: "/tmp/articles-c".to_string(),
+                        published_at: "2026-06-23T14:00:00+00:00".to_string(),
+                        summary: "third".to_string(),
+                        raw_output: "ok-c".to_string(),
+                        warnings: Vec::new(),
+                    },
+                )
+                .await,
+            "save receipt c",
+        );
+
+        let receipts = must(
+            store.recent_publish_receipts("技术群日报", 2).await,
+            "recent receipts",
+        );
+
+        assert_eq!(receipts.len(), 2);
+        assert_eq!(receipts[0].report_name, "技术群日报");
+        assert_eq!(receipts[0].summary, "first");
+        assert_eq!(receipts[1].summary, "second");
     }
 
     #[tokio::test]

@@ -5,6 +5,7 @@ use chrono::{DateTime, Utc};
 
 use crate::channel::{IncomingMessage, MsgType};
 use crate::error::Result;
+use crate::publisher::PublishReceipt;
 
 #[derive(Debug, Clone)]
 pub struct NewMessage {
@@ -42,6 +43,16 @@ pub struct StoredLink {
     pub received_at: DateTime<Utc>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StoredPublishReceipt {
+    pub report_name: String,
+    pub target: String,
+    pub destination: String,
+    pub published_at: DateTime<Utc>,
+    pub summary: String,
+    pub raw_output: String,
+}
+
 impl NewMessage {
     pub fn incoming(channel: &str, msg: &IncomingMessage) -> Self {
         Self {
@@ -60,6 +71,22 @@ impl NewMessage {
 #[async_trait]
 pub trait MessageStore: Send + Sync {
     async fn save(&self, message: NewMessage) -> Result<()>;
+
+    async fn save_publish_receipt(
+        &self,
+        _report_name: &str,
+        _receipt: &PublishReceipt,
+    ) -> Result<()> {
+        Ok(())
+    }
+
+    async fn recent_publish_receipts(
+        &self,
+        _report_name: &str,
+        _limit: i64,
+    ) -> Result<Vec<StoredPublishReceipt>> {
+        Ok(Vec::new())
+    }
 
     async fn text_messages(
         &self,
