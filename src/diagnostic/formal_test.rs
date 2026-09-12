@@ -205,7 +205,7 @@ fn push_shell_plan_steps(script: &mut String, plan: &serde_json::Value) {
     };
 
     for step in steps {
-        let name = json_string(step, "name").map_or("unnamed_step", std::convert::identity);
+        let name = json_string(step, "name").unwrap_or("unnamed_step");
         let safe_to_send = matches!(
             step.get("safe_to_send").and_then(|value| value.as_bool()),
             Some(true)
