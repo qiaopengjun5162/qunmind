@@ -18,13 +18,18 @@ pub mod wechat_rss;
 pub mod x_rss;
 
 use async_trait::async_trait;
+use serde::Serialize;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tracing::warn;
 
 use crate::error::Result;
 
-#[derive(Debug, Clone, PartialEq)]
+/// 一条可供日报选用的公共素材。
+///
+/// 序列化输出即 `export-items` 的落盘形状，字段名保持 snake_case 原样——
+/// 下游消费者的解析契约建立在这里，改字段名等于改对外格式。
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct PublicNewsItem {
     pub source: String,
     pub title: String,
@@ -193,6 +198,42 @@ fn should_replace_duplicate_item(existing: &PublicNewsItem, incoming: &PublicNew
 mod tests {
     use super::*;
     use crate::error::QunMindError;
+
+    #[test]
+    fn public_news_item_serializes_with_snake_case_keys_and_null_options() {
+        let item = PublicNewsItem {
+            source: "XBridge".to_string(),
+            title: "标题".to_string(),
+            url: "https://example.com/a".to_string(),
+            summary: Some("摘要".to_string()),
+            author: None,
+            published_at: Some("2026-11-25T08:00:00+00:00".to_string()),
+            score: Some(110),
+            comments: None,
+            ai_score: None,
+            category: Some("crypto".to_string()),
+        };
+
+        let value = serde_json::to_value(&item).expect("serialize item");
+
+        // 字段名就是对外契约：下游按这些 key 取值，改名等于改协议。
+        assert_eq!(value["source"], "XBridge");
+        assert_eq!(value["title"], "标题");
+        assert_eq!(value["url"], "https://example.com/a");
+        assert_eq!(value["summary"], "摘要");
+        assert_eq!(value["published_at"], "2026-11-25T08:00:00+00:00");
+        assert_eq!(value["score"], 110);
+        assert_eq!(value["category"], "crypto");
+        // Option::None 落成 null，而不是整字段消失——缺字段会让下游无法区分
+        // 「这条确实没有作者」和「上游把字段改名了」。
+        assert!(
+            value.get("author").is_some(),
+            "author 应为 null，不应缺字段"
+        );
+        assert!(value["author"].is_null());
+        assert!(value["comments"].is_null());
+        assert!(value["ai_score"].is_null());
+    }
 
     struct StaticSource {
         items: Vec<PublicNewsItem>,

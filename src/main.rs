@@ -14,7 +14,7 @@ use qunmind::publisher::{
 };
 use qunmind::reporting::{
     build_ai_client, build_message_store, build_public_news_source, effective_publish_history_name,
-    effective_report_status_target, generate_manual_daily_report_markdown,
+    effective_report_status_target, fetch_public_news_items, generate_manual_daily_report_markdown,
     manual_daily_report_publish_target, manual_publish_response_json,
     persist_manual_publish_receipt, publish_receipt_automation_state, publish_receipt_json,
     report_status_json, resolve_manual_daily_report_target,
@@ -245,6 +245,29 @@ async fn run_diagnostic_command(
                         },
                     }),
                 })?
+            );
+            Ok(())
+        }
+        CliCommand::ExportItems { output } => {
+            let items = fetch_public_news_items(config).await?;
+            let payload = serde_json::to_string_pretty(&items).context("序列化公共条目失败")?;
+            std::fs::write(&output, payload)
+                .with_context(|| format!("写入条目文件失败: {}", output.display()))?;
+            // 按来源计数：导出 0 条和「只导出了某一个源」是两种不同的故障，
+            // 只看总数区分不出来。
+            let mut by_source: std::collections::BTreeMap<&str, usize> =
+                std::collections::BTreeMap::new();
+            for item in &items {
+                *by_source.entry(item.source.as_str()).or_insert(0) += 1;
+            }
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&serde_json::json!({
+                    "ok": true,
+                    "output_path": output.display().to_string(),
+                    "count": items.len(),
+                    "by_source": by_source,
+                }))?
             );
             Ok(())
         }

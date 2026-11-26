@@ -34,6 +34,27 @@
 - **wx-cli 命令编排层第二轮收口进行中**
 - **公众号日报最小可用目标已经真实打通**
 
+## 2026-11-26
+
+### Done
+
+- **公共来源条目可导出**：新增 `qunmind export-items --output <path>`（也接了 `just export-items`）。
+  `PublicNewsItem` 加 `Serialize`，`reporting::fetch_public_news_items` 复用日报那条聚合链
+  （主题过滤 / URL 去重 / `max_items` 截断完全一致），导出的就是「日报真会消费的那批」，
+  不会另起一套口径。
+- **没有启用来源时明确报错**，不返回空数组：空数组会被读成「今天确实没新闻」，
+  而真相是「根本没开来源」，两者处置完全不同。
+- 序列化形状有契约测试钉住：snake_case 字段名、`Option::None` 落成 `null` 而不是缺字段
+  （缺字段会让下游无法区分「这条没有作者」和「上游改名了」）。
+- 顺带修 stable 1.100 新暴露的 3 处 clippy（`as_chunks` / 多余引用 / `map_or` 可简化），
+  与 `c6f15c0` 同类，不修 CI 无法变绿。
+
+### Verified
+
+- `cargo nextest run --all-features`：446 通过 / 2 skipped。
+- `cargo clippy --all-targets --all-features -- -D warnings`：干净。
+- 真实导出（本机 config，代理出网）：**59 条 / 9 个来源**，`wublock123` 返回 401 被跳过不阻断。
+
 ## 2026-07-05
 
 ### Done

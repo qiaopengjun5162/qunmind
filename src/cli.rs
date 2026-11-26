@@ -40,6 +40,16 @@ pub enum CliCommand {
         #[arg(long)]
         publish: bool,
     },
+    /// 把公共来源条目导出为 JSON 数组（供下游体检/归档，不生成日报）
+    ///
+    /// 导出的是日报实际会消费的那批条目：主题过滤、URL 去重、max_items 截断
+    /// 全部复用日报链路，不另起一套口径。
+    #[command(name = "export-items")]
+    ExportItems {
+        /// 输出 JSON 文件路径；内容为数组，字段名保持 snake_case
+        #[arg(long)]
+        output: PathBuf,
+    },
     /// 查看最近的日报发布回执
     #[command(name = "publish-history")]
     PublishHistory {
@@ -662,6 +672,27 @@ mod tests {
             }
             _ => panic!("daily-report command should parse"),
         }
+    }
+
+    #[test]
+    fn parses_export_items_command() {
+        let args = parse_args(&["qunmind", "export-items", "--output", "/tmp/items.json"]);
+
+        match args.command {
+            Some(CliCommand::ExportItems { output }) => {
+                assert_eq!(output, PathBuf::from("/tmp/items.json"));
+            }
+            _ => panic!("export-items command should parse"),
+        }
+    }
+
+    #[test]
+    fn export_items_requires_explicit_output() {
+        // 不猜默认路径：导出一份谁也不知道在哪的文件，比直接报错更难排查。
+        assert!(
+            Args::try_parse_from(["qunmind", "export-items"]).is_err(),
+            "export-items 缺 --output 应解析失败"
+        );
     }
 
     #[test]

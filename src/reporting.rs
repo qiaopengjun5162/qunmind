@@ -340,6 +340,26 @@ pub fn build_public_news_source(
     source::registry::build(&config.public_sources).map_err(Into::into)
 }
 
+/// 取出「日报真会用到的那批」公共素材，供下游体检与归档。
+///
+/// 复用 [`build_public_news_source`]，所以主题过滤、URL 去重、`max_items` 截断
+/// 与日报完全一致：导出的清单和日报实际消费的清单不会变成两套口径。
+///
+/// # Errors
+///
+/// - 配置里没有任何启用的公共来源时返回错误。**不返回空数组**——那会被读成
+///   「今天确实没有新闻」，而真相是「根本没开来源」，两种情况的处置完全不同。
+/// - 聚合层自身出错时透传；单个来源失败由聚合层 warn 后跳过，不算失败。
+pub async fn fetch_public_news_items(config: &Config) -> anyhow::Result<Vec<PublicNewsItem>> {
+    let source = build_public_news_source(config)?.ok_or_else(|| {
+        anyhow::anyhow!(
+            "未启用任何公共来源（[public_sources] 全为 false），无法导出条目；\
+             请先在配置中启用至少一个来源"
+        )
+    })?;
+    Ok(source.fetch_top_items().await?)
+}
+
 pub fn manual_daily_report_publish_target(
     report_target: &ManualDailyReportTarget,
 ) -> anyhow::Result<PublishTarget> {
@@ -1015,6 +1035,23 @@ mod tests {
             Ok(config) => config,
             Err(err) => panic!("config: {err}"),
         }
+    }
+
+    #[tokio::test]
+    async fn fetch_public_news_items_reports_disabled_sources_instead_of_empty_vec() {
+        let config = config_from("");
+        // 前提断言：空配置下确实没有可用来源。若默认值以后变了，这里先红，
+        // 免得下面那条断言变成「因为别的原因失败」。
+        assert!(build_public_news_source(&config).unwrap().is_none());
+
+        let err = fetch_public_news_items(&config)
+            .await
+            .expect_err("没有启用来源时应报错，而不是静默返回空数组");
+
+        assert!(
+            err.to_string().contains("未启用任何公共来源"),
+            "错误应点明来源未启用，实际: {err}"
+        );
     }
 
     #[test]

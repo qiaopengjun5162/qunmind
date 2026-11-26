@@ -111,6 +111,11 @@ report-preview config='config.toml' report='微信公众号日报' headed='false
 report-markdown config='config.toml' report='微信公众号日报' output='/tmp/wechat-report.md':
     cargo run -- --config {{config}} daily-report --report-name "{{report}}" --output {{output}}
 
+# 导出公共来源条目为 JSON 数组（供下游体检/归档，不生成日报）
+# 导出的是日报实际会消费的那批：主题过滤、URL 去重、max_items 截断都走日报链路
+export-items config='config.toml' output='/tmp/qunmind-items.json':
+    cargo run -- --config {{config}} export-items --output {{output}}
+
 # 查看日报发布历史
 report-history config='config.toml' report='微信公众号日报' limit='5':
     cargo run -- --config {{config}} publish-history --report-name "{{report}}" --limit {{limit}}

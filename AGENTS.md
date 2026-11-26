@@ -254,6 +254,7 @@ MCP 侧的 `report_markdown` / `report_publish` 也应继续复用 `src/reportin
 - `CompositePublicNewsSource` 会隔离单个公共源失败；新增来源时要保持“某个网站失败不影响其他来源继续补日报素材”的行为，并补聚合层测试。
 - `CompositePublicNewsSource` 的 topic keyword 过滤只用于宽泛公共 feed 降噪；用户显式给出的精选 URL 不应因为标题没命中关键词而被过滤。`mp.weixin.qq.com`、`x.com`、`twitter.com`、Nitter 兼容源、GitHub、arXiv、EthResearch 和主流 Web3 媒体这类明确来源要继续视作 curated URL，新增同类入口时补聚合层回归测试。
 - 依赖真实外网的 `PublicNewsSource` smoke test 不要放进默认 `cargo nextest run --all-features` 路径；这类测试默认 `#[ignore]`，只在显式 `--run-ignored` 或人工联调时执行，避免 CI 因第三方 RSS/站点抖动而误红。
+- `qunmind export-items --output <path>` 把公共来源条目导出成 JSON 数组，供外部体检/归档（`assay` 的 `--source news:`）。它复用 `reporting::fetch_public_news_items` → `build_public_news_source` 那条链，所以主题过滤、URL 去重、`max_items` 截断与日报完全一致——**不要为导出另写抓取逻辑**，否则导出的清单和日报实际消费的清单会分叉。字段名（snake_case）与 `Option` 落 `null` 是对外契约，已有测试钉住，改名等于改下游解析格式。没有启用任何来源时这个命令**报错而不是导出空数组**：空数组会被读成「今天确实没新闻」，而真相是「根本没开来源」，两者处置完全不同。
 - 新增投研工具时优先维护 `research::tools` 里的目录、分类和自动化标记；可自动化的市场数据/链上/安全来源再逐步落成 Rust connector。
 - 新增 AI / Agent 学习资料时优先维护 `research::learning` 里的目录、分类、格式、URL 和学习路径；只有会影响运行时能力的内容再落到 `AiClient`、prompt 或 connector。
 - 新增日报能力时优先保持 `ScheduleConfig` 旧字段兼容；多目标行为放进 `schedule.daily_reports`，不要把群日报配置混进 `groups` 的机器人回复 persona 配置。
