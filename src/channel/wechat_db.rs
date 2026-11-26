@@ -27,9 +27,12 @@ fn aes_cbc_decrypt(key: &[u8; 32], iv: &[u8; 16], data: &[u8]) -> Result<Vec<u8>
             data.len()
         )));
     }
+    // 上面已确认长度是 16 的整数倍，`as_chunks` 的余数段必然为空。
     let mut blocks: Vec<Block<Aes256>> = data
-        .chunks_exact(16)
-        .map(Block::<Aes256>::clone_from_slice)
+        .as_chunks::<16>()
+        .0
+        .iter()
+        .map(|chunk| Block::<Aes256>::clone_from_slice(chunk))
         .collect();
     cbc::Decryptor::<Aes256>::new(key.into(), iv.into()).decrypt_blocks_mut(&mut blocks);
     Ok(blocks.iter().flat_map(|b| b.iter().copied()).collect())
@@ -706,7 +709,7 @@ pub fn decrypt_db(encrypted_path: &std::path::Path, all_keys: &[String]) -> Resu
     Err(QunMindError::Channel(format!(
         "内存中未找到匹配数据库 {} 的密钥 (salt={}, candidates=[{}])",
         encrypted_path.display(),
-        &file_salt,
+        file_salt,
         cand_info.join(", ")
     )))
 }
